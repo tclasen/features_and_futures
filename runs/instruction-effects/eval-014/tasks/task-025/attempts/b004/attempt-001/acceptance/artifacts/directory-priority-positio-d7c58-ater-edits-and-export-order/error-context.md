@@ -1,0 +1,19688 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: directory-priority-position.spec.mjs >> 084 bulk priority assignment preserves own and foreign reserved positions later edits and export order
+- Location: runs/instruction-effects/eval-014/tasks/task-025/suite/directory-priority-position.spec.mjs:8:14
+
+# Error details
+
+```
+Error: expect(locator).toHaveText(expected) failed
+
+Locator: getByTestId('directory-task-row').visible().getByTestId('directory-task-title')
+Timeout: 5000ms
+- Expected  -    0
++ Received  + 2150
+
+  Array [
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Remember me",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated owner sentinel",
++   "Undated transfer",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "task-019 Directory Zulu",
++   "task-019 Directory Alpha",
++   "Foreign directory title",
++   "task-019 Directory Mid",
++   "task-019 Filter hit",
++   "task-019 Filter done",
++   "task-019 Filter low",
++   "task-019 Filter undated",
++   "task-019 Filter outside",
++   "task-019 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-020 Bulk match first",
++   "task-020 Bulk match low",
++   "task-020 Bulk match done",
++   "task-020 Bulk other title",
++   "task-020 Bulk match later",
++   "task-020 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-020 Bulk match second done",
++   "task-020 Bulk match undated",
++   "task-020 Protected live",
++   "task-020 Bulk restart record Bulk restart first",
++   "task-020 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "task-020 Directory Zulu",
++   "task-020 Directory Alpha",
++   "Foreign directory title",
++   "task-020 Directory Mid",
++   "task-020 Filter hit",
++   "task-020 Filter done",
++   "task-020 Filter low",
++   "task-020 Filter undated",
++   "task-020 Filter outside",
++   "task-020 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-021 Bulk match first",
++   "task-021 Bulk match low",
++   "task-021 Bulk match done",
++   "task-021 Bulk other title",
++   "task-021 Bulk match later",
++   "task-021 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-021 Bulk match second done",
++   "task-021 Bulk match undated",
++   "task-021 Protected live",
++   "task-021 Bulk restart record Bulk restart first",
++   "task-021 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "task-021 Order stable zulu",
++   "task-021 Order stable bravo",
++   "task-021 Order stable Alpha",
++   "task-021 Order stable ALPHA",
++   "task-021 Order stable bravo",
++   "task-021 Order action alpha",
++   "task-021 Order action zulu",
++   "task-021 Order action middle",
++   "task-021 Order action low",
++   "task-021 Order action done",
++   "task-021 Order protected active guard",
++   "task-021 Order Unicode å",
++   "task-021 Order Unicode Å",
++   "task-021 Order Unicode 🙂",
++   "task-021 Order Unicode ",
++   "task-021 Directory Zulu",
++   "task-021 Directory Alpha",
++   "Foreign directory title",
++   "task-021 Directory Mid",
++   "task-021 Filter hit",
++   "task-021 Filter done",
++   "task-021 Filter low",
++   "task-021 Filter undated",
++   "task-021 Filter outside",
++   "task-021 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-022 Bulk match first",
++   "task-022 Bulk match low",
++   "task-022 Bulk match done",
++   "task-022 Bulk other title",
++   "task-022 Bulk match later",
++   "task-022 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-022 Bulk match second done",
++   "task-022 Bulk match undated",
++   "task-022 Protected live",
++   "task-022 Bulk restart record Bulk restart first",
++   "task-022 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "task-022 Order stable zulu",
++   "task-022 Order stable bravo",
++   "task-022 Order stable Alpha",
++   "task-022 Order stable ALPHA",
++   "task-022 Order stable bravo",
++   "task-022 Order action alpha",
++   "task-022 Order action zulu",
++   "task-022 Order action middle",
++   "task-022 Order action low",
++   "task-022 Order action done",
++   "task-022 Order protected active guard",
++   "task-022 Order Unicode å",
++   "task-022 Order Unicode Å",
++   "task-022 Order Unicode 🙂",
++   "task-022 Order Unicode ",
++   "task-022 Summary record zulu hit",
++   "task-022 Summary record gamma done",
++   "task-022 Summary record low live",
++   "task-022 Summary record other done",
++   "task-022 Summary record alpha hit",
++   "task-022 Summary record outside done",
++   "task-022 Summary empty record",
++   "task-022 Directory Zulu",
++   "task-022 Directory Alpha",
++   "Foreign directory title",
++   "task-022 Directory Mid",
++   "task-022 Filter hit",
++   "task-022 Filter done",
++   "task-022 Filter low",
++   "task-022 Filter undated",
++   "task-022 Filter outside",
++   "task-022 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-023 Bulk match first",
++   "task-023 Bulk match low",
++   "task-023 Bulk match done",
++   "task-023 Bulk other title",
++   "task-023 Bulk match later",
++   "task-023 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-023 Bulk match second done",
++   "task-023 Bulk match undated",
++   "task-023 Protected live",
++   "task-023 Bulk restart record Bulk restart first",
++   "task-023 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "task-023 Order stable zulu",
++   "task-023 Order stable bravo",
++   "task-023 Order stable Alpha",
++   "task-023 Order stable ALPHA",
++   "task-023 Order stable bravo",
++   "task-023 Order action alpha",
++   "task-023 Order action zulu",
++   "task-023 Order action middle",
++   "task-023 Order action low",
++   "task-023 Order action done",
++   "task-023 Order protected active guard",
++   "task-023 Order Unicode å",
++   "task-023 Order Unicode Å",
++   "task-023 Order Unicode 🙂",
++   "task-023 Order Unicode ",
++   "task-023 Owner totals record zulu live",
++   "task-023 Owner totals record middle completed",
++   "task-023 Owner totals record alpha live",
++   "task-023 Duplicate record zulu first",
++   "task-023 Duplicate record alpha second",
++   "task-023 Duplicate record middle third",
++   "task-023 Summary record zulu hit",
++   "task-023 Summary record gamma done",
++   "task-023 Summary record low live",
++   "task-023 Summary record other done",
++   "task-023 Summary record alpha hit",
++   "task-023 Summary record outside done",
++   "task-023 Summary empty record",
++   "task-023 Directory Zulu",
++   "task-023 Directory Alpha",
++   "Foreign directory title",
++   "task-023 Directory Mid",
++   "task-023 Filter hit",
++   "task-023 Filter done",
++   "task-023 Filter low",
++   "task-023 Filter undated",
++   "task-023 Filter outside",
++   "task-023 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-024 Bulk match first",
++   "task-024 Bulk match low",
++   "task-024 Bulk match done",
++   "task-024 Bulk other title",
++   "task-024 Bulk match later",
++   "task-024 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-024 Bulk match second done",
++   "task-024 Bulk match undated",
++   "task-024 Protected live",
++   "task-024 Bulk restart record Bulk restart first",
++   "task-024 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "Bulk before A",
++   "task-024 Bulk position travelling",
++   "Bulk after A",
++   "Bulk before B",
++   "Bulk later B",
++   "Bulk deletion before",
++   "task-024 Bulk deletion restart record restored first",
++   "Bulk deletion after",
++   "Bulk deletion holding before",
++   "Bulk deletion holding after",
++   "task-024 Batch record before first",
++   "task-024 Batch record selected target zulu",
++   "task-024 Batch record priority guard",
++   "task-024 Batch record date guard",
++   "task-024 Batch record completion guard",
++   "task-024 Unrelated search guard",
++   "task-024 Batch record before second",
++   "task-024 Batch record selected target alpha",
++   "task-024 Batch record after second",
++   "Duplicate before A",
++   "task-024 Duplicate bulk target zulu first",
++   "Duplicate after A",
++   "Duplicate before B",
++   "task-024 Duplicate bulk target alpha second",
++   "Duplicate after B",
++   "task-024 Order stable zulu",
++   "task-024 Order stable bravo",
++   "task-024 Order stable Alpha",
++   "task-024 Order stable ALPHA",
++   "task-024 Order stable bravo",
++   "task-024 Order action alpha",
++   "task-024 Order action zulu",
++   "task-024 Order action middle",
++   "task-024 Order action low",
++   "task-024 Order action done",
++   "task-024 Order protected active guard",
++   "task-024 Order Unicode å",
++   "task-024 Order Unicode Å",
++   "task-024 Order Unicode 🙂",
++   "task-024 Order Unicode ",
++   "task-024 Owner totals record zulu live",
++   "task-024 Owner totals record middle completed",
++   "task-024 Owner totals record alpha live",
++   "task-024 Duplicate record zulu first",
++   "task-024 Duplicate record alpha second",
++   "task-024 Duplicate record middle third",
++   "task-024 Summary record zulu hit",
++   "task-024 Summary record gamma done",
++   "task-024 Summary record low live",
++   "task-024 Summary record other done",
++   "task-024 Summary record alpha hit",
++   "task-024 Summary record outside done",
++   "task-024 Summary empty record",
++   "task-024 Directory Zulu",
++   "task-024 Directory Alpha",
++   "Foreign directory title",
++   "task-024 Directory Mid",
++   "task-024 Filter hit",
++   "task-024 Filter done",
++   "task-024 Filter low",
++   "task-024 Filter undated",
++   "task-024 Filter outside",
++   "task-024 Gap  task",
++   "Calendar renamed",
++   "Calendar valid",
++   "Dated first",
++   "Undated second",
++   "Completed normal guard",
++   "Owner task",
++   "Archive dated",
++   "Before range",
++   "Range first",
++   "No calendar date",
++   "Range last",
++   "After range",
++   "Range matching",
++   "Range low",
++   "Range completed",
++   "Range undated",
++   "Valid member",
++   "Undated outsider",
++   "Archived date renamed",
++   "Archived undated outsider",
++   "Retained range member",
++   "Retained undated outsider",
++   "Created outside range",
++   "Must not export",
++   "Export before",
++   "Export after",
++   "Imported before",
++   "Imported after",
++   "Imported before",
++   "Imported reserved",
++   "Imported after",
++   "Imported arrival",
++   "Guard retained",
++   "Guard retained",
++   "Imported live",
++   "Target first",
++   "Target second",
++   "Transferred complete",
++   "Source remaining",
++   "Filtered target sentinel",
++   "Filtered moving",
++   "Filtered first",
++   "Filtered last",
++   "Filtered outside range",
++   "Filtered completed guard",
++   "Filtered normal guard",
++   "Options task",
++   "Undated target sentinel",
++   "Undated transfer",
++   "Undated owner sentinel",
++   "Notes identity",
++   "Only in notes title sentinel",
++   "Notes target existing",
++   "Notes before",
++   "Notes travelling",
++   "Notes after",
++   "High open first",
++   "Low open",
++   "High completed",
++   "High open last",
++   "Leaving priority",
++   "Leaving completion",
++   "Completed high guard",
++   "Open normal guard",
++   "Filtered new title",
++   "Unmatched normal task",
++   "Completed low guard",
++   "Archived high open",
++   "Archived normal completed",
++   "Priority renamed",
++   "Priority second",
++   "Priority other task",
++   "Priority completed",
++   "Priority open",
++   "Priority retained",
++   "Return first",
++   "Return second",
++   "Return third",
++   "Return fourth",
++   "Identity before",
++   "Identity returning",
++   "Identity after",
++   "Second existing",
++   "Second newly created",
++   "First existing",
++   "Position travelling",
++   "First later",
++   "First newly created",
++   "Original  task gap",
++   "Other task gap",
++   "Mixed first",
++   "Other high",
++   "MIXED completed",
++   "Mixed undated",
++   "mixed last",
++   "Other normal guard",
++   "Two  spaces",
++   "Two spaces sentinel",
++   "Task preserved",
++   "Private to owner",
++   "Done task",
++   "Open task",
++   "Retained task",
++   "Summary one",
++   "Summary two",
++   "Identity task",
++   "Name updated",
++   "Name second",
++   "Kept title",
++   "Archived title",
++   "task-025 Bulk match first",
++   "task-025 Bulk match low",
++   "task-025 Bulk match done",
++   "task-025 Bulk other title",
++   "task-025 Bulk match later",
++   "task-025 Bulk match second",
++   "Bulk later reservation sentinel",
++   "task-025 Bulk match second done",
++   "task-025 Bulk match undated",
++   "task-025 Protected live",
++   "task-025 Bulk restart record Bulk restart first",
++   "task-025 Bulk restart record Bulk restart second",
++   "Independent normal",
++   "Before default change",
++   "Inherited high",
++   "Inherited low",
++   "Inherited normal",
++   "Lifecycle task",
++   "Restored inherits",
++   "Live before",
++   "Live after",
++   "Completed remove sentinel",
++   "Completed remove outside",
++   "Completed normal exclusion",
++   "Completed unrelated high",
++   "Target first",
++   "Reserved",
++   "Target later",
++   "Before",
++   "After",
++   "New arrival",
++   "Bulk before A",
++   "task-025 Bulk position travelling",
++   "Bulk after A",
++   "Bulk before B",
++   "Bulk later B",
++   "Bulk deletion before",
++   "task-025 Bulk deletion restart record restored first",
++   "Bulk deletion after",
++   "Bulk deletion holding before",
++   "Bulk deletion holding after",
++   "task-025 Batch record before first",
++   "task-025 Batch record selected target zulu",
++   "task-025 Batch record priority guard",
++   "task-025 Batch record date guard",
++   "task-025 Batch record completion guard",
++   "task-025 Unrelated search guard",
++   "task-025 Batch record before second",
++   "task-025 Batch record selected target alpha",
++   "task-025 Batch record after second",
++   "Duplicate before A",
++   "task-025 Duplicate bulk target zulu first",
++   "Duplicate after A",
++   "Duplicate before B",
++   "task-025 Duplicate bulk target alpha second",
++   "Duplicate after B",
++   "task-025 Order stable zulu",
++   "task-025 Order stable bravo",
++   "task-025 Order stable Alpha",
++   "task-025 Order stable ALPHA",
++   "task-025 Order stable bravo",
++   "task-025 Order action alpha",
++   "task-025 Order action zulu",
++   "task-025 Order action middle",
++   "task-025 Order action low",
++   "task-025 Order action done",
++   "task-025 Order protected active guard",
++   "task-025 Order Unicode å",
++   "task-025 Order Unicode Å",
++   "task-025 Order Unicode 🙂",
++   "task-025 Order Unicode ",
++   "task-025 Owner totals record zulu live",
++   "task-025 Owner totals record middle completed",
++   "task-025 Owner totals record alpha live",
++   "task-025 Duplicate record zulu first",
++   "task-025 Duplicate record alpha second",
++   "task-025 Duplicate record middle third",
++   "Priority reserved before A",
+    "task-025 Priority reserved travelling",
++   "Priority reserved after A",
++   "Priority reserved before B",
++   "Priority reserved later B",
+  ]
+
+Call log:
+  - Expect "toHaveText" getByTestId('directory-task-row').visible().getByTestId('directory-task-title') with timeout 5000ms
+  - waiting for getByTestId('directory-task-row').visible().getByTestId('directory-task-title')
+    2 × locator resolved to 0 elements
+    11 × locator resolved to 2151 elements
+
+```
+
+# Page snapshot
+
+```yaml
+- generic [active] [ref=f10e1]:
+  - banner [ref=f10e2]: Workboard
+  - main [ref=f10e3]:
+    - button "Projects" [ref=f10e4] [cursor=pointer]
+    - heading "Task directory" [level=1] [ref=f10e5]
+    - generic [ref=f10e6]:
+      - text: Project scope
+      - combobox "Project scope" [ref=f10e7]:
+        - option "Active" [selected]
+        - option "Archived"
+    - generic [ref=f10e8]:
+      - text: Task filter
+      - combobox "Task filter" [ref=f10e9]:
+        - option "All" [selected]
+        - option "Open"
+        - option "Completed"
+        - option "Deleted"
+    - generic [ref=f10e10]:
+      - text: Priority filter
+      - combobox "Priority filter" [ref=f10e11]:
+        - option "All" [selected]
+        - option "Low"
+        - option "Normal"
+        - option "High"
+    - generic [ref=f10e12]:
+      - text: Directory order
+      - combobox "Directory order" [ref=f10e13]:
+        - option "Original" [selected]
+        - option "Priority"
+        - option "Due date"
+        - option "Title"
+    - generic [ref=f10e14]:
+      - textbox "Directory search" [ref=f10e15]
+      - button "Search directory" [ref=f10e16] [cursor=pointer]
+    - generic [ref=f10e17]:
+      - text: Due from
+      - textbox "Due from" [ref=f10e18]
+    - generic [ref=f10e19]:
+      - text: Due through
+      - textbox "Due through" [ref=f10e20]
+    - button "Apply due range" [ref=f10e21] [cursor=pointer]
+    - button "Complete visible tasks" [ref=f10e22] [cursor=pointer]
+    - button "Reopen visible tasks" [ref=f10e23] [cursor=pointer]
+    - button "Delete visible tasks" [ref=f10e24] [cursor=pointer]
+    - button "Restore visible tasks" [disabled] [ref=f10e25] [cursor=pointer]
+    - generic [ref=f10e26]:
+      - text: Visible tasks priority
+      - combobox "Visible tasks priority" [ref=f10e27]:
+        - option "Low"
+        - option "Normal" [selected]
+        - option "High"
+    - button "Set visible priority" [ref=f10e28] [cursor=pointer]
+    - paragraph [ref=f10e29]: 406/2151 completed
+    - generic [ref=f10e30]:
+      - generic [ref=f10e31]:
+        - generic [ref=f10e32]: task-002 Task reload
+        - generic [ref=f10e33]: 0/1 completed
+        - button "Open project" [ref=f10e34] [cursor=pointer]
+      - generic [ref=f10e35]:
+        - generic [ref=f10e36]: task-002 Task owner
+        - generic [ref=f10e37]: 0/1 completed
+        - button "Open project" [ref=f10e38] [cursor=pointer]
+      - generic [ref=f10e39]:
+        - generic [ref=f10e40]: task-002 Task filters
+        - generic [ref=f10e41]: 0/2 completed
+        - button "Open project" [ref=f10e42] [cursor=pointer]
+      - generic [ref=f10e43]:
+        - generic [ref=f10e44]: task-002 Persistence sentinel
+        - generic [ref=f10e45]: 1/1 completed
+        - button "Open project" [ref=f10e46] [cursor=pointer]
+      - generic [ref=f10e47]:
+        - generic [ref=f10e48]: task-003 Task reload
+        - generic [ref=f10e49]: 0/1 completed
+        - button "Open project" [ref=f10e50] [cursor=pointer]
+      - generic [ref=f10e51]:
+        - generic [ref=f10e52]: task-003 Task owner
+        - generic [ref=f10e53]: 0/1 completed
+        - button "Open project" [ref=f10e54] [cursor=pointer]
+      - generic [ref=f10e55]:
+        - generic [ref=f10e56]: task-003 Task filters
+        - generic [ref=f10e57]: 0/2 completed
+        - button "Open project" [ref=f10e58] [cursor=pointer]
+      - generic [ref=f10e59]:
+        - generic [ref=f10e60]: task-003 Archive tasks
+        - generic [ref=f10e61]: 1/1 completed
+        - button "Open project" [ref=f10e62] [cursor=pointer]
+      - generic [ref=f10e63]:
+        - generic [ref=f10e64]: task-003 Summary project
+        - generic [ref=f10e65]: 1/2 completed
+        - button "Open project" [ref=f10e66] [cursor=pointer]
+      - generic [ref=f10e67]:
+        - generic [ref=f10e68]: task-004 Task reload
+        - generic [ref=f10e69]: 0/1 completed
+        - button "Open project" [ref=f10e70] [cursor=pointer]
+      - generic [ref=f10e71]:
+        - generic [ref=f10e72]: task-004 Task owner
+        - generic [ref=f10e73]: 0/1 completed
+        - button "Open project" [ref=f10e74] [cursor=pointer]
+      - generic [ref=f10e75]:
+        - generic [ref=f10e76]: task-004 Task filters
+        - generic [ref=f10e77]: 0/2 completed
+        - button "Open project" [ref=f10e78] [cursor=pointer]
+      - generic [ref=f10e79]:
+        - generic [ref=f10e80]: task-004 Archive tasks
+        - generic [ref=f10e81]: 1/1 completed
+        - button "Open project" [ref=f10e82] [cursor=pointer]
+      - generic [ref=f10e83]:
+        - generic [ref=f10e84]: task-004 Summary project
+        - generic [ref=f10e85]: 1/2 completed
+        - button "Open project" [ref=f10e86] [cursor=pointer]
+      - generic [ref=f10e87]:
+        - generic [ref=f10e88]: task-004 Identity updated
+        - generic [ref=f10e89]: 1/1 completed
+        - button "Open project" [ref=f10e90] [cursor=pointer]
+      - generic [ref=f10e91]:
+        - generic [ref=f10e92]: task-005 Task reload
+        - generic [ref=f10e93]: 0/1 completed
+        - button "Open project" [ref=f10e94] [cursor=pointer]
+      - generic [ref=f10e95]:
+        - generic [ref=f10e96]: task-005 Task owner
+        - generic [ref=f10e97]: 0/1 completed
+        - button "Open project" [ref=f10e98] [cursor=pointer]
+      - generic [ref=f10e99]:
+        - generic [ref=f10e100]: task-005 Task filters
+        - generic [ref=f10e101]: 0/2 completed
+        - button "Open project" [ref=f10e102] [cursor=pointer]
+      - generic [ref=f10e103]:
+        - generic [ref=f10e104]: task-005 Archive tasks
+        - generic [ref=f10e105]: 1/1 completed
+        - button "Open project" [ref=f10e106] [cursor=pointer]
+      - generic [ref=f10e107]:
+        - generic [ref=f10e108]: task-005 Summary project
+        - generic [ref=f10e109]: 1/2 completed
+        - button "Open project" [ref=f10e110] [cursor=pointer]
+      - generic [ref=f10e111]:
+        - generic [ref=f10e112]: task-005 Identity updated
+        - generic [ref=f10e113]: 1/1 completed
+        - button "Open project" [ref=f10e114] [cursor=pointer]
+      - generic [ref=f10e115]:
+        - generic [ref=f10e116]: task-005 Task rename identity
+        - generic [ref=f10e117]: 1/2 completed
+        - button "Open project" [ref=f10e118] [cursor=pointer]
+      - generic [ref=f10e119]:
+        - generic [ref=f10e120]: task-005 Task rename invalid
+        - generic [ref=f10e121]: 0/1 completed
+        - button "Open project" [ref=f10e122] [cursor=pointer]
+      - generic [ref=f10e123]:
+        - generic [ref=f10e124]: task-005 Task rename archive
+        - generic [ref=f10e125]: 0/1 completed
+        - button "Open project" [ref=f10e126] [cursor=pointer]
+      - generic [ref=f10e127]:
+        - generic [ref=f10e128]: task-006 Priority ownership
+        - generic [ref=f10e129]: 0/2 completed
+        - button "Open project" [ref=f10e130] [cursor=pointer]
+      - generic [ref=f10e131]:
+        - generic [ref=f10e132]: task-006 Priority other owner
+        - generic [ref=f10e133]: 0/1 completed
+        - button "Open project" [ref=f10e134] [cursor=pointer]
+      - generic [ref=f10e135]:
+        - generic [ref=f10e136]: task-006 Priority completion
+        - generic [ref=f10e137]: 1/2 completed
+        - button "Open project" [ref=f10e138] [cursor=pointer]
+      - generic [ref=f10e139]:
+        - generic [ref=f10e140]: task-006 Priority archive
+        - generic [ref=f10e141]: 0/1 completed
+        - button "Open project" [ref=f10e142] [cursor=pointer]
+      - generic [ref=f10e143]:
+        - generic [ref=f10e144]: task-006 Task reload
+        - generic [ref=f10e145]: 0/1 completed
+        - button "Open project" [ref=f10e146] [cursor=pointer]
+      - generic [ref=f10e147]:
+        - generic [ref=f10e148]: task-006 Task owner
+        - generic [ref=f10e149]: 0/1 completed
+        - button "Open project" [ref=f10e150] [cursor=pointer]
+      - generic [ref=f10e151]:
+        - generic [ref=f10e152]: task-006 Task filters
+        - generic [ref=f10e153]: 0/2 completed
+        - button "Open project" [ref=f10e154] [cursor=pointer]
+      - generic [ref=f10e155]:
+        - generic [ref=f10e156]: task-006 Archive tasks
+        - generic [ref=f10e157]: 1/1 completed
+        - button "Open project" [ref=f10e158] [cursor=pointer]
+      - generic [ref=f10e159]:
+        - generic [ref=f10e160]: task-006 Summary project
+        - generic [ref=f10e161]: 1/2 completed
+        - button "Open project" [ref=f10e162] [cursor=pointer]
+      - generic [ref=f10e163]:
+        - generic [ref=f10e164]: task-006 Identity updated
+        - generic [ref=f10e165]: 1/1 completed
+        - button "Open project" [ref=f10e166] [cursor=pointer]
+      - generic [ref=f10e167]:
+        - generic [ref=f10e168]: task-006 Task rename identity
+        - generic [ref=f10e169]: 1/2 completed
+        - button "Open project" [ref=f10e170] [cursor=pointer]
+      - generic [ref=f10e171]:
+        - generic [ref=f10e172]: task-006 Task rename invalid
+        - generic [ref=f10e173]: 0/1 completed
+        - button "Open project" [ref=f10e174] [cursor=pointer]
+      - generic [ref=f10e175]:
+        - generic [ref=f10e176]: task-006 Task rename archive
+        - generic [ref=f10e177]: 0/1 completed
+        - button "Open project" [ref=f10e178] [cursor=pointer]
+      - generic [ref=f10e179]:
+        - generic [ref=f10e180]: task-007 Priority intersection
+        - generic [ref=f10e181]: 1/4 completed
+        - button "Open project" [ref=f10e182] [cursor=pointer]
+      - generic [ref=f10e183]:
+        - generic [ref=f10e184]: task-007 Priority live filters
+        - generic [ref=f10e185]: 1/4 completed
+        - button "Open project" [ref=f10e186] [cursor=pointer]
+      - generic [ref=f10e187]:
+        - generic [ref=f10e188]: task-007 Priority rename filters
+        - generic [ref=f10e189]: 1/3 completed
+        - button "Open project" [ref=f10e190] [cursor=pointer]
+      - generic [ref=f10e191]:
+        - generic [ref=f10e192]: task-007 Archived combined filters
+        - generic [ref=f10e193]: 1/2 completed
+        - button "Open project" [ref=f10e194] [cursor=pointer]
+      - generic [ref=f10e195]:
+        - generic [ref=f10e196]: task-007 Priority ownership
+        - generic [ref=f10e197]: 0/2 completed
+        - button "Open project" [ref=f10e198] [cursor=pointer]
+      - generic [ref=f10e199]:
+        - generic [ref=f10e200]: task-007 Priority other owner
+        - generic [ref=f10e201]: 0/1 completed
+        - button "Open project" [ref=f10e202] [cursor=pointer]
+      - generic [ref=f10e203]:
+        - generic [ref=f10e204]: task-007 Priority completion
+        - generic [ref=f10e205]: 1/2 completed
+        - button "Open project" [ref=f10e206] [cursor=pointer]
+      - generic [ref=f10e207]:
+        - generic [ref=f10e208]: task-007 Priority archive
+        - generic [ref=f10e209]: 0/1 completed
+        - button "Open project" [ref=f10e210] [cursor=pointer]
+      - generic [ref=f10e211]:
+        - generic [ref=f10e212]: task-007 Task reload
+        - generic [ref=f10e213]: 0/1 completed
+        - button "Open project" [ref=f10e214] [cursor=pointer]
+      - generic [ref=f10e215]:
+        - generic [ref=f10e216]: task-007 Task owner
+        - generic [ref=f10e217]: 0/1 completed
+        - button "Open project" [ref=f10e218] [cursor=pointer]
+      - generic [ref=f10e219]:
+        - generic [ref=f10e220]: task-007 Task filters
+        - generic [ref=f10e221]: 0/2 completed
+        - button "Open project" [ref=f10e222] [cursor=pointer]
+      - generic [ref=f10e223]:
+        - generic [ref=f10e224]: task-007 Archive tasks
+        - generic [ref=f10e225]: 1/1 completed
+        - button "Open project" [ref=f10e226] [cursor=pointer]
+      - generic [ref=f10e227]:
+        - generic [ref=f10e228]: task-007 Summary project
+        - generic [ref=f10e229]: 1/2 completed
+        - button "Open project" [ref=f10e230] [cursor=pointer]
+      - generic [ref=f10e231]:
+        - generic [ref=f10e232]: task-007 Identity updated
+        - generic [ref=f10e233]: 1/1 completed
+        - button "Open project" [ref=f10e234] [cursor=pointer]
+      - generic [ref=f10e235]:
+        - generic [ref=f10e236]: task-007 Task rename identity
+        - generic [ref=f10e237]: 1/2 completed
+        - button "Open project" [ref=f10e238] [cursor=pointer]
+      - generic [ref=f10e239]:
+        - generic [ref=f10e240]: task-007 Task rename invalid
+        - generic [ref=f10e241]: 0/1 completed
+        - button "Open project" [ref=f10e242] [cursor=pointer]
+      - generic [ref=f10e243]:
+        - generic [ref=f10e244]: task-007 Task rename archive
+        - generic [ref=f10e245]: 0/1 completed
+        - button "Open project" [ref=f10e246] [cursor=pointer]
+      - generic [ref=f10e247]:
+        - generic [ref=f10e248]: task-008 Defaults independent
+        - generic [ref=f10e249]: 0/1 completed
+        - button "Open project" [ref=f10e250] [cursor=pointer]
+      - generic [ref=f10e251]:
+        - generic [ref=f10e252]: task-008 Defaults inheritance
+        - generic [ref=f10e253]: 1/4 completed
+        - button "Open project" [ref=f10e254] [cursor=pointer]
+      - generic [ref=f10e255]:
+        - generic [ref=f10e256]: task-008 Defaults renamed
+        - generic [ref=f10e257]: 0/2 completed
+        - button "Open project" [ref=f10e258] [cursor=pointer]
+      - generic [ref=f10e259]:
+        - generic [ref=f10e260]: task-008 Priority intersection
+        - generic [ref=f10e261]: 1/4 completed
+        - button "Open project" [ref=f10e262] [cursor=pointer]
+      - generic [ref=f10e263]:
+        - generic [ref=f10e264]: task-008 Priority live filters
+        - generic [ref=f10e265]: 1/4 completed
+        - button "Open project" [ref=f10e266] [cursor=pointer]
+      - generic [ref=f10e267]:
+        - generic [ref=f10e268]: task-008 Priority rename filters
+        - generic [ref=f10e269]: 1/3 completed
+        - button "Open project" [ref=f10e270] [cursor=pointer]
+      - generic [ref=f10e271]:
+        - generic [ref=f10e272]: task-008 Archived combined filters
+        - generic [ref=f10e273]: 1/2 completed
+        - button "Open project" [ref=f10e274] [cursor=pointer]
+      - generic [ref=f10e275]:
+        - generic [ref=f10e276]: task-008 Priority ownership
+        - generic [ref=f10e277]: 0/2 completed
+        - button "Open project" [ref=f10e278] [cursor=pointer]
+      - generic [ref=f10e279]:
+        - generic [ref=f10e280]: task-008 Priority other owner
+        - generic [ref=f10e281]: 0/1 completed
+        - button "Open project" [ref=f10e282] [cursor=pointer]
+      - generic [ref=f10e283]:
+        - generic [ref=f10e284]: task-008 Priority completion
+        - generic [ref=f10e285]: 1/2 completed
+        - button "Open project" [ref=f10e286] [cursor=pointer]
+      - generic [ref=f10e287]:
+        - generic [ref=f10e288]: task-008 Priority archive
+        - generic [ref=f10e289]: 0/1 completed
+        - button "Open project" [ref=f10e290] [cursor=pointer]
+      - generic [ref=f10e291]:
+        - generic [ref=f10e292]: task-008 Task reload
+        - generic [ref=f10e293]: 0/1 completed
+        - button "Open project" [ref=f10e294] [cursor=pointer]
+      - generic [ref=f10e295]:
+        - generic [ref=f10e296]: task-008 Task owner
+        - generic [ref=f10e297]: 0/1 completed
+        - button "Open project" [ref=f10e298] [cursor=pointer]
+      - generic [ref=f10e299]:
+        - generic [ref=f10e300]: task-008 Task filters
+        - generic [ref=f10e301]: 0/2 completed
+        - button "Open project" [ref=f10e302] [cursor=pointer]
+      - generic [ref=f10e303]:
+        - generic [ref=f10e304]: task-008 Archive tasks
+        - generic [ref=f10e305]: 1/1 completed
+        - button "Open project" [ref=f10e306] [cursor=pointer]
+      - generic [ref=f10e307]:
+        - generic [ref=f10e308]: task-008 Summary project
+        - generic [ref=f10e309]: 1/2 completed
+        - button "Open project" [ref=f10e310] [cursor=pointer]
+      - generic [ref=f10e311]:
+        - generic [ref=f10e312]: task-008 Identity updated
+        - generic [ref=f10e313]: 1/1 completed
+        - button "Open project" [ref=f10e314] [cursor=pointer]
+      - generic [ref=f10e315]:
+        - generic [ref=f10e316]: task-008 Task rename identity
+        - generic [ref=f10e317]: 1/2 completed
+        - button "Open project" [ref=f10e318] [cursor=pointer]
+      - generic [ref=f10e319]:
+        - generic [ref=f10e320]: task-008 Task rename invalid
+        - generic [ref=f10e321]: 0/1 completed
+        - button "Open project" [ref=f10e322] [cursor=pointer]
+      - generic [ref=f10e323]:
+        - generic [ref=f10e324]: task-008 Task rename archive
+        - generic [ref=f10e325]: 0/1 completed
+        - button "Open project" [ref=f10e326] [cursor=pointer]
+      - generic [ref=f10e327]:
+        - generic [ref=f10e328]: task-009 Defaults independent
+        - generic [ref=f10e329]: 0/1 completed
+        - button "Open project" [ref=f10e330] [cursor=pointer]
+      - generic [ref=f10e331]:
+        - generic [ref=f10e332]: task-009 Defaults inheritance
+        - generic [ref=f10e333]: 1/4 completed
+        - button "Open project" [ref=f10e334] [cursor=pointer]
+      - generic [ref=f10e335]:
+        - generic [ref=f10e336]: task-009 Defaults renamed
+        - generic [ref=f10e337]: 0/2 completed
+        - button "Open project" [ref=f10e338] [cursor=pointer]
+      - generic [ref=f10e339]:
+        - generic [ref=f10e340]: task-009 Calendar persistence
+        - generic [ref=f10e341]: 0/1 completed
+        - button "Open project" [ref=f10e342] [cursor=pointer]
+      - generic [ref=f10e343]:
+        - generic [ref=f10e344]: task-009 Calendar validation
+        - generic [ref=f10e345]: 0/1 completed
+        - button "Open project" [ref=f10e346] [cursor=pointer]
+      - generic [ref=f10e347]:
+        - generic [ref=f10e348]: task-009 Calendar independence
+        - generic [ref=f10e349]: 2/3 completed
+        - button "Open project" [ref=f10e350] [cursor=pointer]
+      - generic [ref=f10e351]:
+        - generic [ref=f10e352]: task-009 Calendar second owner
+        - generic [ref=f10e353]: 0/1 completed
+        - button "Open project" [ref=f10e354] [cursor=pointer]
+      - generic [ref=f10e355]:
+        - generic [ref=f10e356]: task-009 Calendar archival
+        - generic [ref=f10e357]: 0/1 completed
+        - button "Open project" [ref=f10e358] [cursor=pointer]
+      - generic [ref=f10e359]:
+        - generic [ref=f10e360]: task-009 Priority intersection
+        - generic [ref=f10e361]: 1/4 completed
+        - button "Open project" [ref=f10e362] [cursor=pointer]
+      - generic [ref=f10e363]:
+        - generic [ref=f10e364]: task-009 Priority live filters
+        - generic [ref=f10e365]: 1/4 completed
+        - button "Open project" [ref=f10e366] [cursor=pointer]
+      - generic [ref=f10e367]:
+        - generic [ref=f10e368]: task-009 Priority rename filters
+        - generic [ref=f10e369]: 1/3 completed
+        - button "Open project" [ref=f10e370] [cursor=pointer]
+      - generic [ref=f10e371]:
+        - generic [ref=f10e372]: task-009 Archived combined filters
+        - generic [ref=f10e373]: 1/2 completed
+        - button "Open project" [ref=f10e374] [cursor=pointer]
+      - generic [ref=f10e375]:
+        - generic [ref=f10e376]: task-009 Priority ownership
+        - generic [ref=f10e377]: 0/2 completed
+        - button "Open project" [ref=f10e378] [cursor=pointer]
+      - generic [ref=f10e379]:
+        - generic [ref=f10e380]: task-009 Priority other owner
+        - generic [ref=f10e381]: 0/1 completed
+        - button "Open project" [ref=f10e382] [cursor=pointer]
+      - generic [ref=f10e383]:
+        - generic [ref=f10e384]: task-009 Priority completion
+        - generic [ref=f10e385]: 1/2 completed
+        - button "Open project" [ref=f10e386] [cursor=pointer]
+      - generic [ref=f10e387]:
+        - generic [ref=f10e388]: task-009 Priority archive
+        - generic [ref=f10e389]: 0/1 completed
+        - button "Open project" [ref=f10e390] [cursor=pointer]
+      - generic [ref=f10e391]:
+        - generic [ref=f10e392]: task-009 Task reload
+        - generic [ref=f10e393]: 0/1 completed
+        - button "Open project" [ref=f10e394] [cursor=pointer]
+      - generic [ref=f10e395]:
+        - generic [ref=f10e396]: task-009 Task owner
+        - generic [ref=f10e397]: 0/1 completed
+        - button "Open project" [ref=f10e398] [cursor=pointer]
+      - generic [ref=f10e399]:
+        - generic [ref=f10e400]: task-009 Task filters
+        - generic [ref=f10e401]: 0/2 completed
+        - button "Open project" [ref=f10e402] [cursor=pointer]
+      - generic [ref=f10e403]:
+        - generic [ref=f10e404]: task-009 Archive tasks
+        - generic [ref=f10e405]: 1/1 completed
+        - button "Open project" [ref=f10e406] [cursor=pointer]
+      - generic [ref=f10e407]:
+        - generic [ref=f10e408]: task-009 Summary project
+        - generic [ref=f10e409]: 1/2 completed
+        - button "Open project" [ref=f10e410] [cursor=pointer]
+      - generic [ref=f10e411]:
+        - generic [ref=f10e412]: task-009 Identity updated
+        - generic [ref=f10e413]: 1/1 completed
+        - button "Open project" [ref=f10e414] [cursor=pointer]
+      - generic [ref=f10e415]:
+        - generic [ref=f10e416]: task-009 Task rename identity
+        - generic [ref=f10e417]: 1/2 completed
+        - button "Open project" [ref=f10e418] [cursor=pointer]
+      - generic [ref=f10e419]:
+        - generic [ref=f10e420]: task-009 Task rename invalid
+        - generic [ref=f10e421]: 0/1 completed
+        - button "Open project" [ref=f10e422] [cursor=pointer]
+      - generic [ref=f10e423]:
+        - generic [ref=f10e424]: task-009 Task rename archive
+        - generic [ref=f10e425]: 0/1 completed
+        - button "Open project" [ref=f10e426] [cursor=pointer]
+      - generic [ref=f10e427]:
+        - generic [ref=f10e428]: task-010 Defaults independent
+        - generic [ref=f10e429]: 0/1 completed
+        - button "Open project" [ref=f10e430] [cursor=pointer]
+      - generic [ref=f10e431]:
+        - generic [ref=f10e432]: task-010 Defaults inheritance
+        - generic [ref=f10e433]: 1/4 completed
+        - button "Open project" [ref=f10e434] [cursor=pointer]
+      - generic [ref=f10e435]:
+        - generic [ref=f10e436]: task-010 Defaults renamed
+        - generic [ref=f10e437]: 0/2 completed
+        - button "Open project" [ref=f10e438] [cursor=pointer]
+      - generic [ref=f10e439]:
+        - generic [ref=f10e440]: task-010 Calendar persistence
+        - generic [ref=f10e441]: 0/1 completed
+        - button "Open project" [ref=f10e442] [cursor=pointer]
+      - generic [ref=f10e443]:
+        - generic [ref=f10e444]: task-010 Calendar validation
+        - generic [ref=f10e445]: 0/1 completed
+        - button "Open project" [ref=f10e446] [cursor=pointer]
+      - generic [ref=f10e447]:
+        - generic [ref=f10e448]: task-010 Calendar independence
+        - generic [ref=f10e449]: 2/3 completed
+        - button "Open project" [ref=f10e450] [cursor=pointer]
+      - generic [ref=f10e451]:
+        - generic [ref=f10e452]: task-010 Calendar second owner
+        - generic [ref=f10e453]: 0/1 completed
+        - button "Open project" [ref=f10e454] [cursor=pointer]
+      - generic [ref=f10e455]:
+        - generic [ref=f10e456]: task-010 Calendar archival
+        - generic [ref=f10e457]: 0/1 completed
+        - button "Open project" [ref=f10e458] [cursor=pointer]
+      - generic [ref=f10e459]:
+        - generic [ref=f10e460]: task-010 Range boundaries
+        - generic [ref=f10e461]: 0/5 completed
+        - button "Open project" [ref=f10e462] [cursor=pointer]
+      - generic [ref=f10e463]:
+        - generic [ref=f10e464]: task-010 Range intersections
+        - generic [ref=f10e465]: 0/4 completed
+        - button "Open project" [ref=f10e466] [cursor=pointer]
+      - generic [ref=f10e467]:
+        - generic [ref=f10e468]: task-010 Range validation
+        - generic [ref=f10e469]: 0/2 completed
+        - button "Open project" [ref=f10e470] [cursor=pointer]
+      - generic [ref=f10e471]:
+        - generic [ref=f10e472]: task-010 Range archival
+        - generic [ref=f10e473]: 0/2 completed
+        - button "Open project" [ref=f10e474] [cursor=pointer]
+      - generic [ref=f10e475]:
+        - generic [ref=f10e476]: task-010 Range owner renamed
+        - generic [ref=f10e477]: 0/3 completed
+        - button "Open project" [ref=f10e478] [cursor=pointer]
+      - generic [ref=f10e479]:
+        - generic [ref=f10e480]: task-010 Priority intersection
+        - generic [ref=f10e481]: 1/4 completed
+        - button "Open project" [ref=f10e482] [cursor=pointer]
+      - generic [ref=f10e483]:
+        - generic [ref=f10e484]: task-010 Priority live filters
+        - generic [ref=f10e485]: 1/4 completed
+        - button "Open project" [ref=f10e486] [cursor=pointer]
+      - generic [ref=f10e487]:
+        - generic [ref=f10e488]: task-010 Priority rename filters
+        - generic [ref=f10e489]: 1/3 completed
+        - button "Open project" [ref=f10e490] [cursor=pointer]
+      - generic [ref=f10e491]:
+        - generic [ref=f10e492]: task-010 Archived combined filters
+        - generic [ref=f10e493]: 1/2 completed
+        - button "Open project" [ref=f10e494] [cursor=pointer]
+      - generic [ref=f10e495]:
+        - generic [ref=f10e496]: task-010 Priority ownership
+        - generic [ref=f10e497]: 0/2 completed
+        - button "Open project" [ref=f10e498] [cursor=pointer]
+      - generic [ref=f10e499]:
+        - generic [ref=f10e500]: task-010 Priority other owner
+        - generic [ref=f10e501]: 0/1 completed
+        - button "Open project" [ref=f10e502] [cursor=pointer]
+      - generic [ref=f10e503]:
+        - generic [ref=f10e504]: task-010 Priority completion
+        - generic [ref=f10e505]: 1/2 completed
+        - button "Open project" [ref=f10e506] [cursor=pointer]
+      - generic [ref=f10e507]:
+        - generic [ref=f10e508]: task-010 Priority archive
+        - generic [ref=f10e509]: 0/1 completed
+        - button "Open project" [ref=f10e510] [cursor=pointer]
+      - generic [ref=f10e511]:
+        - generic [ref=f10e512]: task-010 Task reload
+        - generic [ref=f10e513]: 0/1 completed
+        - button "Open project" [ref=f10e514] [cursor=pointer]
+      - generic [ref=f10e515]:
+        - generic [ref=f10e516]: task-010 Task owner
+        - generic [ref=f10e517]: 0/1 completed
+        - button "Open project" [ref=f10e518] [cursor=pointer]
+      - generic [ref=f10e519]:
+        - generic [ref=f10e520]: task-010 Task filters
+        - generic [ref=f10e521]: 0/2 completed
+        - button "Open project" [ref=f10e522] [cursor=pointer]
+      - generic [ref=f10e523]:
+        - generic [ref=f10e524]: task-010 Archive tasks
+        - generic [ref=f10e525]: 1/1 completed
+        - button "Open project" [ref=f10e526] [cursor=pointer]
+      - generic [ref=f10e527]:
+        - generic [ref=f10e528]: task-010 Summary project
+        - generic [ref=f10e529]: 1/2 completed
+        - button "Open project" [ref=f10e530] [cursor=pointer]
+      - generic [ref=f10e531]:
+        - generic [ref=f10e532]: task-010 Identity updated
+        - generic [ref=f10e533]: 1/1 completed
+        - button "Open project" [ref=f10e534] [cursor=pointer]
+      - generic [ref=f10e535]:
+        - generic [ref=f10e536]: task-010 Task rename identity
+        - generic [ref=f10e537]: 1/2 completed
+        - button "Open project" [ref=f10e538] [cursor=pointer]
+      - generic [ref=f10e539]:
+        - generic [ref=f10e540]: task-010 Task rename invalid
+        - generic [ref=f10e541]: 0/1 completed
+        - button "Open project" [ref=f10e542] [cursor=pointer]
+      - generic [ref=f10e543]:
+        - generic [ref=f10e544]: task-010 Task rename archive
+        - generic [ref=f10e545]: 0/1 completed
+        - button "Open project" [ref=f10e546] [cursor=pointer]
+      - generic [ref=f10e547]:
+        - generic [ref=f10e548]: task-011 Defaults independent
+        - generic [ref=f10e549]: 0/1 completed
+        - button "Open project" [ref=f10e550] [cursor=pointer]
+      - generic [ref=f10e551]:
+        - generic [ref=f10e552]: task-011 Defaults inheritance
+        - generic [ref=f10e553]: 1/4 completed
+        - button "Open project" [ref=f10e554] [cursor=pointer]
+      - generic [ref=f10e555]:
+        - generic [ref=f10e556]: task-011 Defaults renamed
+        - generic [ref=f10e557]: 0/2 completed
+        - button "Open project" [ref=f10e558] [cursor=pointer]
+      - generic [ref=f10e559]:
+        - generic [ref=f10e560]: task-011 Calendar persistence
+        - generic [ref=f10e561]: 0/1 completed
+        - button "Open project" [ref=f10e562] [cursor=pointer]
+      - generic [ref=f10e563]:
+        - generic [ref=f10e564]: task-011 Calendar validation
+        - generic [ref=f10e565]: 0/1 completed
+        - button "Open project" [ref=f10e566] [cursor=pointer]
+      - generic [ref=f10e567]:
+        - generic [ref=f10e568]: task-011 Calendar independence
+        - generic [ref=f10e569]: 2/3 completed
+        - button "Open project" [ref=f10e570] [cursor=pointer]
+      - generic [ref=f10e571]:
+        - generic [ref=f10e572]: task-011 Calendar second owner
+        - generic [ref=f10e573]: 0/1 completed
+        - button "Open project" [ref=f10e574] [cursor=pointer]
+      - generic [ref=f10e575]:
+        - generic [ref=f10e576]: task-011 Calendar archival
+        - generic [ref=f10e577]: 0/1 completed
+        - button "Open project" [ref=f10e578] [cursor=pointer]
+      - generic [ref=f10e579]:
+        - generic [ref=f10e580]: task-011 Range boundaries
+        - generic [ref=f10e581]: 0/5 completed
+        - button "Open project" [ref=f10e582] [cursor=pointer]
+      - generic [ref=f10e583]:
+        - generic [ref=f10e584]: task-011 Range intersections
+        - generic [ref=f10e585]: 0/4 completed
+        - button "Open project" [ref=f10e586] [cursor=pointer]
+      - generic [ref=f10e587]:
+        - generic [ref=f10e588]: task-011 Range validation
+        - generic [ref=f10e589]: 0/2 completed
+        - button "Open project" [ref=f10e590] [cursor=pointer]
+      - generic [ref=f10e591]:
+        - generic [ref=f10e592]: task-011 Range archival
+        - generic [ref=f10e593]: 0/2 completed
+        - button "Open project" [ref=f10e594] [cursor=pointer]
+      - generic [ref=f10e595]:
+        - generic [ref=f10e596]: task-011 Range owner renamed
+        - generic [ref=f10e597]: 0/3 completed
+        - button "Open project" [ref=f10e598] [cursor=pointer]
+      - generic [ref=f10e599]:
+        - generic [ref=f10e600]: task-011 Transfer target
+        - generic [ref=f10e601]: 1/3 completed
+        - button "Open project" [ref=f10e602] [cursor=pointer]
+      - generic [ref=f10e603]:
+        - generic [ref=f10e604]: task-011 Transfer source
+        - generic [ref=f10e605]: 0/1 completed
+        - button "Open project" [ref=f10e606] [cursor=pointer]
+      - generic [ref=f10e607]:
+        - generic [ref=f10e608]: task-011 Filtered transfer target
+        - generic [ref=f10e609]: 0/2 completed
+        - button "Open project" [ref=f10e610] [cursor=pointer]
+      - generic [ref=f10e611]:
+        - generic [ref=f10e612]: task-011 Filtered transfer source
+        - generic [ref=f10e613]: 1/5 completed
+        - button "Open project" [ref=f10e614] [cursor=pointer]
+      - generic [ref=f10e615]:
+        - generic [ref=f10e616]: task-011 Options owner
+        - generic [ref=f10e617]: 0/1 completed
+        - button "Open project" [ref=f10e618] [cursor=pointer]
+      - generic [ref=f10e619]:
+        - generic [ref=f10e620]: task-011 Read-only transfer target
+        - generic [ref=f10e621]: 0/1 completed
+        - button "Open project" [ref=f10e622] [cursor=pointer]
+      - generic [ref=f10e623]:
+        - generic [ref=f10e624]: task-011 Read-only transfer owner
+        - generic [ref=f10e625]: 0/2 completed
+        - button "Open project" [ref=f10e626] [cursor=pointer]
+      - generic [ref=f10e627]:
+        - generic [ref=f10e628]: task-011 Priority intersection
+        - generic [ref=f10e629]: 1/4 completed
+        - button "Open project" [ref=f10e630] [cursor=pointer]
+      - generic [ref=f10e631]:
+        - generic [ref=f10e632]: task-011 Priority live filters
+        - generic [ref=f10e633]: 1/4 completed
+        - button "Open project" [ref=f10e634] [cursor=pointer]
+      - generic [ref=f10e635]:
+        - generic [ref=f10e636]: task-011 Priority rename filters
+        - generic [ref=f10e637]: 1/3 completed
+        - button "Open project" [ref=f10e638] [cursor=pointer]
+      - generic [ref=f10e639]:
+        - generic [ref=f10e640]: task-011 Archived combined filters
+        - generic [ref=f10e641]: 1/2 completed
+        - button "Open project" [ref=f10e642] [cursor=pointer]
+      - generic [ref=f10e643]:
+        - generic [ref=f10e644]: task-011 Priority ownership
+        - generic [ref=f10e645]: 0/2 completed
+        - button "Open project" [ref=f10e646] [cursor=pointer]
+      - generic [ref=f10e647]:
+        - generic [ref=f10e648]: task-011 Priority other owner
+        - generic [ref=f10e649]: 0/1 completed
+        - button "Open project" [ref=f10e650] [cursor=pointer]
+      - generic [ref=f10e651]:
+        - generic [ref=f10e652]: task-011 Priority completion
+        - generic [ref=f10e653]: 1/2 completed
+        - button "Open project" [ref=f10e654] [cursor=pointer]
+      - generic [ref=f10e655]:
+        - generic [ref=f10e656]: task-011 Priority archive
+        - generic [ref=f10e657]: 0/1 completed
+        - button "Open project" [ref=f10e658] [cursor=pointer]
+      - generic [ref=f10e659]:
+        - generic [ref=f10e660]: task-011 Task reload
+        - generic [ref=f10e661]: 0/1 completed
+        - button "Open project" [ref=f10e662] [cursor=pointer]
+      - generic [ref=f10e663]:
+        - generic [ref=f10e664]: task-011 Task owner
+        - generic [ref=f10e665]: 0/1 completed
+        - button "Open project" [ref=f10e666] [cursor=pointer]
+      - generic [ref=f10e667]:
+        - generic [ref=f10e668]: task-011 Task filters
+        - generic [ref=f10e669]: 0/2 completed
+        - button "Open project" [ref=f10e670] [cursor=pointer]
+      - generic [ref=f10e671]:
+        - generic [ref=f10e672]: task-011 Archive tasks
+        - generic [ref=f10e673]: 1/1 completed
+        - button "Open project" [ref=f10e674] [cursor=pointer]
+      - generic [ref=f10e675]:
+        - generic [ref=f10e676]: task-011 Summary project
+        - generic [ref=f10e677]: 1/2 completed
+        - button "Open project" [ref=f10e678] [cursor=pointer]
+      - generic [ref=f10e679]:
+        - generic [ref=f10e680]: task-011 Identity updated
+        - generic [ref=f10e681]: 1/1 completed
+        - button "Open project" [ref=f10e682] [cursor=pointer]
+      - generic [ref=f10e683]:
+        - generic [ref=f10e684]: task-011 Task rename identity
+        - generic [ref=f10e685]: 1/2 completed
+        - button "Open project" [ref=f10e686] [cursor=pointer]
+      - generic [ref=f10e687]:
+        - generic [ref=f10e688]: task-011 Task rename invalid
+        - generic [ref=f10e689]: 0/1 completed
+        - button "Open project" [ref=f10e690] [cursor=pointer]
+      - generic [ref=f10e691]:
+        - generic [ref=f10e692]: task-011 Task rename archive
+        - generic [ref=f10e693]: 0/1 completed
+        - button "Open project" [ref=f10e694] [cursor=pointer]
+      - generic [ref=f10e695]:
+        - generic [ref=f10e696]: task-012 Defaults independent
+        - generic [ref=f10e697]: 0/1 completed
+        - button "Open project" [ref=f10e698] [cursor=pointer]
+      - generic [ref=f10e699]:
+        - generic [ref=f10e700]: task-012 Defaults inheritance
+        - generic [ref=f10e701]: 1/4 completed
+        - button "Open project" [ref=f10e702] [cursor=pointer]
+      - generic [ref=f10e703]:
+        - generic [ref=f10e704]: task-012 Defaults renamed
+        - generic [ref=f10e705]: 0/2 completed
+        - button "Open project" [ref=f10e706] [cursor=pointer]
+      - generic [ref=f10e707]:
+        - generic [ref=f10e708]: task-012 Calendar persistence
+        - generic [ref=f10e709]: 0/1 completed
+        - button "Open project" [ref=f10e710] [cursor=pointer]
+      - generic [ref=f10e711]:
+        - generic [ref=f10e712]: task-012 Calendar validation
+        - generic [ref=f10e713]: 0/1 completed
+        - button "Open project" [ref=f10e714] [cursor=pointer]
+      - generic [ref=f10e715]:
+        - generic [ref=f10e716]: task-012 Calendar independence
+        - generic [ref=f10e717]: 2/3 completed
+        - button "Open project" [ref=f10e718] [cursor=pointer]
+      - generic [ref=f10e719]:
+        - generic [ref=f10e720]: task-012 Calendar second owner
+        - generic [ref=f10e721]: 0/1 completed
+        - button "Open project" [ref=f10e722] [cursor=pointer]
+      - generic [ref=f10e723]:
+        - generic [ref=f10e724]: task-012 Calendar archival
+        - generic [ref=f10e725]: 0/1 completed
+        - button "Open project" [ref=f10e726] [cursor=pointer]
+      - generic [ref=f10e727]:
+        - generic [ref=f10e728]: task-012 Range boundaries
+        - generic [ref=f10e729]: 0/5 completed
+        - button "Open project" [ref=f10e730] [cursor=pointer]
+      - generic [ref=f10e731]:
+        - generic [ref=f10e732]: task-012 Range intersections
+        - generic [ref=f10e733]: 0/4 completed
+        - button "Open project" [ref=f10e734] [cursor=pointer]
+      - generic [ref=f10e735]:
+        - generic [ref=f10e736]: task-012 Range validation
+        - generic [ref=f10e737]: 0/2 completed
+        - button "Open project" [ref=f10e738] [cursor=pointer]
+      - generic [ref=f10e739]:
+        - generic [ref=f10e740]: task-012 Range archival
+        - generic [ref=f10e741]: 0/2 completed
+        - button "Open project" [ref=f10e742] [cursor=pointer]
+      - generic [ref=f10e743]:
+        - generic [ref=f10e744]: task-012 Range owner renamed
+        - generic [ref=f10e745]: 0/3 completed
+        - button "Open project" [ref=f10e746] [cursor=pointer]
+      - generic [ref=f10e747]:
+        - generic [ref=f10e748]: task-012 Transfer target
+        - generic [ref=f10e749]: 1/3 completed
+        - button "Open project" [ref=f10e750] [cursor=pointer]
+      - generic [ref=f10e751]:
+        - generic [ref=f10e752]: task-012 Transfer source
+        - generic [ref=f10e753]: 0/1 completed
+        - button "Open project" [ref=f10e754] [cursor=pointer]
+      - generic [ref=f10e755]:
+        - generic [ref=f10e756]: task-012 Filtered transfer target
+        - generic [ref=f10e757]: 0/2 completed
+        - button "Open project" [ref=f10e758] [cursor=pointer]
+      - generic [ref=f10e759]:
+        - generic [ref=f10e760]: task-012 Filtered transfer source
+        - generic [ref=f10e761]: 1/5 completed
+        - button "Open project" [ref=f10e762] [cursor=pointer]
+      - generic [ref=f10e763]:
+        - generic [ref=f10e764]: task-012 Options owner
+        - generic [ref=f10e765]: 0/1 completed
+        - button "Open project" [ref=f10e766] [cursor=pointer]
+      - generic [ref=f10e767]:
+        - generic [ref=f10e768]: task-012 Read-only transfer target
+        - generic [ref=f10e769]: 0/1 completed
+        - button "Open project" [ref=f10e770] [cursor=pointer]
+      - generic [ref=f10e771]:
+        - generic [ref=f10e772]: task-012 Read-only transfer owner
+        - generic [ref=f10e773]: 0/2 completed
+        - button "Open project" [ref=f10e774] [cursor=pointer]
+      - generic [ref=f10e775]:
+        - generic [ref=f10e776]: task-012 Priority intersection
+        - generic [ref=f10e777]: 1/4 completed
+        - button "Open project" [ref=f10e778] [cursor=pointer]
+      - generic [ref=f10e779]:
+        - generic [ref=f10e780]: task-012 Priority live filters
+        - generic [ref=f10e781]: 1/4 completed
+        - button "Open project" [ref=f10e782] [cursor=pointer]
+      - generic [ref=f10e783]:
+        - generic [ref=f10e784]: task-012 Priority rename filters
+        - generic [ref=f10e785]: 1/3 completed
+        - button "Open project" [ref=f10e786] [cursor=pointer]
+      - generic [ref=f10e787]:
+        - generic [ref=f10e788]: task-012 Archived combined filters
+        - generic [ref=f10e789]: 1/2 completed
+        - button "Open project" [ref=f10e790] [cursor=pointer]
+      - generic [ref=f10e791]:
+        - generic [ref=f10e792]: task-012 Priority ownership
+        - generic [ref=f10e793]: 0/2 completed
+        - button "Open project" [ref=f10e794] [cursor=pointer]
+      - generic [ref=f10e795]:
+        - generic [ref=f10e796]: task-012 Priority other owner
+        - generic [ref=f10e797]: 0/1 completed
+        - button "Open project" [ref=f10e798] [cursor=pointer]
+      - generic [ref=f10e799]:
+        - generic [ref=f10e800]: task-012 Priority completion
+        - generic [ref=f10e801]: 1/2 completed
+        - button "Open project" [ref=f10e802] [cursor=pointer]
+      - generic [ref=f10e803]:
+        - generic [ref=f10e804]: task-012 Priority archive
+        - generic [ref=f10e805]: 0/1 completed
+        - button "Open project" [ref=f10e806] [cursor=pointer]
+      - generic [ref=f10e807]:
+        - generic [ref=f10e808]: task-012 Return owner
+        - generic [ref=f10e809]: 1/4 completed
+        - button "Open project" [ref=f10e810] [cursor=pointer]
+      - generic [ref=f10e811]:
+        - generic [ref=f10e812]: task-012 Returned owner renamed
+        - generic [ref=f10e813]: 0/3 completed
+        - button "Open project" [ref=f10e814] [cursor=pointer]
+      - generic [ref=f10e815]:
+        - generic [ref=f10e816]: task-012 Position second owner
+        - generic [ref=f10e817]: 0/2 completed
+        - button "Open project" [ref=f10e818] [cursor=pointer]
+      - generic [ref=f10e819]:
+        - generic [ref=f10e820]: task-012 Position first owner
+        - generic [ref=f10e821]: 0/4 completed
+        - button "Open project" [ref=f10e822] [cursor=pointer]
+      - generic [ref=f10e823]:
+        - generic [ref=f10e824]: task-012 Task reload
+        - generic [ref=f10e825]: 0/1 completed
+        - button "Open project" [ref=f10e826] [cursor=pointer]
+      - generic [ref=f10e827]:
+        - generic [ref=f10e828]: task-012 Task owner
+        - generic [ref=f10e829]: 0/1 completed
+        - button "Open project" [ref=f10e830] [cursor=pointer]
+      - generic [ref=f10e831]:
+        - generic [ref=f10e832]: task-012 Task filters
+        - generic [ref=f10e833]: 0/2 completed
+        - button "Open project" [ref=f10e834] [cursor=pointer]
+      - generic [ref=f10e835]:
+        - generic [ref=f10e836]: task-012 Archive tasks
+        - generic [ref=f10e837]: 1/1 completed
+        - button "Open project" [ref=f10e838] [cursor=pointer]
+      - generic [ref=f10e839]:
+        - generic [ref=f10e840]: task-012 Summary project
+        - generic [ref=f10e841]: 1/2 completed
+        - button "Open project" [ref=f10e842] [cursor=pointer]
+      - generic [ref=f10e843]:
+        - generic [ref=f10e844]: task-012 Identity updated
+        - generic [ref=f10e845]: 1/1 completed
+        - button "Open project" [ref=f10e846] [cursor=pointer]
+      - generic [ref=f10e847]:
+        - generic [ref=f10e848]: task-012 Task rename identity
+        - generic [ref=f10e849]: 1/2 completed
+        - button "Open project" [ref=f10e850] [cursor=pointer]
+      - generic [ref=f10e851]:
+        - generic [ref=f10e852]: task-012 Task rename invalid
+        - generic [ref=f10e853]: 0/1 completed
+        - button "Open project" [ref=f10e854] [cursor=pointer]
+      - generic [ref=f10e855]:
+        - generic [ref=f10e856]: task-012 Task rename archive
+        - generic [ref=f10e857]: 0/1 completed
+        - button "Open project" [ref=f10e858] [cursor=pointer]
+      - generic [ref=f10e859]:
+        - generic [ref=f10e860]: task-013 Defaults independent
+        - generic [ref=f10e861]: 0/1 completed
+        - button "Open project" [ref=f10e862] [cursor=pointer]
+      - generic [ref=f10e863]:
+        - generic [ref=f10e864]: task-013 Defaults inheritance
+        - generic [ref=f10e865]: 1/4 completed
+        - button "Open project" [ref=f10e866] [cursor=pointer]
+      - generic [ref=f10e867]:
+        - generic [ref=f10e868]: task-013 Defaults renamed
+        - generic [ref=f10e869]: 0/2 completed
+        - button "Open project" [ref=f10e870] [cursor=pointer]
+      - generic [ref=f10e871]:
+        - generic [ref=f10e872]: task-013 Calendar persistence
+        - generic [ref=f10e873]: 0/1 completed
+        - button "Open project" [ref=f10e874] [cursor=pointer]
+      - generic [ref=f10e875]:
+        - generic [ref=f10e876]: task-013 Calendar validation
+        - generic [ref=f10e877]: 0/1 completed
+        - button "Open project" [ref=f10e878] [cursor=pointer]
+      - generic [ref=f10e879]:
+        - generic [ref=f10e880]: task-013 Calendar independence
+        - generic [ref=f10e881]: 2/3 completed
+        - button "Open project" [ref=f10e882] [cursor=pointer]
+      - generic [ref=f10e883]:
+        - generic [ref=f10e884]: task-013 Calendar second owner
+        - generic [ref=f10e885]: 0/1 completed
+        - button "Open project" [ref=f10e886] [cursor=pointer]
+      - generic [ref=f10e887]:
+        - generic [ref=f10e888]: task-013 Calendar archival
+        - generic [ref=f10e889]: 0/1 completed
+        - button "Open project" [ref=f10e890] [cursor=pointer]
+      - generic [ref=f10e891]:
+        - generic [ref=f10e892]: task-013 Range boundaries
+        - generic [ref=f10e893]: 0/5 completed
+        - button "Open project" [ref=f10e894] [cursor=pointer]
+      - generic [ref=f10e895]:
+        - generic [ref=f10e896]: task-013 Range intersections
+        - generic [ref=f10e897]: 0/4 completed
+        - button "Open project" [ref=f10e898] [cursor=pointer]
+      - generic [ref=f10e899]:
+        - generic [ref=f10e900]: task-013 Range validation
+        - generic [ref=f10e901]: 0/2 completed
+        - button "Open project" [ref=f10e902] [cursor=pointer]
+      - generic [ref=f10e903]:
+        - generic [ref=f10e904]: task-013 Range archival
+        - generic [ref=f10e905]: 0/2 completed
+        - button "Open project" [ref=f10e906] [cursor=pointer]
+      - generic [ref=f10e907]:
+        - generic [ref=f10e908]: task-013 Range owner renamed
+        - generic [ref=f10e909]: 0/3 completed
+        - button "Open project" [ref=f10e910] [cursor=pointer]
+      - generic [ref=f10e911]:
+        - generic [ref=f10e912]: task-013 Transfer target
+        - generic [ref=f10e913]: 1/3 completed
+        - button "Open project" [ref=f10e914] [cursor=pointer]
+      - generic [ref=f10e915]:
+        - generic [ref=f10e916]: task-013 Transfer source
+        - generic [ref=f10e917]: 0/1 completed
+        - button "Open project" [ref=f10e918] [cursor=pointer]
+      - generic [ref=f10e919]:
+        - generic [ref=f10e920]: task-013 Filtered transfer target
+        - generic [ref=f10e921]: 0/2 completed
+        - button "Open project" [ref=f10e922] [cursor=pointer]
+      - generic [ref=f10e923]:
+        - generic [ref=f10e924]: task-013 Filtered transfer source
+        - generic [ref=f10e925]: 1/5 completed
+        - button "Open project" [ref=f10e926] [cursor=pointer]
+      - generic [ref=f10e927]:
+        - generic [ref=f10e928]: task-013 Options owner
+        - generic [ref=f10e929]: 0/1 completed
+        - button "Open project" [ref=f10e930] [cursor=pointer]
+      - generic [ref=f10e931]:
+        - generic [ref=f10e932]: task-013 Read-only transfer target
+        - generic [ref=f10e933]: 0/1 completed
+        - button "Open project" [ref=f10e934] [cursor=pointer]
+      - generic [ref=f10e935]:
+        - generic [ref=f10e936]: task-013 Read-only transfer owner
+        - generic [ref=f10e937]: 0/2 completed
+        - button "Open project" [ref=f10e938] [cursor=pointer]
+      - generic [ref=f10e939]:
+        - generic [ref=f10e940]: task-013 Priority intersection
+        - generic [ref=f10e941]: 1/4 completed
+        - button "Open project" [ref=f10e942] [cursor=pointer]
+      - generic [ref=f10e943]:
+        - generic [ref=f10e944]: task-013 Priority live filters
+        - generic [ref=f10e945]: 1/4 completed
+        - button "Open project" [ref=f10e946] [cursor=pointer]
+      - generic [ref=f10e947]:
+        - generic [ref=f10e948]: task-013 Priority rename filters
+        - generic [ref=f10e949]: 1/3 completed
+        - button "Open project" [ref=f10e950] [cursor=pointer]
+      - generic [ref=f10e951]:
+        - generic [ref=f10e952]: task-013 Archived combined filters
+        - generic [ref=f10e953]: 1/2 completed
+        - button "Open project" [ref=f10e954] [cursor=pointer]
+      - generic [ref=f10e955]:
+        - generic [ref=f10e956]: task-013 Priority ownership
+        - generic [ref=f10e957]: 0/2 completed
+        - button "Open project" [ref=f10e958] [cursor=pointer]
+      - generic [ref=f10e959]:
+        - generic [ref=f10e960]: task-013 Priority other owner
+        - generic [ref=f10e961]: 0/1 completed
+        - button "Open project" [ref=f10e962] [cursor=pointer]
+      - generic [ref=f10e963]:
+        - generic [ref=f10e964]: task-013 Priority completion
+        - generic [ref=f10e965]: 1/2 completed
+        - button "Open project" [ref=f10e966] [cursor=pointer]
+      - generic [ref=f10e967]:
+        - generic [ref=f10e968]: task-013 Priority archive
+        - generic [ref=f10e969]: 0/1 completed
+        - button "Open project" [ref=f10e970] [cursor=pointer]
+      - generic [ref=f10e971]:
+        - generic [ref=f10e972]: task-013 Return owner
+        - generic [ref=f10e973]: 1/4 completed
+        - button "Open project" [ref=f10e974] [cursor=pointer]
+      - generic [ref=f10e975]:
+        - generic [ref=f10e976]: task-013 Returned owner renamed
+        - generic [ref=f10e977]: 0/3 completed
+        - button "Open project" [ref=f10e978] [cursor=pointer]
+      - generic [ref=f10e979]:
+        - generic [ref=f10e980]: task-013 Position second owner
+        - generic [ref=f10e981]: 0/2 completed
+        - button "Open project" [ref=f10e982] [cursor=pointer]
+      - generic [ref=f10e983]:
+        - generic [ref=f10e984]: task-013 Position first owner
+        - generic [ref=f10e985]: 0/4 completed
+        - button "Open project" [ref=f10e986] [cursor=pointer]
+      - generic [ref=f10e987]:
+        - generic [ref=f10e988]: task-013 Search task intersections
+        - generic [ref=f10e989]: 1/6 completed
+        - button "Open project" [ref=f10e990] [cursor=pointer]
+      - generic [ref=f10e991]:
+        - generic [ref=f10e992]: task-013 Search internal spacing
+        - generic [ref=f10e993]: 0/2 completed
+        - button "Open project" [ref=f10e994] [cursor=pointer]
+      - generic [ref=f10e995]:
+        - generic [ref=f10e996]: task-013 Task reload
+        - generic [ref=f10e997]: 0/1 completed
+        - button "Open project" [ref=f10e998] [cursor=pointer]
+      - generic [ref=f10e999]:
+        - generic [ref=f10e1000]: task-013 Task owner
+        - generic [ref=f10e1001]: 0/1 completed
+        - button "Open project" [ref=f10e1002] [cursor=pointer]
+      - generic [ref=f10e1003]:
+        - generic [ref=f10e1004]: task-013 Task filters
+        - generic [ref=f10e1005]: 0/2 completed
+        - button "Open project" [ref=f10e1006] [cursor=pointer]
+      - generic [ref=f10e1007]:
+        - generic [ref=f10e1008]: task-013 Archive tasks
+        - generic [ref=f10e1009]: 1/1 completed
+        - button "Open project" [ref=f10e1010] [cursor=pointer]
+      - generic [ref=f10e1011]:
+        - generic [ref=f10e1012]: task-013 Summary project
+        - generic [ref=f10e1013]: 1/2 completed
+        - button "Open project" [ref=f10e1014] [cursor=pointer]
+      - generic [ref=f10e1015]:
+        - generic [ref=f10e1016]: task-013 Identity updated
+        - generic [ref=f10e1017]: 1/1 completed
+        - button "Open project" [ref=f10e1018] [cursor=pointer]
+      - generic [ref=f10e1019]:
+        - generic [ref=f10e1020]: task-013 Task rename identity
+        - generic [ref=f10e1021]: 1/2 completed
+        - button "Open project" [ref=f10e1022] [cursor=pointer]
+      - generic [ref=f10e1023]:
+        - generic [ref=f10e1024]: task-013 Task rename invalid
+        - generic [ref=f10e1025]: 0/1 completed
+        - button "Open project" [ref=f10e1026] [cursor=pointer]
+      - generic [ref=f10e1027]:
+        - generic [ref=f10e1028]: task-013 Task rename archive
+        - generic [ref=f10e1029]: 0/1 completed
+        - button "Open project" [ref=f10e1030] [cursor=pointer]
+      - generic [ref=f10e1031]:
+        - generic [ref=f10e1032]: task-014 Defaults independent
+        - generic [ref=f10e1033]: 0/1 completed
+        - button "Open project" [ref=f10e1034] [cursor=pointer]
+      - generic [ref=f10e1035]:
+        - generic [ref=f10e1036]: task-014 Defaults inheritance
+        - generic [ref=f10e1037]: 1/4 completed
+        - button "Open project" [ref=f10e1038] [cursor=pointer]
+      - generic [ref=f10e1039]:
+        - generic [ref=f10e1040]: task-014 Defaults renamed
+        - generic [ref=f10e1041]: 0/2 completed
+        - button "Open project" [ref=f10e1042] [cursor=pointer]
+      - generic [ref=f10e1043]:
+        - generic [ref=f10e1044]: task-014 Calendar persistence
+        - generic [ref=f10e1045]: 0/1 completed
+        - button "Open project" [ref=f10e1046] [cursor=pointer]
+      - generic [ref=f10e1047]:
+        - generic [ref=f10e1048]: task-014 Calendar validation
+        - generic [ref=f10e1049]: 0/1 completed
+        - button "Open project" [ref=f10e1050] [cursor=pointer]
+      - generic [ref=f10e1051]:
+        - generic [ref=f10e1052]: task-014 Calendar independence
+        - generic [ref=f10e1053]: 2/3 completed
+        - button "Open project" [ref=f10e1054] [cursor=pointer]
+      - generic [ref=f10e1055]:
+        - generic [ref=f10e1056]: task-014 Calendar second owner
+        - generic [ref=f10e1057]: 0/1 completed
+        - button "Open project" [ref=f10e1058] [cursor=pointer]
+      - generic [ref=f10e1059]:
+        - generic [ref=f10e1060]: task-014 Calendar archival
+        - generic [ref=f10e1061]: 0/1 completed
+        - button "Open project" [ref=f10e1062] [cursor=pointer]
+      - generic [ref=f10e1063]:
+        - generic [ref=f10e1064]: task-014 Range boundaries
+        - generic [ref=f10e1065]: 0/5 completed
+        - button "Open project" [ref=f10e1066] [cursor=pointer]
+      - generic [ref=f10e1067]:
+        - generic [ref=f10e1068]: task-014 Range intersections
+        - generic [ref=f10e1069]: 0/4 completed
+        - button "Open project" [ref=f10e1070] [cursor=pointer]
+      - generic [ref=f10e1071]:
+        - generic [ref=f10e1072]: task-014 Range validation
+        - generic [ref=f10e1073]: 0/2 completed
+        - button "Open project" [ref=f10e1074] [cursor=pointer]
+      - generic [ref=f10e1075]:
+        - generic [ref=f10e1076]: task-014 Range archival
+        - generic [ref=f10e1077]: 0/2 completed
+        - button "Open project" [ref=f10e1078] [cursor=pointer]
+      - generic [ref=f10e1079]:
+        - generic [ref=f10e1080]: task-014 Range owner renamed
+        - generic [ref=f10e1081]: 0/3 completed
+        - button "Open project" [ref=f10e1082] [cursor=pointer]
+      - generic [ref=f10e1083]:
+        - generic [ref=f10e1084]: task-014 Transfer target
+        - generic [ref=f10e1085]: 1/3 completed
+        - button "Open project" [ref=f10e1086] [cursor=pointer]
+      - generic [ref=f10e1087]:
+        - generic [ref=f10e1088]: task-014 Transfer source
+        - generic [ref=f10e1089]: 0/1 completed
+        - button "Open project" [ref=f10e1090] [cursor=pointer]
+      - generic [ref=f10e1091]:
+        - generic [ref=f10e1092]: task-014 Filtered transfer target
+        - generic [ref=f10e1093]: 0/2 completed
+        - button "Open project" [ref=f10e1094] [cursor=pointer]
+      - generic [ref=f10e1095]:
+        - generic [ref=f10e1096]: task-014 Filtered transfer source
+        - generic [ref=f10e1097]: 1/5 completed
+        - button "Open project" [ref=f10e1098] [cursor=pointer]
+      - generic [ref=f10e1099]:
+        - generic [ref=f10e1100]: task-014 Options owner
+        - generic [ref=f10e1101]: 0/1 completed
+        - button "Open project" [ref=f10e1102] [cursor=pointer]
+      - generic [ref=f10e1103]:
+        - generic [ref=f10e1104]: task-014 Read-only transfer target
+        - generic [ref=f10e1105]: 0/1 completed
+        - button "Open project" [ref=f10e1106] [cursor=pointer]
+      - generic [ref=f10e1107]:
+        - generic [ref=f10e1108]: task-014 Read-only transfer owner
+        - generic [ref=f10e1109]: 0/2 completed
+        - button "Open project" [ref=f10e1110] [cursor=pointer]
+      - generic [ref=f10e1111]:
+        - generic [ref=f10e1112]: task-014 Priority intersection
+        - generic [ref=f10e1113]: 1/4 completed
+        - button "Open project" [ref=f10e1114] [cursor=pointer]
+      - generic [ref=f10e1115]:
+        - generic [ref=f10e1116]: task-014 Priority live filters
+        - generic [ref=f10e1117]: 1/4 completed
+        - button "Open project" [ref=f10e1118] [cursor=pointer]
+      - generic [ref=f10e1119]:
+        - generic [ref=f10e1120]: task-014 Priority rename filters
+        - generic [ref=f10e1121]: 1/3 completed
+        - button "Open project" [ref=f10e1122] [cursor=pointer]
+      - generic [ref=f10e1123]:
+        - generic [ref=f10e1124]: task-014 Archived combined filters
+        - generic [ref=f10e1125]: 1/2 completed
+        - button "Open project" [ref=f10e1126] [cursor=pointer]
+      - generic [ref=f10e1127]:
+        - generic [ref=f10e1128]: task-014 Priority ownership
+        - generic [ref=f10e1129]: 0/2 completed
+        - button "Open project" [ref=f10e1130] [cursor=pointer]
+      - generic [ref=f10e1131]:
+        - generic [ref=f10e1132]: task-014 Priority other owner
+        - generic [ref=f10e1133]: 0/1 completed
+        - button "Open project" [ref=f10e1134] [cursor=pointer]
+      - generic [ref=f10e1135]:
+        - generic [ref=f10e1136]: task-014 Priority completion
+        - generic [ref=f10e1137]: 1/2 completed
+        - button "Open project" [ref=f10e1138] [cursor=pointer]
+      - generic [ref=f10e1139]:
+        - generic [ref=f10e1140]: task-014 Priority archive
+        - generic [ref=f10e1141]: 0/1 completed
+        - button "Open project" [ref=f10e1142] [cursor=pointer]
+      - generic [ref=f10e1143]:
+        - generic [ref=f10e1144]: task-014 Return owner
+        - generic [ref=f10e1145]: 1/4 completed
+        - button "Open project" [ref=f10e1146] [cursor=pointer]
+      - generic [ref=f10e1147]:
+        - generic [ref=f10e1148]: task-014 Returned owner renamed
+        - generic [ref=f10e1149]: 0/3 completed
+        - button "Open project" [ref=f10e1150] [cursor=pointer]
+      - generic [ref=f10e1151]:
+        - generic [ref=f10e1152]: task-014 Position second owner
+        - generic [ref=f10e1153]: 0/2 completed
+        - button "Open project" [ref=f10e1154] [cursor=pointer]
+      - generic [ref=f10e1155]:
+        - generic [ref=f10e1156]: task-014 Position first owner
+        - generic [ref=f10e1157]: 0/4 completed
+        - button "Open project" [ref=f10e1158] [cursor=pointer]
+      - generic [ref=f10e1159]:
+        - generic [ref=f10e1160]: task-014 Whitespace retained owner
+        - generic [ref=f10e1161]: 0/2 completed
+        - button "Open project" [ref=f10e1162] [cursor=pointer]
+      - generic [ref=f10e1163]:
+        - generic [ref=f10e1164]: task-014 Search task intersections
+        - generic [ref=f10e1165]: 1/6 completed
+        - button "Open project" [ref=f10e1166] [cursor=pointer]
+      - generic [ref=f10e1167]:
+        - generic [ref=f10e1168]: task-014 Search internal spacing
+        - generic [ref=f10e1169]: 0/2 completed
+        - button "Open project" [ref=f10e1170] [cursor=pointer]
+      - generic [ref=f10e1171]:
+        - generic [ref=f10e1172]: task-014 Task reload
+        - generic [ref=f10e1173]: 0/1 completed
+        - button "Open project" [ref=f10e1174] [cursor=pointer]
+      - generic [ref=f10e1175]:
+        - generic [ref=f10e1176]: task-014 Task owner
+        - generic [ref=f10e1177]: 0/1 completed
+        - button "Open project" [ref=f10e1178] [cursor=pointer]
+      - generic [ref=f10e1179]:
+        - generic [ref=f10e1180]: task-014 Task filters
+        - generic [ref=f10e1181]: 0/2 completed
+        - button "Open project" [ref=f10e1182] [cursor=pointer]
+      - generic [ref=f10e1183]:
+        - generic [ref=f10e1184]: task-014 Archive tasks
+        - generic [ref=f10e1185]: 1/1 completed
+        - button "Open project" [ref=f10e1186] [cursor=pointer]
+      - generic [ref=f10e1187]:
+        - generic [ref=f10e1188]: task-014 Summary project
+        - generic [ref=f10e1189]: 1/2 completed
+        - button "Open project" [ref=f10e1190] [cursor=pointer]
+      - generic [ref=f10e1191]:
+        - generic [ref=f10e1192]: task-014 Identity updated
+        - generic [ref=f10e1193]: 1/1 completed
+        - button "Open project" [ref=f10e1194] [cursor=pointer]
+      - generic [ref=f10e1195]:
+        - generic [ref=f10e1196]: task-014 Task rename identity
+        - generic [ref=f10e1197]: 1/2 completed
+        - button "Open project" [ref=f10e1198] [cursor=pointer]
+      - generic [ref=f10e1199]:
+        - generic [ref=f10e1200]: task-014 Task rename invalid
+        - generic [ref=f10e1201]: 0/1 completed
+        - button "Open project" [ref=f10e1202] [cursor=pointer]
+      - generic [ref=f10e1203]:
+        - generic [ref=f10e1204]: task-014 Task rename archive
+        - generic [ref=f10e1205]: 0/1 completed
+        - button "Open project" [ref=f10e1206] [cursor=pointer]
+      - generic [ref=f10e1207]:
+        - generic [ref=f10e1208]: task-015 Defaults independent
+        - generic [ref=f10e1209]: 0/1 completed
+        - button "Open project" [ref=f10e1210] [cursor=pointer]
+      - generic [ref=f10e1211]:
+        - generic [ref=f10e1212]: task-015 Defaults inheritance
+        - generic [ref=f10e1213]: 1/4 completed
+        - button "Open project" [ref=f10e1214] [cursor=pointer]
+      - generic [ref=f10e1215]:
+        - generic [ref=f10e1216]: task-015 Defaults renamed
+        - generic [ref=f10e1217]: 0/2 completed
+        - button "Open project" [ref=f10e1218] [cursor=pointer]
+      - generic [ref=f10e1219]:
+        - generic [ref=f10e1220]: task-015 Calendar persistence
+        - generic [ref=f10e1221]: 0/1 completed
+        - button "Open project" [ref=f10e1222] [cursor=pointer]
+      - generic [ref=f10e1223]:
+        - generic [ref=f10e1224]: task-015 Calendar validation
+        - generic [ref=f10e1225]: 0/1 completed
+        - button "Open project" [ref=f10e1226] [cursor=pointer]
+      - generic [ref=f10e1227]:
+        - generic [ref=f10e1228]: task-015 Calendar independence
+        - generic [ref=f10e1229]: 2/3 completed
+        - button "Open project" [ref=f10e1230] [cursor=pointer]
+      - generic [ref=f10e1231]:
+        - generic [ref=f10e1232]: task-015 Calendar second owner
+        - generic [ref=f10e1233]: 0/1 completed
+        - button "Open project" [ref=f10e1234] [cursor=pointer]
+      - generic [ref=f10e1235]:
+        - generic [ref=f10e1236]: task-015 Calendar archival
+        - generic [ref=f10e1237]: 0/1 completed
+        - button "Open project" [ref=f10e1238] [cursor=pointer]
+      - generic [ref=f10e1239]:
+        - generic [ref=f10e1240]: task-015 Range boundaries
+        - generic [ref=f10e1241]: 0/5 completed
+        - button "Open project" [ref=f10e1242] [cursor=pointer]
+      - generic [ref=f10e1243]:
+        - generic [ref=f10e1244]: task-015 Range intersections
+        - generic [ref=f10e1245]: 0/4 completed
+        - button "Open project" [ref=f10e1246] [cursor=pointer]
+      - generic [ref=f10e1247]:
+        - generic [ref=f10e1248]: task-015 Range validation
+        - generic [ref=f10e1249]: 0/2 completed
+        - button "Open project" [ref=f10e1250] [cursor=pointer]
+      - generic [ref=f10e1251]:
+        - generic [ref=f10e1252]: task-015 Range archival
+        - generic [ref=f10e1253]: 0/2 completed
+        - button "Open project" [ref=f10e1254] [cursor=pointer]
+      - generic [ref=f10e1255]:
+        - generic [ref=f10e1256]: task-015 Range owner renamed
+        - generic [ref=f10e1257]: 0/3 completed
+        - button "Open project" [ref=f10e1258] [cursor=pointer]
+      - generic [ref=f10e1259]:
+        - generic [ref=f10e1260]: task-015 Transfer target
+        - generic [ref=f10e1261]: 1/3 completed
+        - button "Open project" [ref=f10e1262] [cursor=pointer]
+      - generic [ref=f10e1263]:
+        - generic [ref=f10e1264]: task-015 Transfer source
+        - generic [ref=f10e1265]: 0/1 completed
+        - button "Open project" [ref=f10e1266] [cursor=pointer]
+      - generic [ref=f10e1267]:
+        - generic [ref=f10e1268]: task-015 Filtered transfer target
+        - generic [ref=f10e1269]: 0/2 completed
+        - button "Open project" [ref=f10e1270] [cursor=pointer]
+      - generic [ref=f10e1271]:
+        - generic [ref=f10e1272]: task-015 Filtered transfer source
+        - generic [ref=f10e1273]: 1/5 completed
+        - button "Open project" [ref=f10e1274] [cursor=pointer]
+      - generic [ref=f10e1275]:
+        - generic [ref=f10e1276]: task-015 Options owner
+        - generic [ref=f10e1277]: 0/1 completed
+        - button "Open project" [ref=f10e1278] [cursor=pointer]
+      - generic [ref=f10e1279]:
+        - generic [ref=f10e1280]: task-015 Read-only transfer target
+        - generic [ref=f10e1281]: 0/1 completed
+        - button "Open project" [ref=f10e1282] [cursor=pointer]
+      - generic [ref=f10e1283]:
+        - generic [ref=f10e1284]: task-015 Read-only transfer owner
+        - generic [ref=f10e1285]: 0/2 completed
+        - button "Open project" [ref=f10e1286] [cursor=pointer]
+      - generic [ref=f10e1287]:
+        - generic [ref=f10e1288]: task-015 Notes values
+        - generic [ref=f10e1289]: 0/2 completed
+        - button "Open project" [ref=f10e1290] [cursor=pointer]
+      - generic [ref=f10e1291]:
+        - generic [ref=f10e1292]: task-015 Notes target
+        - generic [ref=f10e1293]: 0/1 completed
+        - button "Open project" [ref=f10e1294] [cursor=pointer]
+      - generic [ref=f10e1295]:
+        - generic [ref=f10e1296]: task-015 Notes owner
+        - generic [ref=f10e1297]: 0/3 completed
+        - button "Open project" [ref=f10e1298] [cursor=pointer]
+      - generic [ref=f10e1299]:
+        - generic [ref=f10e1300]: task-015 Priority intersection
+        - generic [ref=f10e1301]: 1/4 completed
+        - button "Open project" [ref=f10e1302] [cursor=pointer]
+      - generic [ref=f10e1303]:
+        - generic [ref=f10e1304]: task-015 Priority live filters
+        - generic [ref=f10e1305]: 1/4 completed
+        - button "Open project" [ref=f10e1306] [cursor=pointer]
+      - generic [ref=f10e1307]:
+        - generic [ref=f10e1308]: task-015 Priority rename filters
+        - generic [ref=f10e1309]: 1/3 completed
+        - button "Open project" [ref=f10e1310] [cursor=pointer]
+      - generic [ref=f10e1311]:
+        - generic [ref=f10e1312]: task-015 Archived combined filters
+        - generic [ref=f10e1313]: 1/2 completed
+        - button "Open project" [ref=f10e1314] [cursor=pointer]
+      - generic [ref=f10e1315]:
+        - generic [ref=f10e1316]: task-015 Priority ownership
+        - generic [ref=f10e1317]: 0/2 completed
+        - button "Open project" [ref=f10e1318] [cursor=pointer]
+      - generic [ref=f10e1319]:
+        - generic [ref=f10e1320]: task-015 Priority other owner
+        - generic [ref=f10e1321]: 0/1 completed
+        - button "Open project" [ref=f10e1322] [cursor=pointer]
+      - generic [ref=f10e1323]:
+        - generic [ref=f10e1324]: task-015 Priority completion
+        - generic [ref=f10e1325]: 1/2 completed
+        - button "Open project" [ref=f10e1326] [cursor=pointer]
+      - generic [ref=f10e1327]:
+        - generic [ref=f10e1328]: task-015 Priority archive
+        - generic [ref=f10e1329]: 0/1 completed
+        - button "Open project" [ref=f10e1330] [cursor=pointer]
+      - generic [ref=f10e1331]:
+        - generic [ref=f10e1332]: task-015 Return owner
+        - generic [ref=f10e1333]: 1/4 completed
+        - button "Open project" [ref=f10e1334] [cursor=pointer]
+      - generic [ref=f10e1335]:
+        - generic [ref=f10e1336]: task-015 Returned owner renamed
+        - generic [ref=f10e1337]: 0/3 completed
+        - button "Open project" [ref=f10e1338] [cursor=pointer]
+      - generic [ref=f10e1339]:
+        - generic [ref=f10e1340]: task-015 Position second owner
+        - generic [ref=f10e1341]: 0/2 completed
+        - button "Open project" [ref=f10e1342] [cursor=pointer]
+      - generic [ref=f10e1343]:
+        - generic [ref=f10e1344]: task-015 Position first owner
+        - generic [ref=f10e1345]: 0/4 completed
+        - button "Open project" [ref=f10e1346] [cursor=pointer]
+      - generic [ref=f10e1347]:
+        - generic [ref=f10e1348]: task-015 Whitespace retained owner
+        - generic [ref=f10e1349]: 0/2 completed
+        - button "Open project" [ref=f10e1350] [cursor=pointer]
+      - generic [ref=f10e1351]:
+        - generic [ref=f10e1352]: task-015 Search task intersections
+        - generic [ref=f10e1353]: 1/6 completed
+        - button "Open project" [ref=f10e1354] [cursor=pointer]
+      - generic [ref=f10e1355]:
+        - generic [ref=f10e1356]: task-015 Search internal spacing
+        - generic [ref=f10e1357]: 0/2 completed
+        - button "Open project" [ref=f10e1358] [cursor=pointer]
+      - generic [ref=f10e1359]:
+        - generic [ref=f10e1360]: task-015 Task reload
+        - generic [ref=f10e1361]: 0/1 completed
+        - button "Open project" [ref=f10e1362] [cursor=pointer]
+      - generic [ref=f10e1363]:
+        - generic [ref=f10e1364]: task-015 Task owner
+        - generic [ref=f10e1365]: 0/1 completed
+        - button "Open project" [ref=f10e1366] [cursor=pointer]
+      - generic [ref=f10e1367]:
+        - generic [ref=f10e1368]: task-015 Task filters
+        - generic [ref=f10e1369]: 0/2 completed
+        - button "Open project" [ref=f10e1370] [cursor=pointer]
+      - generic [ref=f10e1371]:
+        - generic [ref=f10e1372]: task-015 Archive tasks
+        - generic [ref=f10e1373]: 1/1 completed
+        - button "Open project" [ref=f10e1374] [cursor=pointer]
+      - generic [ref=f10e1375]:
+        - generic [ref=f10e1376]: task-015 Summary project
+        - generic [ref=f10e1377]: 1/2 completed
+        - button "Open project" [ref=f10e1378] [cursor=pointer]
+      - generic [ref=f10e1379]:
+        - generic [ref=f10e1380]: task-015 Identity updated
+        - generic [ref=f10e1381]: 1/1 completed
+        - button "Open project" [ref=f10e1382] [cursor=pointer]
+      - generic [ref=f10e1383]:
+        - generic [ref=f10e1384]: task-015 Task rename identity
+        - generic [ref=f10e1385]: 1/2 completed
+        - button "Open project" [ref=f10e1386] [cursor=pointer]
+      - generic [ref=f10e1387]:
+        - generic [ref=f10e1388]: task-015 Task rename invalid
+        - generic [ref=f10e1389]: 0/1 completed
+        - button "Open project" [ref=f10e1390] [cursor=pointer]
+      - generic [ref=f10e1391]:
+        - generic [ref=f10e1392]: task-015 Task rename archive
+        - generic [ref=f10e1393]: 0/1 completed
+        - button "Open project" [ref=f10e1394] [cursor=pointer]
+      - generic [ref=f10e1395]:
+        - generic [ref=f10e1396]: task-016 Defaults independent
+        - generic [ref=f10e1397]: 0/1 completed
+        - button "Open project" [ref=f10e1398] [cursor=pointer]
+      - generic [ref=f10e1399]:
+        - generic [ref=f10e1400]: task-016 Defaults inheritance
+        - generic [ref=f10e1401]: 1/4 completed
+        - button "Open project" [ref=f10e1402] [cursor=pointer]
+      - generic [ref=f10e1403]:
+        - generic [ref=f10e1404]: task-016 Defaults renamed
+        - generic [ref=f10e1405]: 0/2 completed
+        - button "Open project" [ref=f10e1406] [cursor=pointer]
+      - generic [ref=f10e1407]:
+        - generic [ref=f10e1408]: task-016 Deletion fields
+        - generic [ref=f10e1409]: 4/6 completed
+        - button "Open project" [ref=f10e1410] [cursor=pointer]
+      - generic [ref=f10e1411]:
+        - generic [ref=f10e1412]: task-016 Deletion target
+        - generic [ref=f10e1413]: 1/3 completed
+        - button "Open project" [ref=f10e1414] [cursor=pointer]
+      - generic [ref=f10e1415]:
+        - generic [ref=f10e1416]: task-016 Deletion order
+        - generic [ref=f10e1417]: 0/3 completed
+        - button "Open project" [ref=f10e1418] [cursor=pointer]
+      - generic [ref=f10e1419]:
+        - generic [ref=f10e1420]: task-016 Calendar persistence
+        - generic [ref=f10e1421]: 0/1 completed
+        - button "Open project" [ref=f10e1422] [cursor=pointer]
+      - generic [ref=f10e1423]:
+        - generic [ref=f10e1424]: task-016 Calendar validation
+        - generic [ref=f10e1425]: 0/1 completed
+        - button "Open project" [ref=f10e1426] [cursor=pointer]
+      - generic [ref=f10e1427]:
+        - generic [ref=f10e1428]: task-016 Calendar independence
+        - generic [ref=f10e1429]: 2/3 completed
+        - button "Open project" [ref=f10e1430] [cursor=pointer]
+      - generic [ref=f10e1431]:
+        - generic [ref=f10e1432]: task-016 Calendar second owner
+        - generic [ref=f10e1433]: 0/1 completed
+        - button "Open project" [ref=f10e1434] [cursor=pointer]
+      - generic [ref=f10e1435]:
+        - generic [ref=f10e1436]: task-016 Calendar archival
+        - generic [ref=f10e1437]: 0/1 completed
+        - button "Open project" [ref=f10e1438] [cursor=pointer]
+      - generic [ref=f10e1439]:
+        - generic [ref=f10e1440]: task-016 Range boundaries
+        - generic [ref=f10e1441]: 0/5 completed
+        - button "Open project" [ref=f10e1442] [cursor=pointer]
+      - generic [ref=f10e1443]:
+        - generic [ref=f10e1444]: task-016 Range intersections
+        - generic [ref=f10e1445]: 0/4 completed
+        - button "Open project" [ref=f10e1446] [cursor=pointer]
+      - generic [ref=f10e1447]:
+        - generic [ref=f10e1448]: task-016 Range validation
+        - generic [ref=f10e1449]: 0/2 completed
+        - button "Open project" [ref=f10e1450] [cursor=pointer]
+      - generic [ref=f10e1451]:
+        - generic [ref=f10e1452]: task-016 Range archival
+        - generic [ref=f10e1453]: 0/2 completed
+        - button "Open project" [ref=f10e1454] [cursor=pointer]
+      - generic [ref=f10e1455]:
+        - generic [ref=f10e1456]: task-016 Range owner renamed
+        - generic [ref=f10e1457]: 0/3 completed
+        - button "Open project" [ref=f10e1458] [cursor=pointer]
+      - generic [ref=f10e1459]:
+        - generic [ref=f10e1460]: task-016 Transfer target
+        - generic [ref=f10e1461]: 1/3 completed
+        - button "Open project" [ref=f10e1462] [cursor=pointer]
+      - generic [ref=f10e1463]:
+        - generic [ref=f10e1464]: task-016 Transfer source
+        - generic [ref=f10e1465]: 0/1 completed
+        - button "Open project" [ref=f10e1466] [cursor=pointer]
+      - generic [ref=f10e1467]:
+        - generic [ref=f10e1468]: task-016 Filtered transfer target
+        - generic [ref=f10e1469]: 0/2 completed
+        - button "Open project" [ref=f10e1470] [cursor=pointer]
+      - generic [ref=f10e1471]:
+        - generic [ref=f10e1472]: task-016 Filtered transfer source
+        - generic [ref=f10e1473]: 1/5 completed
+        - button "Open project" [ref=f10e1474] [cursor=pointer]
+      - generic [ref=f10e1475]:
+        - generic [ref=f10e1476]: task-016 Options owner
+        - generic [ref=f10e1477]: 0/1 completed
+        - button "Open project" [ref=f10e1478] [cursor=pointer]
+      - generic [ref=f10e1479]:
+        - generic [ref=f10e1480]: task-016 Read-only transfer target
+        - generic [ref=f10e1481]: 0/1 completed
+        - button "Open project" [ref=f10e1482] [cursor=pointer]
+      - generic [ref=f10e1483]:
+        - generic [ref=f10e1484]: task-016 Read-only transfer owner
+        - generic [ref=f10e1485]: 0/2 completed
+        - button "Open project" [ref=f10e1486] [cursor=pointer]
+      - generic [ref=f10e1487]:
+        - generic [ref=f10e1488]: task-016 Notes values
+        - generic [ref=f10e1489]: 0/2 completed
+        - button "Open project" [ref=f10e1490] [cursor=pointer]
+      - generic [ref=f10e1491]:
+        - generic [ref=f10e1492]: task-016 Notes target
+        - generic [ref=f10e1493]: 0/1 completed
+        - button "Open project" [ref=f10e1494] [cursor=pointer]
+      - generic [ref=f10e1495]:
+        - generic [ref=f10e1496]: task-016 Notes owner
+        - generic [ref=f10e1497]: 0/3 completed
+        - button "Open project" [ref=f10e1498] [cursor=pointer]
+      - generic [ref=f10e1499]:
+        - generic [ref=f10e1500]: task-016 Priority intersection
+        - generic [ref=f10e1501]: 1/4 completed
+        - button "Open project" [ref=f10e1502] [cursor=pointer]
+      - generic [ref=f10e1503]:
+        - generic [ref=f10e1504]: task-016 Priority live filters
+        - generic [ref=f10e1505]: 1/4 completed
+        - button "Open project" [ref=f10e1506] [cursor=pointer]
+      - generic [ref=f10e1507]:
+        - generic [ref=f10e1508]: task-016 Priority rename filters
+        - generic [ref=f10e1509]: 1/3 completed
+        - button "Open project" [ref=f10e1510] [cursor=pointer]
+      - generic [ref=f10e1511]:
+        - generic [ref=f10e1512]: task-016 Archived combined filters
+        - generic [ref=f10e1513]: 1/2 completed
+        - button "Open project" [ref=f10e1514] [cursor=pointer]
+      - generic [ref=f10e1515]:
+        - generic [ref=f10e1516]: task-016 Priority ownership
+        - generic [ref=f10e1517]: 0/2 completed
+        - button "Open project" [ref=f10e1518] [cursor=pointer]
+      - generic [ref=f10e1519]:
+        - generic [ref=f10e1520]: task-016 Priority other owner
+        - generic [ref=f10e1521]: 0/1 completed
+        - button "Open project" [ref=f10e1522] [cursor=pointer]
+      - generic [ref=f10e1523]:
+        - generic [ref=f10e1524]: task-016 Priority completion
+        - generic [ref=f10e1525]: 1/2 completed
+        - button "Open project" [ref=f10e1526] [cursor=pointer]
+      - generic [ref=f10e1527]:
+        - generic [ref=f10e1528]: task-016 Priority archive
+        - generic [ref=f10e1529]: 0/1 completed
+        - button "Open project" [ref=f10e1530] [cursor=pointer]
+      - generic [ref=f10e1531]:
+        - generic [ref=f10e1532]: task-016 Return owner
+        - generic [ref=f10e1533]: 1/4 completed
+        - button "Open project" [ref=f10e1534] [cursor=pointer]
+      - generic [ref=f10e1535]:
+        - generic [ref=f10e1536]: task-016 Returned owner renamed
+        - generic [ref=f10e1537]: 0/3 completed
+        - button "Open project" [ref=f10e1538] [cursor=pointer]
+      - generic [ref=f10e1539]:
+        - generic [ref=f10e1540]: task-016 Position second owner
+        - generic [ref=f10e1541]: 0/2 completed
+        - button "Open project" [ref=f10e1542] [cursor=pointer]
+      - generic [ref=f10e1543]:
+        - generic [ref=f10e1544]: task-016 Position first owner
+        - generic [ref=f10e1545]: 0/4 completed
+        - button "Open project" [ref=f10e1546] [cursor=pointer]
+      - generic [ref=f10e1547]:
+        - generic [ref=f10e1548]: task-016 Whitespace retained owner
+        - generic [ref=f10e1549]: 0/2 completed
+        - button "Open project" [ref=f10e1550] [cursor=pointer]
+      - generic [ref=f10e1551]:
+        - generic [ref=f10e1552]: task-016 Search task intersections
+        - generic [ref=f10e1553]: 1/6 completed
+        - button "Open project" [ref=f10e1554] [cursor=pointer]
+      - generic [ref=f10e1555]:
+        - generic [ref=f10e1556]: task-016 Search internal spacing
+        - generic [ref=f10e1557]: 0/2 completed
+        - button "Open project" [ref=f10e1558] [cursor=pointer]
+      - generic [ref=f10e1559]:
+        - generic [ref=f10e1560]: task-016 Task reload
+        - generic [ref=f10e1561]: 0/1 completed
+        - button "Open project" [ref=f10e1562] [cursor=pointer]
+      - generic [ref=f10e1563]:
+        - generic [ref=f10e1564]: task-016 Task owner
+        - generic [ref=f10e1565]: 0/1 completed
+        - button "Open project" [ref=f10e1566] [cursor=pointer]
+      - generic [ref=f10e1567]:
+        - generic [ref=f10e1568]: task-016 Task filters
+        - generic [ref=f10e1569]: 0/2 completed
+        - button "Open project" [ref=f10e1570] [cursor=pointer]
+      - generic [ref=f10e1571]:
+        - generic [ref=f10e1572]: task-016 Archive tasks
+        - generic [ref=f10e1573]: 1/1 completed
+        - button "Open project" [ref=f10e1574] [cursor=pointer]
+      - generic [ref=f10e1575]:
+        - generic [ref=f10e1576]: task-016 Summary project
+        - generic [ref=f10e1577]: 1/2 completed
+        - button "Open project" [ref=f10e1578] [cursor=pointer]
+      - generic [ref=f10e1579]:
+        - generic [ref=f10e1580]: task-016 Identity updated
+        - generic [ref=f10e1581]: 1/1 completed
+        - button "Open project" [ref=f10e1582] [cursor=pointer]
+      - generic [ref=f10e1583]:
+        - generic [ref=f10e1584]: task-016 Task rename identity
+        - generic [ref=f10e1585]: 1/2 completed
+        - button "Open project" [ref=f10e1586] [cursor=pointer]
+      - generic [ref=f10e1587]:
+        - generic [ref=f10e1588]: task-016 Task rename invalid
+        - generic [ref=f10e1589]: 0/1 completed
+        - button "Open project" [ref=f10e1590] [cursor=pointer]
+      - generic [ref=f10e1591]:
+        - generic [ref=f10e1592]: task-016 Task rename archive
+        - generic [ref=f10e1593]: 0/1 completed
+        - button "Open project" [ref=f10e1594] [cursor=pointer]
+      - generic [ref=f10e1595]:
+        - generic [ref=f10e1596]: task-017 Defaults independent
+        - generic [ref=f10e1597]: 0/1 completed
+        - button "Open project" [ref=f10e1598] [cursor=pointer]
+      - generic [ref=f10e1599]:
+        - generic [ref=f10e1600]: task-017 Defaults inheritance
+        - generic [ref=f10e1601]: 1/4 completed
+        - button "Open project" [ref=f10e1602] [cursor=pointer]
+      - generic [ref=f10e1603]:
+        - generic [ref=f10e1604]: task-017 Defaults renamed
+        - generic [ref=f10e1605]: 0/2 completed
+        - button "Open project" [ref=f10e1606] [cursor=pointer]
+      - generic [ref=f10e1607]:
+        - generic [ref=f10e1608]: task-017 Deletion fields
+        - generic [ref=f10e1609]: 4/6 completed
+        - button "Open project" [ref=f10e1610] [cursor=pointer]
+      - generic [ref=f10e1611]:
+        - generic [ref=f10e1612]: task-017 Deletion target
+        - generic [ref=f10e1613]: 1/3 completed
+        - button "Open project" [ref=f10e1614] [cursor=pointer]
+      - generic [ref=f10e1615]:
+        - generic [ref=f10e1616]: task-017 Deletion order
+        - generic [ref=f10e1617]: 0/3 completed
+        - button "Open project" [ref=f10e1618] [cursor=pointer]
+      - generic [ref=f10e1619]:
+        - generic [ref=f10e1620]: task-017 Calendar persistence
+        - generic [ref=f10e1621]: 0/1 completed
+        - button "Open project" [ref=f10e1622] [cursor=pointer]
+      - generic [ref=f10e1623]:
+        - generic [ref=f10e1624]: task-017 Calendar validation
+        - generic [ref=f10e1625]: 0/1 completed
+        - button "Open project" [ref=f10e1626] [cursor=pointer]
+      - generic [ref=f10e1627]:
+        - generic [ref=f10e1628]: task-017 Calendar independence
+        - generic [ref=f10e1629]: 2/3 completed
+        - button "Open project" [ref=f10e1630] [cursor=pointer]
+      - generic [ref=f10e1631]:
+        - generic [ref=f10e1632]: task-017 Calendar second owner
+        - generic [ref=f10e1633]: 0/1 completed
+        - button "Open project" [ref=f10e1634] [cursor=pointer]
+      - generic [ref=f10e1635]:
+        - generic [ref=f10e1636]: task-017 Calendar archival
+        - generic [ref=f10e1637]: 0/1 completed
+        - button "Open project" [ref=f10e1638] [cursor=pointer]
+      - generic [ref=f10e1639]:
+        - generic [ref=f10e1640]: task-017 Range boundaries
+        - generic [ref=f10e1641]: 0/5 completed
+        - button "Open project" [ref=f10e1642] [cursor=pointer]
+      - generic [ref=f10e1643]:
+        - generic [ref=f10e1644]: task-017 Range intersections
+        - generic [ref=f10e1645]: 0/4 completed
+        - button "Open project" [ref=f10e1646] [cursor=pointer]
+      - generic [ref=f10e1647]:
+        - generic [ref=f10e1648]: task-017 Range validation
+        - generic [ref=f10e1649]: 0/2 completed
+        - button "Open project" [ref=f10e1650] [cursor=pointer]
+      - generic [ref=f10e1651]:
+        - generic [ref=f10e1652]: task-017 Range archival
+        - generic [ref=f10e1653]: 0/2 completed
+        - button "Open project" [ref=f10e1654] [cursor=pointer]
+      - generic [ref=f10e1655]:
+        - generic [ref=f10e1656]: task-017 Range owner renamed
+        - generic [ref=f10e1657]: 0/3 completed
+        - button "Open project" [ref=f10e1658] [cursor=pointer]
+      - generic [ref=f10e1659]:
+        - generic [ref=f10e1660]: task-017 Export foreign
+        - generic [ref=f10e1661]: 0/1 completed
+        - button "Open project" [ref=f10e1662] [cursor=pointer]
+      - generic [ref=f10e1663]:
+        - generic [ref=f10e1664]: task-017 Export full Ω
+        - generic [ref=f10e1665]: 0/2 completed
+        - button "Open project" [ref=f10e1666] [cursor=pointer]
+      - generic [ref=f10e1667]:
+        - generic [ref=f10e1668]: task-017 Transfer target
+        - generic [ref=f10e1669]: 1/3 completed
+        - button "Open project" [ref=f10e1670] [cursor=pointer]
+      - generic [ref=f10e1671]:
+        - generic [ref=f10e1672]: task-017 Transfer source
+        - generic [ref=f10e1673]: 0/1 completed
+        - button "Open project" [ref=f10e1674] [cursor=pointer]
+      - generic [ref=f10e1675]:
+        - generic [ref=f10e1676]: task-017 Filtered transfer target
+        - generic [ref=f10e1677]: 0/2 completed
+        - button "Open project" [ref=f10e1678] [cursor=pointer]
+      - generic [ref=f10e1679]:
+        - generic [ref=f10e1680]: task-017 Filtered transfer source
+        - generic [ref=f10e1681]: 1/5 completed
+        - button "Open project" [ref=f10e1682] [cursor=pointer]
+      - generic [ref=f10e1683]:
+        - generic [ref=f10e1684]: task-017 Options owner
+        - generic [ref=f10e1685]: 0/1 completed
+        - button "Open project" [ref=f10e1686] [cursor=pointer]
+      - generic [ref=f10e1687]:
+        - generic [ref=f10e1688]: task-017 Read-only transfer target
+        - generic [ref=f10e1689]: 0/1 completed
+        - button "Open project" [ref=f10e1690] [cursor=pointer]
+      - generic [ref=f10e1691]:
+        - generic [ref=f10e1692]: task-017 Read-only transfer owner
+        - generic [ref=f10e1693]: 0/2 completed
+        - button "Open project" [ref=f10e1694] [cursor=pointer]
+      - generic [ref=f10e1695]:
+        - generic [ref=f10e1696]: task-017 Notes values
+        - generic [ref=f10e1697]: 0/2 completed
+        - button "Open project" [ref=f10e1698] [cursor=pointer]
+      - generic [ref=f10e1699]:
+        - generic [ref=f10e1700]: task-017 Notes target
+        - generic [ref=f10e1701]: 0/1 completed
+        - button "Open project" [ref=f10e1702] [cursor=pointer]
+      - generic [ref=f10e1703]:
+        - generic [ref=f10e1704]: task-017 Notes owner
+        - generic [ref=f10e1705]: 0/3 completed
+        - button "Open project" [ref=f10e1706] [cursor=pointer]
+      - generic [ref=f10e1707]:
+        - generic [ref=f10e1708]: task-017 Priority intersection
+        - generic [ref=f10e1709]: 1/4 completed
+        - button "Open project" [ref=f10e1710] [cursor=pointer]
+      - generic [ref=f10e1711]:
+        - generic [ref=f10e1712]: task-017 Priority live filters
+        - generic [ref=f10e1713]: 1/4 completed
+        - button "Open project" [ref=f10e1714] [cursor=pointer]
+      - generic [ref=f10e1715]:
+        - generic [ref=f10e1716]: task-017 Priority rename filters
+        - generic [ref=f10e1717]: 1/3 completed
+        - button "Open project" [ref=f10e1718] [cursor=pointer]
+      - generic [ref=f10e1719]:
+        - generic [ref=f10e1720]: task-017 Archived combined filters
+        - generic [ref=f10e1721]: 1/2 completed
+        - button "Open project" [ref=f10e1722] [cursor=pointer]
+      - generic [ref=f10e1723]:
+        - generic [ref=f10e1724]: task-017 Priority ownership
+        - generic [ref=f10e1725]: 0/2 completed
+        - button "Open project" [ref=f10e1726] [cursor=pointer]
+      - generic [ref=f10e1727]:
+        - generic [ref=f10e1728]: task-017 Priority other owner
+        - generic [ref=f10e1729]: 0/1 completed
+        - button "Open project" [ref=f10e1730] [cursor=pointer]
+      - generic [ref=f10e1731]:
+        - generic [ref=f10e1732]: task-017 Priority completion
+        - generic [ref=f10e1733]: 1/2 completed
+        - button "Open project" [ref=f10e1734] [cursor=pointer]
+      - generic [ref=f10e1735]:
+        - generic [ref=f10e1736]: task-017 Priority archive
+        - generic [ref=f10e1737]: 0/1 completed
+        - button "Open project" [ref=f10e1738] [cursor=pointer]
+      - generic [ref=f10e1739]:
+        - generic [ref=f10e1740]: task-017 Return owner
+        - generic [ref=f10e1741]: 1/4 completed
+        - button "Open project" [ref=f10e1742] [cursor=pointer]
+      - generic [ref=f10e1743]:
+        - generic [ref=f10e1744]: task-017 Returned owner renamed
+        - generic [ref=f10e1745]: 0/3 completed
+        - button "Open project" [ref=f10e1746] [cursor=pointer]
+      - generic [ref=f10e1747]:
+        - generic [ref=f10e1748]: task-017 Position second owner
+        - generic [ref=f10e1749]: 0/2 completed
+        - button "Open project" [ref=f10e1750] [cursor=pointer]
+      - generic [ref=f10e1751]:
+        - generic [ref=f10e1752]: task-017 Position first owner
+        - generic [ref=f10e1753]: 0/4 completed
+        - button "Open project" [ref=f10e1754] [cursor=pointer]
+      - generic [ref=f10e1755]:
+        - generic [ref=f10e1756]: task-017 Whitespace retained owner
+        - generic [ref=f10e1757]: 0/2 completed
+        - button "Open project" [ref=f10e1758] [cursor=pointer]
+      - generic [ref=f10e1759]:
+        - generic [ref=f10e1760]: task-017 Search task intersections
+        - generic [ref=f10e1761]: 1/6 completed
+        - button "Open project" [ref=f10e1762] [cursor=pointer]
+      - generic [ref=f10e1763]:
+        - generic [ref=f10e1764]: task-017 Search internal spacing
+        - generic [ref=f10e1765]: 0/2 completed
+        - button "Open project" [ref=f10e1766] [cursor=pointer]
+      - generic [ref=f10e1767]:
+        - generic [ref=f10e1768]: task-017 Task reload
+        - generic [ref=f10e1769]: 0/1 completed
+        - button "Open project" [ref=f10e1770] [cursor=pointer]
+      - generic [ref=f10e1771]:
+        - generic [ref=f10e1772]: task-017 Task owner
+        - generic [ref=f10e1773]: 0/1 completed
+        - button "Open project" [ref=f10e1774] [cursor=pointer]
+      - generic [ref=f10e1775]:
+        - generic [ref=f10e1776]: task-017 Task filters
+        - generic [ref=f10e1777]: 0/2 completed
+        - button "Open project" [ref=f10e1778] [cursor=pointer]
+      - generic [ref=f10e1779]:
+        - generic [ref=f10e1780]: task-017 Archive tasks
+        - generic [ref=f10e1781]: 1/1 completed
+        - button "Open project" [ref=f10e1782] [cursor=pointer]
+      - generic [ref=f10e1783]:
+        - generic [ref=f10e1784]: task-017 Summary project
+        - generic [ref=f10e1785]: 1/2 completed
+        - button "Open project" [ref=f10e1786] [cursor=pointer]
+      - generic [ref=f10e1787]:
+        - generic [ref=f10e1788]: task-017 Identity updated
+        - generic [ref=f10e1789]: 1/1 completed
+        - button "Open project" [ref=f10e1790] [cursor=pointer]
+      - generic [ref=f10e1791]:
+        - generic [ref=f10e1792]: task-017 Task rename identity
+        - generic [ref=f10e1793]: 1/2 completed
+        - button "Open project" [ref=f10e1794] [cursor=pointer]
+      - generic [ref=f10e1795]:
+        - generic [ref=f10e1796]: task-017 Task rename invalid
+        - generic [ref=f10e1797]: 0/1 completed
+        - button "Open project" [ref=f10e1798] [cursor=pointer]
+      - generic [ref=f10e1799]:
+        - generic [ref=f10e1800]: task-017 Task rename archive
+        - generic [ref=f10e1801]: 0/1 completed
+        - button "Open project" [ref=f10e1802] [cursor=pointer]
+      - generic [ref=f10e1803]:
+        - generic [ref=f10e1804]: task-018 Defaults independent
+        - generic [ref=f10e1805]: 0/1 completed
+        - button "Open project" [ref=f10e1806] [cursor=pointer]
+      - generic [ref=f10e1807]:
+        - generic [ref=f10e1808]: task-018 Defaults inheritance
+        - generic [ref=f10e1809]: 1/4 completed
+        - button "Open project" [ref=f10e1810] [cursor=pointer]
+      - generic [ref=f10e1811]:
+        - generic [ref=f10e1812]: task-018 Defaults renamed
+        - generic [ref=f10e1813]: 0/2 completed
+        - button "Open project" [ref=f10e1814] [cursor=pointer]
+      - generic [ref=f10e1815]:
+        - generic [ref=f10e1816]: task-018 Deletion fields
+        - generic [ref=f10e1817]: 4/6 completed
+        - button "Open project" [ref=f10e1818] [cursor=pointer]
+      - generic [ref=f10e1819]:
+        - generic [ref=f10e1820]: task-018 Deletion target
+        - generic [ref=f10e1821]: 1/3 completed
+        - button "Open project" [ref=f10e1822] [cursor=pointer]
+      - generic [ref=f10e1823]:
+        - generic [ref=f10e1824]: task-018 Deletion order
+        - generic [ref=f10e1825]: 0/3 completed
+        - button "Open project" [ref=f10e1826] [cursor=pointer]
+      - generic [ref=f10e1827]:
+        - generic [ref=f10e1828]: task-018 Calendar persistence
+        - generic [ref=f10e1829]: 0/1 completed
+        - button "Open project" [ref=f10e1830] [cursor=pointer]
+      - generic [ref=f10e1831]:
+        - generic [ref=f10e1832]: task-018 Calendar validation
+        - generic [ref=f10e1833]: 0/1 completed
+        - button "Open project" [ref=f10e1834] [cursor=pointer]
+      - generic [ref=f10e1835]:
+        - generic [ref=f10e1836]: task-018 Calendar independence
+        - generic [ref=f10e1837]: 2/3 completed
+        - button "Open project" [ref=f10e1838] [cursor=pointer]
+      - generic [ref=f10e1839]:
+        - generic [ref=f10e1840]: task-018 Calendar second owner
+        - generic [ref=f10e1841]: 0/1 completed
+        - button "Open project" [ref=f10e1842] [cursor=pointer]
+      - generic [ref=f10e1843]:
+        - generic [ref=f10e1844]: task-018 Calendar archival
+        - generic [ref=f10e1845]: 0/1 completed
+        - button "Open project" [ref=f10e1846] [cursor=pointer]
+      - generic [ref=f10e1847]:
+        - generic [ref=f10e1848]: task-018 Range boundaries
+        - generic [ref=f10e1849]: 0/5 completed
+        - button "Open project" [ref=f10e1850] [cursor=pointer]
+      - generic [ref=f10e1851]:
+        - generic [ref=f10e1852]: task-018 Range intersections
+        - generic [ref=f10e1853]: 0/4 completed
+        - button "Open project" [ref=f10e1854] [cursor=pointer]
+      - generic [ref=f10e1855]:
+        - generic [ref=f10e1856]: task-018 Range validation
+        - generic [ref=f10e1857]: 0/2 completed
+        - button "Open project" [ref=f10e1858] [cursor=pointer]
+      - generic [ref=f10e1859]:
+        - generic [ref=f10e1860]: task-018 Range archival
+        - generic [ref=f10e1861]: 0/2 completed
+        - button "Open project" [ref=f10e1862] [cursor=pointer]
+      - generic [ref=f10e1863]:
+        - generic [ref=f10e1864]: task-018 Range owner renamed
+        - generic [ref=f10e1865]: 0/3 completed
+        - button "Open project" [ref=f10e1866] [cursor=pointer]
+      - generic [ref=f10e1867]:
+        - generic [ref=f10e1868]: task-018 Export foreign
+        - generic [ref=f10e1869]: 0/1 completed
+        - button "Open project" [ref=f10e1870] [cursor=pointer]
+      - generic [ref=f10e1871]:
+        - generic [ref=f10e1872]: task-018 Export full Ω
+        - generic [ref=f10e1873]: 0/2 completed
+        - button "Open project" [ref=f10e1874] [cursor=pointer]
+      - generic [ref=f10e1875]:
+        - generic [ref=f10e1876]: task-018 Import origin
+        - generic [ref=f10e1877]: 0/2 completed
+        - button "Open project" [ref=f10e1878] [cursor=pointer]
+      - generic [ref=f10e1879]:
+        - generic [ref=f10e1880]: task-018 Import copy
+        - generic [ref=f10e1881]: 1/4 completed
+        - button "Open project" [ref=f10e1882] [cursor=pointer]
+      - generic [ref=f10e1883]:
+        - generic [ref=f10e1884]: task-018 Parse guard existing
+        - generic [ref=f10e1885]: 0/1 completed
+        - button "Open project" [ref=f10e1886] [cursor=pointer]
+      - generic [ref=f10e1887]:
+        - generic [ref=f10e1888]: task-018 Task guard existing
+        - generic [ref=f10e1889]: 0/1 completed
+        - button "Open project" [ref=f10e1890] [cursor=pointer]
+      - generic [ref=f10e1891]:
+        - generic [ref=f10e1892]: task-018 Import restart
+        - generic [ref=f10e1893]: 0/1 completed
+        - button "Open project" [ref=f10e1894] [cursor=pointer]
+      - generic [ref=f10e1895]:
+        - generic [ref=f10e1896]: task-018 Transfer target
+        - generic [ref=f10e1897]: 1/3 completed
+        - button "Open project" [ref=f10e1898] [cursor=pointer]
+      - generic [ref=f10e1899]:
+        - generic [ref=f10e1900]: task-018 Transfer source
+        - generic [ref=f10e1901]: 0/1 completed
+        - button "Open project" [ref=f10e1902] [cursor=pointer]
+      - generic [ref=f10e1903]:
+        - generic [ref=f10e1904]: task-018 Filtered transfer target
+        - generic [ref=f10e1905]: 0/2 completed
+        - button "Open project" [ref=f10e1906] [cursor=pointer]
+      - generic [ref=f10e1907]:
+        - generic [ref=f10e1908]: task-018 Filtered transfer source
+        - generic [ref=f10e1909]: 1/5 completed
+        - button "Open project" [ref=f10e1910] [cursor=pointer]
+      - generic [ref=f10e1911]:
+        - generic [ref=f10e1912]: task-018 Options owner
+        - generic [ref=f10e1913]: 0/1 completed
+        - button "Open project" [ref=f10e1914] [cursor=pointer]
+      - generic [ref=f10e1915]:
+        - generic [ref=f10e1916]: task-018 Read-only transfer target
+        - generic [ref=f10e1917]: 0/1 completed
+        - button "Open project" [ref=f10e1918] [cursor=pointer]
+      - generic [ref=f10e1919]:
+        - generic [ref=f10e1920]: task-018 Read-only transfer owner
+        - generic [ref=f10e1921]: 0/2 completed
+        - button "Open project" [ref=f10e1922] [cursor=pointer]
+      - generic [ref=f10e1923]:
+        - generic [ref=f10e1924]: task-018 Notes values
+        - generic [ref=f10e1925]: 0/2 completed
+        - button "Open project" [ref=f10e1926] [cursor=pointer]
+      - generic [ref=f10e1927]:
+        - generic [ref=f10e1928]: task-018 Notes target
+        - generic [ref=f10e1929]: 0/1 completed
+        - button "Open project" [ref=f10e1930] [cursor=pointer]
+      - generic [ref=f10e1931]:
+        - generic [ref=f10e1932]: task-018 Notes owner
+        - generic [ref=f10e1933]: 0/3 completed
+        - button "Open project" [ref=f10e1934] [cursor=pointer]
+      - generic [ref=f10e1935]:
+        - generic [ref=f10e1936]: task-018 Priority intersection
+        - generic [ref=f10e1937]: 1/4 completed
+        - button "Open project" [ref=f10e1938] [cursor=pointer]
+      - generic [ref=f10e1939]:
+        - generic [ref=f10e1940]: task-018 Priority live filters
+        - generic [ref=f10e1941]: 1/4 completed
+        - button "Open project" [ref=f10e1942] [cursor=pointer]
+      - generic [ref=f10e1943]:
+        - generic [ref=f10e1944]: task-018 Priority rename filters
+        - generic [ref=f10e1945]: 1/3 completed
+        - button "Open project" [ref=f10e1946] [cursor=pointer]
+      - generic [ref=f10e1947]:
+        - generic [ref=f10e1948]: task-018 Archived combined filters
+        - generic [ref=f10e1949]: 1/2 completed
+        - button "Open project" [ref=f10e1950] [cursor=pointer]
+      - generic [ref=f10e1951]:
+        - generic [ref=f10e1952]: task-018 Priority ownership
+        - generic [ref=f10e1953]: 0/2 completed
+        - button "Open project" [ref=f10e1954] [cursor=pointer]
+      - generic [ref=f10e1955]:
+        - generic [ref=f10e1956]: task-018 Priority other owner
+        - generic [ref=f10e1957]: 0/1 completed
+        - button "Open project" [ref=f10e1958] [cursor=pointer]
+      - generic [ref=f10e1959]:
+        - generic [ref=f10e1960]: task-018 Priority completion
+        - generic [ref=f10e1961]: 1/2 completed
+        - button "Open project" [ref=f10e1962] [cursor=pointer]
+      - generic [ref=f10e1963]:
+        - generic [ref=f10e1964]: task-018 Priority archive
+        - generic [ref=f10e1965]: 0/1 completed
+        - button "Open project" [ref=f10e1966] [cursor=pointer]
+      - generic [ref=f10e1967]:
+        - generic [ref=f10e1968]: task-018 Return owner
+        - generic [ref=f10e1969]: 1/4 completed
+        - button "Open project" [ref=f10e1970] [cursor=pointer]
+      - generic [ref=f10e1971]:
+        - generic [ref=f10e1972]: task-018 Returned owner renamed
+        - generic [ref=f10e1973]: 0/3 completed
+        - button "Open project" [ref=f10e1974] [cursor=pointer]
+      - generic [ref=f10e1975]:
+        - generic [ref=f10e1976]: task-018 Position second owner
+        - generic [ref=f10e1977]: 0/2 completed
+        - button "Open project" [ref=f10e1978] [cursor=pointer]
+      - generic [ref=f10e1979]:
+        - generic [ref=f10e1980]: task-018 Position first owner
+        - generic [ref=f10e1981]: 0/4 completed
+        - button "Open project" [ref=f10e1982] [cursor=pointer]
+      - generic [ref=f10e1983]:
+        - generic [ref=f10e1984]: task-018 Whitespace retained owner
+        - generic [ref=f10e1985]: 0/2 completed
+        - button "Open project" [ref=f10e1986] [cursor=pointer]
+      - generic [ref=f10e1987]:
+        - generic [ref=f10e1988]: task-018 Search task intersections
+        - generic [ref=f10e1989]: 1/6 completed
+        - button "Open project" [ref=f10e1990] [cursor=pointer]
+      - generic [ref=f10e1991]:
+        - generic [ref=f10e1992]: task-018 Search internal spacing
+        - generic [ref=f10e1993]: 0/2 completed
+        - button "Open project" [ref=f10e1994] [cursor=pointer]
+      - generic [ref=f10e1995]:
+        - generic [ref=f10e1996]: task-018 Task reload
+        - generic [ref=f10e1997]: 0/1 completed
+        - button "Open project" [ref=f10e1998] [cursor=pointer]
+      - generic [ref=f10e1999]:
+        - generic [ref=f10e2000]: task-018 Task owner
+        - generic [ref=f10e2001]: 0/1 completed
+        - button "Open project" [ref=f10e2002] [cursor=pointer]
+      - generic [ref=f10e2003]:
+        - generic [ref=f10e2004]: task-018 Task filters
+        - generic [ref=f10e2005]: 0/2 completed
+        - button "Open project" [ref=f10e2006] [cursor=pointer]
+      - generic [ref=f10e2007]:
+        - generic [ref=f10e2008]: task-018 Archive tasks
+        - generic [ref=f10e2009]: 1/1 completed
+        - button "Open project" [ref=f10e2010] [cursor=pointer]
+      - generic [ref=f10e2011]:
+        - generic [ref=f10e2012]: task-018 Summary project
+        - generic [ref=f10e2013]: 1/2 completed
+        - button "Open project" [ref=f10e2014] [cursor=pointer]
+      - generic [ref=f10e2015]:
+        - generic [ref=f10e2016]: task-018 Identity updated
+        - generic [ref=f10e2017]: 1/1 completed
+        - button "Open project" [ref=f10e2018] [cursor=pointer]
+      - generic [ref=f10e2019]:
+        - generic [ref=f10e2020]: task-018 Task rename identity
+        - generic [ref=f10e2021]: 1/2 completed
+        - button "Open project" [ref=f10e2022] [cursor=pointer]
+      - generic [ref=f10e2023]:
+        - generic [ref=f10e2024]: task-018 Task rename invalid
+        - generic [ref=f10e2025]: 0/1 completed
+        - button "Open project" [ref=f10e2026] [cursor=pointer]
+      - generic [ref=f10e2027]:
+        - generic [ref=f10e2028]: task-018 Task rename archive
+        - generic [ref=f10e2029]: 0/1 completed
+        - button "Open project" [ref=f10e2030] [cursor=pointer]
+      - generic [ref=f10e2031]:
+        - generic [ref=f10e2032]: task-019 Defaults independent
+        - generic [ref=f10e2033]: 0/1 completed
+        - button "Open project" [ref=f10e2034] [cursor=pointer]
+      - generic [ref=f10e2035]:
+        - generic [ref=f10e2036]: task-019 Defaults inheritance
+        - generic [ref=f10e2037]: 1/4 completed
+        - button "Open project" [ref=f10e2038] [cursor=pointer]
+      - generic [ref=f10e2039]:
+        - generic [ref=f10e2040]: task-019 Defaults renamed
+        - generic [ref=f10e2041]: 0/2 completed
+        - button "Open project" [ref=f10e2042] [cursor=pointer]
+      - generic [ref=f10e2043]:
+        - generic [ref=f10e2044]: task-019 Deletion fields
+        - generic [ref=f10e2045]: 4/6 completed
+        - button "Open project" [ref=f10e2046] [cursor=pointer]
+      - generic [ref=f10e2047]:
+        - generic [ref=f10e2048]: task-019 Deletion target
+        - generic [ref=f10e2049]: 1/3 completed
+        - button "Open project" [ref=f10e2050] [cursor=pointer]
+      - generic [ref=f10e2051]:
+        - generic [ref=f10e2052]: task-019 Deletion order
+        - generic [ref=f10e2053]: 0/3 completed
+        - button "Open project" [ref=f10e2054] [cursor=pointer]
+      - generic [ref=f10e2055]:
+        - generic [ref=f10e2056]: task-019 Directory Zulu owner
+        - generic [ref=f10e2057]: 1/3 completed
+        - button "Open project" [ref=f10e2058] [cursor=pointer]
+      - generic [ref=f10e2059]:
+        - generic [ref=f10e2060]: task-019 Directory Alpha owner
+        - generic [ref=f10e2061]: 0/1 completed
+        - button "Open project" [ref=f10e2062] [cursor=pointer]
+      - generic [ref=f10e2063]:
+        - generic [ref=f10e2064]: task-019 Directory filter owner
+        - generic [ref=f10e2065]: 1/5 completed
+        - button "Open project" [ref=f10e2066] [cursor=pointer]
+      - generic [ref=f10e2067]:
+        - generic [ref=f10e2068]: task-019 Directory whitespace
+        - generic [ref=f10e2069]: 0/1 completed
+        - button "Open project" [ref=f10e2070] [cursor=pointer]
+      - generic [ref=f10e2071]:
+        - generic [ref=f10e2072]: task-019 Calendar persistence
+        - generic [ref=f10e2073]: 0/1 completed
+        - button "Open project" [ref=f10e2074] [cursor=pointer]
+      - generic [ref=f10e2075]:
+        - generic [ref=f10e2076]: task-019 Calendar validation
+        - generic [ref=f10e2077]: 0/1 completed
+        - button "Open project" [ref=f10e2078] [cursor=pointer]
+      - generic [ref=f10e2079]:
+        - generic [ref=f10e2080]: task-019 Calendar independence
+        - generic [ref=f10e2081]: 2/3 completed
+        - button "Open project" [ref=f10e2082] [cursor=pointer]
+      - generic [ref=f10e2083]:
+        - generic [ref=f10e2084]: task-019 Calendar second owner
+        - generic [ref=f10e2085]: 0/1 completed
+        - button "Open project" [ref=f10e2086] [cursor=pointer]
+      - generic [ref=f10e2087]:
+        - generic [ref=f10e2088]: task-019 Calendar archival
+        - generic [ref=f10e2089]: 0/1 completed
+        - button "Open project" [ref=f10e2090] [cursor=pointer]
+      - generic [ref=f10e2091]:
+        - generic [ref=f10e2092]: task-019 Range boundaries
+        - generic [ref=f10e2093]: 0/5 completed
+        - button "Open project" [ref=f10e2094] [cursor=pointer]
+      - generic [ref=f10e2095]:
+        - generic [ref=f10e2096]: task-019 Range intersections
+        - generic [ref=f10e2097]: 0/4 completed
+        - button "Open project" [ref=f10e2098] [cursor=pointer]
+      - generic [ref=f10e2099]:
+        - generic [ref=f10e2100]: task-019 Range validation
+        - generic [ref=f10e2101]: 0/2 completed
+        - button "Open project" [ref=f10e2102] [cursor=pointer]
+      - generic [ref=f10e2103]:
+        - generic [ref=f10e2104]: task-019 Range archival
+        - generic [ref=f10e2105]: 0/2 completed
+        - button "Open project" [ref=f10e2106] [cursor=pointer]
+      - generic [ref=f10e2107]:
+        - generic [ref=f10e2108]: task-019 Range owner renamed
+        - generic [ref=f10e2109]: 0/3 completed
+        - button "Open project" [ref=f10e2110] [cursor=pointer]
+      - generic [ref=f10e2111]:
+        - generic [ref=f10e2112]: task-019 Export foreign
+        - generic [ref=f10e2113]: 0/1 completed
+        - button "Open project" [ref=f10e2114] [cursor=pointer]
+      - generic [ref=f10e2115]:
+        - generic [ref=f10e2116]: task-019 Export full Ω
+        - generic [ref=f10e2117]: 0/2 completed
+        - button "Open project" [ref=f10e2118] [cursor=pointer]
+      - generic [ref=f10e2119]:
+        - generic [ref=f10e2120]: task-019 Import origin
+        - generic [ref=f10e2121]: 0/2 completed
+        - button "Open project" [ref=f10e2122] [cursor=pointer]
+      - generic [ref=f10e2123]:
+        - generic [ref=f10e2124]: task-019 Import copy
+        - generic [ref=f10e2125]: 1/4 completed
+        - button "Open project" [ref=f10e2126] [cursor=pointer]
+      - generic [ref=f10e2127]:
+        - generic [ref=f10e2128]: task-019 Parse guard existing
+        - generic [ref=f10e2129]: 0/1 completed
+        - button "Open project" [ref=f10e2130] [cursor=pointer]
+      - generic [ref=f10e2131]:
+        - generic [ref=f10e2132]: task-019 Task guard existing
+        - generic [ref=f10e2133]: 0/1 completed
+        - button "Open project" [ref=f10e2134] [cursor=pointer]
+      - generic [ref=f10e2135]:
+        - generic [ref=f10e2136]: task-019 Import restart
+        - generic [ref=f10e2137]: 0/1 completed
+        - button "Open project" [ref=f10e2138] [cursor=pointer]
+      - generic [ref=f10e2139]:
+        - generic [ref=f10e2140]: task-019 Transfer target
+        - generic [ref=f10e2141]: 1/3 completed
+        - button "Open project" [ref=f10e2142] [cursor=pointer]
+      - generic [ref=f10e2143]:
+        - generic [ref=f10e2144]: task-019 Transfer source
+        - generic [ref=f10e2145]: 0/1 completed
+        - button "Open project" [ref=f10e2146] [cursor=pointer]
+      - generic [ref=f10e2147]:
+        - generic [ref=f10e2148]: task-019 Filtered transfer target
+        - generic [ref=f10e2149]: 0/2 completed
+        - button "Open project" [ref=f10e2150] [cursor=pointer]
+      - generic [ref=f10e2151]:
+        - generic [ref=f10e2152]: task-019 Filtered transfer source
+        - generic [ref=f10e2153]: 1/5 completed
+        - button "Open project" [ref=f10e2154] [cursor=pointer]
+      - generic [ref=f10e2155]:
+        - generic [ref=f10e2156]: task-019 Options owner
+        - generic [ref=f10e2157]: 0/1 completed
+        - button "Open project" [ref=f10e2158] [cursor=pointer]
+      - generic [ref=f10e2159]:
+        - generic [ref=f10e2160]: task-019 Read-only transfer target
+        - generic [ref=f10e2161]: 0/1 completed
+        - button "Open project" [ref=f10e2162] [cursor=pointer]
+      - generic [ref=f10e2163]:
+        - generic [ref=f10e2164]: task-019 Read-only transfer owner
+        - generic [ref=f10e2165]: 0/2 completed
+        - button "Open project" [ref=f10e2166] [cursor=pointer]
+      - generic [ref=f10e2167]:
+        - generic [ref=f10e2168]: task-019 Notes values
+        - generic [ref=f10e2169]: 0/2 completed
+        - button "Open project" [ref=f10e2170] [cursor=pointer]
+      - generic [ref=f10e2171]:
+        - generic [ref=f10e2172]: task-019 Notes target
+        - generic [ref=f10e2173]: 0/1 completed
+        - button "Open project" [ref=f10e2174] [cursor=pointer]
+      - generic [ref=f10e2175]:
+        - generic [ref=f10e2176]: task-019 Notes owner
+        - generic [ref=f10e2177]: 0/3 completed
+        - button "Open project" [ref=f10e2178] [cursor=pointer]
+      - generic [ref=f10e2179]:
+        - generic [ref=f10e2180]: task-019 Priority intersection
+        - generic [ref=f10e2181]: 1/4 completed
+        - button "Open project" [ref=f10e2182] [cursor=pointer]
+      - generic [ref=f10e2183]:
+        - generic [ref=f10e2184]: task-019 Priority live filters
+        - generic [ref=f10e2185]: 1/4 completed
+        - button "Open project" [ref=f10e2186] [cursor=pointer]
+      - generic [ref=f10e2187]:
+        - generic [ref=f10e2188]: task-019 Priority rename filters
+        - generic [ref=f10e2189]: 1/3 completed
+        - button "Open project" [ref=f10e2190] [cursor=pointer]
+      - generic [ref=f10e2191]:
+        - generic [ref=f10e2192]: task-019 Archived combined filters
+        - generic [ref=f10e2193]: 1/2 completed
+        - button "Open project" [ref=f10e2194] [cursor=pointer]
+      - generic [ref=f10e2195]:
+        - generic [ref=f10e2196]: task-019 Priority ownership
+        - generic [ref=f10e2197]: 0/2 completed
+        - button "Open project" [ref=f10e2198] [cursor=pointer]
+      - generic [ref=f10e2199]:
+        - generic [ref=f10e2200]: task-019 Priority other owner
+        - generic [ref=f10e2201]: 0/1 completed
+        - button "Open project" [ref=f10e2202] [cursor=pointer]
+      - generic [ref=f10e2203]:
+        - generic [ref=f10e2204]: task-019 Priority completion
+        - generic [ref=f10e2205]: 1/2 completed
+        - button "Open project" [ref=f10e2206] [cursor=pointer]
+      - generic [ref=f10e2207]:
+        - generic [ref=f10e2208]: task-019 Priority archive
+        - generic [ref=f10e2209]: 0/1 completed
+        - button "Open project" [ref=f10e2210] [cursor=pointer]
+      - generic [ref=f10e2211]:
+        - generic [ref=f10e2212]: task-019 Return owner
+        - generic [ref=f10e2213]: 1/4 completed
+        - button "Open project" [ref=f10e2214] [cursor=pointer]
+      - generic [ref=f10e2215]:
+        - generic [ref=f10e2216]: task-019 Returned owner renamed
+        - generic [ref=f10e2217]: 0/3 completed
+        - button "Open project" [ref=f10e2218] [cursor=pointer]
+      - generic [ref=f10e2219]:
+        - generic [ref=f10e2220]: task-019 Position second owner
+        - generic [ref=f10e2221]: 0/2 completed
+        - button "Open project" [ref=f10e2222] [cursor=pointer]
+      - generic [ref=f10e2223]:
+        - generic [ref=f10e2224]: task-019 Position first owner
+        - generic [ref=f10e2225]: 0/4 completed
+        - button "Open project" [ref=f10e2226] [cursor=pointer]
+      - generic [ref=f10e2227]:
+        - generic [ref=f10e2228]: task-019 Whitespace retained owner
+        - generic [ref=f10e2229]: 0/2 completed
+        - button "Open project" [ref=f10e2230] [cursor=pointer]
+      - generic [ref=f10e2231]:
+        - generic [ref=f10e2232]: task-019 Search task intersections
+        - generic [ref=f10e2233]: 1/6 completed
+        - button "Open project" [ref=f10e2234] [cursor=pointer]
+      - generic [ref=f10e2235]:
+        - generic [ref=f10e2236]: task-019 Search internal spacing
+        - generic [ref=f10e2237]: 0/2 completed
+        - button "Open project" [ref=f10e2238] [cursor=pointer]
+      - generic [ref=f10e2239]:
+        - generic [ref=f10e2240]: task-019 Task reload
+        - generic [ref=f10e2241]: 0/1 completed
+        - button "Open project" [ref=f10e2242] [cursor=pointer]
+      - generic [ref=f10e2243]:
+        - generic [ref=f10e2244]: task-019 Task owner
+        - generic [ref=f10e2245]: 0/1 completed
+        - button "Open project" [ref=f10e2246] [cursor=pointer]
+      - generic [ref=f10e2247]:
+        - generic [ref=f10e2248]: task-019 Task filters
+        - generic [ref=f10e2249]: 0/2 completed
+        - button "Open project" [ref=f10e2250] [cursor=pointer]
+      - generic [ref=f10e2251]:
+        - generic [ref=f10e2252]: task-019 Archive tasks
+        - generic [ref=f10e2253]: 1/1 completed
+        - button "Open project" [ref=f10e2254] [cursor=pointer]
+      - generic [ref=f10e2255]:
+        - generic [ref=f10e2256]: task-019 Summary project
+        - generic [ref=f10e2257]: 1/2 completed
+        - button "Open project" [ref=f10e2258] [cursor=pointer]
+      - generic [ref=f10e2259]:
+        - generic [ref=f10e2260]: task-019 Identity updated
+        - generic [ref=f10e2261]: 1/1 completed
+        - button "Open project" [ref=f10e2262] [cursor=pointer]
+      - generic [ref=f10e2263]:
+        - generic [ref=f10e2264]: task-019 Task rename identity
+        - generic [ref=f10e2265]: 1/2 completed
+        - button "Open project" [ref=f10e2266] [cursor=pointer]
+      - generic [ref=f10e2267]:
+        - generic [ref=f10e2268]: task-019 Task rename invalid
+        - generic [ref=f10e2269]: 0/1 completed
+        - button "Open project" [ref=f10e2270] [cursor=pointer]
+      - generic [ref=f10e2271]:
+        - generic [ref=f10e2272]: task-019 Task rename archive
+        - generic [ref=f10e2273]: 0/1 completed
+        - button "Open project" [ref=f10e2274] [cursor=pointer]
+      - generic [ref=f10e2275]:
+        - generic [ref=f10e2276]: task-020 Bulk first owner
+        - generic [ref=f10e2277]: 0/7 completed
+        - button "Open project" [ref=f10e2278] [cursor=pointer]
+      - generic [ref=f10e2279]:
+        - generic [ref=f10e2280]: task-020 Bulk second owner
+        - generic [ref=f10e2281]: 0/2 completed
+        - button "Open project" [ref=f10e2282] [cursor=pointer]
+      - generic [ref=f10e2283]:
+        - generic [ref=f10e2284]: task-020 Bulk protected
+        - generic [ref=f10e2285]: 1/1 completed
+        - button "Open project" [ref=f10e2286] [cursor=pointer]
+      - generic [ref=f10e2287]:
+        - generic [ref=f10e2288]: task-020 Bulk restart first
+        - generic [ref=f10e2289]: 1/1 completed
+        - button "Open project" [ref=f10e2290] [cursor=pointer]
+      - generic [ref=f10e2291]:
+        - generic [ref=f10e2292]: task-020 Bulk restart second
+        - generic [ref=f10e2293]: 1/1 completed
+        - button "Open project" [ref=f10e2294] [cursor=pointer]
+      - generic [ref=f10e2295]:
+        - generic [ref=f10e2296]: task-020 Defaults independent
+        - generic [ref=f10e2297]: 0/1 completed
+        - button "Open project" [ref=f10e2298] [cursor=pointer]
+      - generic [ref=f10e2299]:
+        - generic [ref=f10e2300]: task-020 Defaults inheritance
+        - generic [ref=f10e2301]: 1/4 completed
+        - button "Open project" [ref=f10e2302] [cursor=pointer]
+      - generic [ref=f10e2303]:
+        - generic [ref=f10e2304]: task-020 Defaults renamed
+        - generic [ref=f10e2305]: 0/2 completed
+        - button "Open project" [ref=f10e2306] [cursor=pointer]
+      - generic [ref=f10e2307]:
+        - generic [ref=f10e2308]: task-020 Deletion fields
+        - generic [ref=f10e2309]: 4/6 completed
+        - button "Open project" [ref=f10e2310] [cursor=pointer]
+      - generic [ref=f10e2311]:
+        - generic [ref=f10e2312]: task-020 Deletion target
+        - generic [ref=f10e2313]: 1/3 completed
+        - button "Open project" [ref=f10e2314] [cursor=pointer]
+      - generic [ref=f10e2315]:
+        - generic [ref=f10e2316]: task-020 Deletion order
+        - generic [ref=f10e2317]: 0/3 completed
+        - button "Open project" [ref=f10e2318] [cursor=pointer]
+      - generic [ref=f10e2319]:
+        - generic [ref=f10e2320]: task-020 Directory Zulu owner
+        - generic [ref=f10e2321]: 1/3 completed
+        - button "Open project" [ref=f10e2322] [cursor=pointer]
+      - generic [ref=f10e2323]:
+        - generic [ref=f10e2324]: task-020 Directory Alpha owner
+        - generic [ref=f10e2325]: 0/1 completed
+        - button "Open project" [ref=f10e2326] [cursor=pointer]
+      - generic [ref=f10e2327]:
+        - generic [ref=f10e2328]: task-020 Directory filter owner
+        - generic [ref=f10e2329]: 1/5 completed
+        - button "Open project" [ref=f10e2330] [cursor=pointer]
+      - generic [ref=f10e2331]:
+        - generic [ref=f10e2332]: task-020 Directory whitespace
+        - generic [ref=f10e2333]: 0/1 completed
+        - button "Open project" [ref=f10e2334] [cursor=pointer]
+      - generic [ref=f10e2335]:
+        - generic [ref=f10e2336]: task-020 Calendar persistence
+        - generic [ref=f10e2337]: 0/1 completed
+        - button "Open project" [ref=f10e2338] [cursor=pointer]
+      - generic [ref=f10e2339]:
+        - generic [ref=f10e2340]: task-020 Calendar validation
+        - generic [ref=f10e2341]: 0/1 completed
+        - button "Open project" [ref=f10e2342] [cursor=pointer]
+      - generic [ref=f10e2343]:
+        - generic [ref=f10e2344]: task-020 Calendar independence
+        - generic [ref=f10e2345]: 2/3 completed
+        - button "Open project" [ref=f10e2346] [cursor=pointer]
+      - generic [ref=f10e2347]:
+        - generic [ref=f10e2348]: task-020 Calendar second owner
+        - generic [ref=f10e2349]: 0/1 completed
+        - button "Open project" [ref=f10e2350] [cursor=pointer]
+      - generic [ref=f10e2351]:
+        - generic [ref=f10e2352]: task-020 Calendar archival
+        - generic [ref=f10e2353]: 0/1 completed
+        - button "Open project" [ref=f10e2354] [cursor=pointer]
+      - generic [ref=f10e2355]:
+        - generic [ref=f10e2356]: task-020 Range boundaries
+        - generic [ref=f10e2357]: 0/5 completed
+        - button "Open project" [ref=f10e2358] [cursor=pointer]
+      - generic [ref=f10e2359]:
+        - generic [ref=f10e2360]: task-020 Range intersections
+        - generic [ref=f10e2361]: 0/4 completed
+        - button "Open project" [ref=f10e2362] [cursor=pointer]
+      - generic [ref=f10e2363]:
+        - generic [ref=f10e2364]: task-020 Range validation
+        - generic [ref=f10e2365]: 0/2 completed
+        - button "Open project" [ref=f10e2366] [cursor=pointer]
+      - generic [ref=f10e2367]:
+        - generic [ref=f10e2368]: task-020 Range archival
+        - generic [ref=f10e2369]: 0/2 completed
+        - button "Open project" [ref=f10e2370] [cursor=pointer]
+      - generic [ref=f10e2371]:
+        - generic [ref=f10e2372]: task-020 Range owner renamed
+        - generic [ref=f10e2373]: 0/3 completed
+        - button "Open project" [ref=f10e2374] [cursor=pointer]
+      - generic [ref=f10e2375]:
+        - generic [ref=f10e2376]: task-020 Export foreign
+        - generic [ref=f10e2377]: 0/1 completed
+        - button "Open project" [ref=f10e2378] [cursor=pointer]
+      - generic [ref=f10e2379]:
+        - generic [ref=f10e2380]: task-020 Export full Ω
+        - generic [ref=f10e2381]: 0/2 completed
+        - button "Open project" [ref=f10e2382] [cursor=pointer]
+      - generic [ref=f10e2383]:
+        - generic [ref=f10e2384]: task-020 Import origin
+        - generic [ref=f10e2385]: 0/2 completed
+        - button "Open project" [ref=f10e2386] [cursor=pointer]
+      - generic [ref=f10e2387]:
+        - generic [ref=f10e2388]: task-020 Import copy
+        - generic [ref=f10e2389]: 1/4 completed
+        - button "Open project" [ref=f10e2390] [cursor=pointer]
+      - generic [ref=f10e2391]:
+        - generic [ref=f10e2392]: task-020 Parse guard existing
+        - generic [ref=f10e2393]: 0/1 completed
+        - button "Open project" [ref=f10e2394] [cursor=pointer]
+      - generic [ref=f10e2395]:
+        - generic [ref=f10e2396]: task-020 Task guard existing
+        - generic [ref=f10e2397]: 0/1 completed
+        - button "Open project" [ref=f10e2398] [cursor=pointer]
+      - generic [ref=f10e2399]:
+        - generic [ref=f10e2400]: task-020 Import restart
+        - generic [ref=f10e2401]: 0/1 completed
+        - button "Open project" [ref=f10e2402] [cursor=pointer]
+      - generic [ref=f10e2403]:
+        - generic [ref=f10e2404]: task-020 Transfer target
+        - generic [ref=f10e2405]: 1/3 completed
+        - button "Open project" [ref=f10e2406] [cursor=pointer]
+      - generic [ref=f10e2407]:
+        - generic [ref=f10e2408]: task-020 Transfer source
+        - generic [ref=f10e2409]: 0/1 completed
+        - button "Open project" [ref=f10e2410] [cursor=pointer]
+      - generic [ref=f10e2411]:
+        - generic [ref=f10e2412]: task-020 Filtered transfer target
+        - generic [ref=f10e2413]: 0/2 completed
+        - button "Open project" [ref=f10e2414] [cursor=pointer]
+      - generic [ref=f10e2415]:
+        - generic [ref=f10e2416]: task-020 Filtered transfer source
+        - generic [ref=f10e2417]: 1/5 completed
+        - button "Open project" [ref=f10e2418] [cursor=pointer]
+      - generic [ref=f10e2419]:
+        - generic [ref=f10e2420]: task-020 Options owner
+        - generic [ref=f10e2421]: 0/1 completed
+        - button "Open project" [ref=f10e2422] [cursor=pointer]
+      - generic [ref=f10e2423]:
+        - generic [ref=f10e2424]: task-020 Read-only transfer target
+        - generic [ref=f10e2425]: 0/1 completed
+        - button "Open project" [ref=f10e2426] [cursor=pointer]
+      - generic [ref=f10e2427]:
+        - generic [ref=f10e2428]: task-020 Read-only transfer owner
+        - generic [ref=f10e2429]: 0/2 completed
+        - button "Open project" [ref=f10e2430] [cursor=pointer]
+      - generic [ref=f10e2431]:
+        - generic [ref=f10e2432]: task-020 Notes values
+        - generic [ref=f10e2433]: 0/2 completed
+        - button "Open project" [ref=f10e2434] [cursor=pointer]
+      - generic [ref=f10e2435]:
+        - generic [ref=f10e2436]: task-020 Notes target
+        - generic [ref=f10e2437]: 0/1 completed
+        - button "Open project" [ref=f10e2438] [cursor=pointer]
+      - generic [ref=f10e2439]:
+        - generic [ref=f10e2440]: task-020 Notes owner
+        - generic [ref=f10e2441]: 0/3 completed
+        - button "Open project" [ref=f10e2442] [cursor=pointer]
+      - generic [ref=f10e2443]:
+        - generic [ref=f10e2444]: task-020 Priority intersection
+        - generic [ref=f10e2445]: 1/4 completed
+        - button "Open project" [ref=f10e2446] [cursor=pointer]
+      - generic [ref=f10e2447]:
+        - generic [ref=f10e2448]: task-020 Priority live filters
+        - generic [ref=f10e2449]: 1/4 completed
+        - button "Open project" [ref=f10e2450] [cursor=pointer]
+      - generic [ref=f10e2451]:
+        - generic [ref=f10e2452]: task-020 Priority rename filters
+        - generic [ref=f10e2453]: 1/3 completed
+        - button "Open project" [ref=f10e2454] [cursor=pointer]
+      - generic [ref=f10e2455]:
+        - generic [ref=f10e2456]: task-020 Archived combined filters
+        - generic [ref=f10e2457]: 1/2 completed
+        - button "Open project" [ref=f10e2458] [cursor=pointer]
+      - generic [ref=f10e2459]:
+        - generic [ref=f10e2460]: task-020 Priority ownership
+        - generic [ref=f10e2461]: 0/2 completed
+        - button "Open project" [ref=f10e2462] [cursor=pointer]
+      - generic [ref=f10e2463]:
+        - generic [ref=f10e2464]: task-020 Priority other owner
+        - generic [ref=f10e2465]: 0/1 completed
+        - button "Open project" [ref=f10e2466] [cursor=pointer]
+      - generic [ref=f10e2467]:
+        - generic [ref=f10e2468]: task-020 Priority completion
+        - generic [ref=f10e2469]: 1/2 completed
+        - button "Open project" [ref=f10e2470] [cursor=pointer]
+      - generic [ref=f10e2471]:
+        - generic [ref=f10e2472]: task-020 Priority archive
+        - generic [ref=f10e2473]: 0/1 completed
+        - button "Open project" [ref=f10e2474] [cursor=pointer]
+      - generic [ref=f10e2475]:
+        - generic [ref=f10e2476]: task-020 Return owner
+        - generic [ref=f10e2477]: 1/4 completed
+        - button "Open project" [ref=f10e2478] [cursor=pointer]
+      - generic [ref=f10e2479]:
+        - generic [ref=f10e2480]: task-020 Returned owner renamed
+        - generic [ref=f10e2481]: 0/3 completed
+        - button "Open project" [ref=f10e2482] [cursor=pointer]
+      - generic [ref=f10e2483]:
+        - generic [ref=f10e2484]: task-020 Position second owner
+        - generic [ref=f10e2485]: 0/2 completed
+        - button "Open project" [ref=f10e2486] [cursor=pointer]
+      - generic [ref=f10e2487]:
+        - generic [ref=f10e2488]: task-020 Position first owner
+        - generic [ref=f10e2489]: 0/4 completed
+        - button "Open project" [ref=f10e2490] [cursor=pointer]
+      - generic [ref=f10e2491]:
+        - generic [ref=f10e2492]: task-020 Whitespace retained owner
+        - generic [ref=f10e2493]: 0/2 completed
+        - button "Open project" [ref=f10e2494] [cursor=pointer]
+      - generic [ref=f10e2495]:
+        - generic [ref=f10e2496]: task-020 Search task intersections
+        - generic [ref=f10e2497]: 1/6 completed
+        - button "Open project" [ref=f10e2498] [cursor=pointer]
+      - generic [ref=f10e2499]:
+        - generic [ref=f10e2500]: task-020 Search internal spacing
+        - generic [ref=f10e2501]: 0/2 completed
+        - button "Open project" [ref=f10e2502] [cursor=pointer]
+      - generic [ref=f10e2503]:
+        - generic [ref=f10e2504]: task-020 Task reload
+        - generic [ref=f10e2505]: 0/1 completed
+        - button "Open project" [ref=f10e2506] [cursor=pointer]
+      - generic [ref=f10e2507]:
+        - generic [ref=f10e2508]: task-020 Task owner
+        - generic [ref=f10e2509]: 0/1 completed
+        - button "Open project" [ref=f10e2510] [cursor=pointer]
+      - generic [ref=f10e2511]:
+        - generic [ref=f10e2512]: task-020 Task filters
+        - generic [ref=f10e2513]: 0/2 completed
+        - button "Open project" [ref=f10e2514] [cursor=pointer]
+      - generic [ref=f10e2515]:
+        - generic [ref=f10e2516]: task-020 Archive tasks
+        - generic [ref=f10e2517]: 1/1 completed
+        - button "Open project" [ref=f10e2518] [cursor=pointer]
+      - generic [ref=f10e2519]:
+        - generic [ref=f10e2520]: task-020 Summary project
+        - generic [ref=f10e2521]: 1/2 completed
+        - button "Open project" [ref=f10e2522] [cursor=pointer]
+      - generic [ref=f10e2523]:
+        - generic [ref=f10e2524]: task-020 Identity updated
+        - generic [ref=f10e2525]: 1/1 completed
+        - button "Open project" [ref=f10e2526] [cursor=pointer]
+      - generic [ref=f10e2527]:
+        - generic [ref=f10e2528]: task-020 Task rename identity
+        - generic [ref=f10e2529]: 1/2 completed
+        - button "Open project" [ref=f10e2530] [cursor=pointer]
+      - generic [ref=f10e2531]:
+        - generic [ref=f10e2532]: task-020 Task rename invalid
+        - generic [ref=f10e2533]: 0/1 completed
+        - button "Open project" [ref=f10e2534] [cursor=pointer]
+      - generic [ref=f10e2535]:
+        - generic [ref=f10e2536]: task-020 Task rename archive
+        - generic [ref=f10e2537]: 0/1 completed
+        - button "Open project" [ref=f10e2538] [cursor=pointer]
+      - generic [ref=f10e2539]:
+        - generic [ref=f10e2540]: task-021 Bulk first owner
+        - generic [ref=f10e2541]: 0/7 completed
+        - button "Open project" [ref=f10e2542] [cursor=pointer]
+      - generic [ref=f10e2543]:
+        - generic [ref=f10e2544]: task-021 Bulk second owner
+        - generic [ref=f10e2545]: 0/2 completed
+        - button "Open project" [ref=f10e2546] [cursor=pointer]
+      - generic [ref=f10e2547]:
+        - generic [ref=f10e2548]: task-021 Bulk protected
+        - generic [ref=f10e2549]: 1/1 completed
+        - button "Open project" [ref=f10e2550] [cursor=pointer]
+      - generic [ref=f10e2551]:
+        - generic [ref=f10e2552]: task-021 Bulk restart first
+        - generic [ref=f10e2553]: 1/1 completed
+        - button "Open project" [ref=f10e2554] [cursor=pointer]
+      - generic [ref=f10e2555]:
+        - generic [ref=f10e2556]: task-021 Bulk restart second
+        - generic [ref=f10e2557]: 1/1 completed
+        - button "Open project" [ref=f10e2558] [cursor=pointer]
+      - generic [ref=f10e2559]:
+        - generic [ref=f10e2560]: task-021 Defaults independent
+        - generic [ref=f10e2561]: 0/1 completed
+        - button "Open project" [ref=f10e2562] [cursor=pointer]
+      - generic [ref=f10e2563]:
+        - generic [ref=f10e2564]: task-021 Defaults inheritance
+        - generic [ref=f10e2565]: 1/4 completed
+        - button "Open project" [ref=f10e2566] [cursor=pointer]
+      - generic [ref=f10e2567]:
+        - generic [ref=f10e2568]: task-021 Defaults renamed
+        - generic [ref=f10e2569]: 0/2 completed
+        - button "Open project" [ref=f10e2570] [cursor=pointer]
+      - generic [ref=f10e2571]:
+        - generic [ref=f10e2572]: task-021 Deletion fields
+        - generic [ref=f10e2573]: 4/6 completed
+        - button "Open project" [ref=f10e2574] [cursor=pointer]
+      - generic [ref=f10e2575]:
+        - generic [ref=f10e2576]: task-021 Deletion target
+        - generic [ref=f10e2577]: 1/3 completed
+        - button "Open project" [ref=f10e2578] [cursor=pointer]
+      - generic [ref=f10e2579]:
+        - generic [ref=f10e2580]: task-021 Deletion order
+        - generic [ref=f10e2581]: 0/3 completed
+        - button "Open project" [ref=f10e2582] [cursor=pointer]
+      - generic [ref=f10e2583]:
+        - generic [ref=f10e2584]: task-021 Ordering Zulu owner
+        - generic [ref=f10e2585]: 0/3 completed
+        - button "Open project" [ref=f10e2586] [cursor=pointer]
+      - generic [ref=f10e2587]:
+        - generic [ref=f10e2588]: task-021 Ordering Alpha owner
+        - generic [ref=f10e2589]: 0/2 completed
+        - button "Open project" [ref=f10e2590] [cursor=pointer]
+      - generic [ref=f10e2591]:
+        - generic [ref=f10e2592]: task-021 Ordering actions owner
+        - generic [ref=f10e2593]: 3/5 completed
+        - button "Open project" [ref=f10e2594] [cursor=pointer]
+      - generic [ref=f10e2595]:
+        - generic [ref=f10e2596]: task-021 Ordering active guard owner
+        - generic [ref=f10e2597]: 0/1 completed
+        - button "Open project" [ref=f10e2598] [cursor=pointer]
+      - generic [ref=f10e2599]:
+        - generic [ref=f10e2600]: task-021 Ordering Unicode owner
+        - generic [ref=f10e2601]: 0/4 completed
+        - button "Open project" [ref=f10e2602] [cursor=pointer]
+      - generic [ref=f10e2603]:
+        - generic [ref=f10e2604]: task-021 Directory Zulu owner
+        - generic [ref=f10e2605]: 1/3 completed
+        - button "Open project" [ref=f10e2606] [cursor=pointer]
+      - generic [ref=f10e2607]:
+        - generic [ref=f10e2608]: task-021 Directory Alpha owner
+        - generic [ref=f10e2609]: 0/1 completed
+        - button "Open project" [ref=f10e2610] [cursor=pointer]
+      - generic [ref=f10e2611]:
+        - generic [ref=f10e2612]: task-021 Directory filter owner
+        - generic [ref=f10e2613]: 1/5 completed
+        - button "Open project" [ref=f10e2614] [cursor=pointer]
+      - generic [ref=f10e2615]:
+        - generic [ref=f10e2616]: task-021 Directory whitespace
+        - generic [ref=f10e2617]: 0/1 completed
+        - button "Open project" [ref=f10e2618] [cursor=pointer]
+      - generic [ref=f10e2619]:
+        - generic [ref=f10e2620]: task-021 Calendar persistence
+        - generic [ref=f10e2621]: 0/1 completed
+        - button "Open project" [ref=f10e2622] [cursor=pointer]
+      - generic [ref=f10e2623]:
+        - generic [ref=f10e2624]: task-021 Calendar validation
+        - generic [ref=f10e2625]: 0/1 completed
+        - button "Open project" [ref=f10e2626] [cursor=pointer]
+      - generic [ref=f10e2627]:
+        - generic [ref=f10e2628]: task-021 Calendar independence
+        - generic [ref=f10e2629]: 2/3 completed
+        - button "Open project" [ref=f10e2630] [cursor=pointer]
+      - generic [ref=f10e2631]:
+        - generic [ref=f10e2632]: task-021 Calendar second owner
+        - generic [ref=f10e2633]: 0/1 completed
+        - button "Open project" [ref=f10e2634] [cursor=pointer]
+      - generic [ref=f10e2635]:
+        - generic [ref=f10e2636]: task-021 Calendar archival
+        - generic [ref=f10e2637]: 0/1 completed
+        - button "Open project" [ref=f10e2638] [cursor=pointer]
+      - generic [ref=f10e2639]:
+        - generic [ref=f10e2640]: task-021 Range boundaries
+        - generic [ref=f10e2641]: 0/5 completed
+        - button "Open project" [ref=f10e2642] [cursor=pointer]
+      - generic [ref=f10e2643]:
+        - generic [ref=f10e2644]: task-021 Range intersections
+        - generic [ref=f10e2645]: 0/4 completed
+        - button "Open project" [ref=f10e2646] [cursor=pointer]
+      - generic [ref=f10e2647]:
+        - generic [ref=f10e2648]: task-021 Range validation
+        - generic [ref=f10e2649]: 0/2 completed
+        - button "Open project" [ref=f10e2650] [cursor=pointer]
+      - generic [ref=f10e2651]:
+        - generic [ref=f10e2652]: task-021 Range archival
+        - generic [ref=f10e2653]: 0/2 completed
+        - button "Open project" [ref=f10e2654] [cursor=pointer]
+      - generic [ref=f10e2655]:
+        - generic [ref=f10e2656]: task-021 Range owner renamed
+        - generic [ref=f10e2657]: 0/3 completed
+        - button "Open project" [ref=f10e2658] [cursor=pointer]
+      - generic [ref=f10e2659]:
+        - generic [ref=f10e2660]: task-021 Export foreign
+        - generic [ref=f10e2661]: 0/1 completed
+        - button "Open project" [ref=f10e2662] [cursor=pointer]
+      - generic [ref=f10e2663]:
+        - generic [ref=f10e2664]: task-021 Export full Ω
+        - generic [ref=f10e2665]: 0/2 completed
+        - button "Open project" [ref=f10e2666] [cursor=pointer]
+      - generic [ref=f10e2667]:
+        - generic [ref=f10e2668]: task-021 Import origin
+        - generic [ref=f10e2669]: 0/2 completed
+        - button "Open project" [ref=f10e2670] [cursor=pointer]
+      - generic [ref=f10e2671]:
+        - generic [ref=f10e2672]: task-021 Import copy
+        - generic [ref=f10e2673]: 1/4 completed
+        - button "Open project" [ref=f10e2674] [cursor=pointer]
+      - generic [ref=f10e2675]:
+        - generic [ref=f10e2676]: task-021 Parse guard existing
+        - generic [ref=f10e2677]: 0/1 completed
+        - button "Open project" [ref=f10e2678] [cursor=pointer]
+      - generic [ref=f10e2679]:
+        - generic [ref=f10e2680]: task-021 Task guard existing
+        - generic [ref=f10e2681]: 0/1 completed
+        - button "Open project" [ref=f10e2682] [cursor=pointer]
+      - generic [ref=f10e2683]:
+        - generic [ref=f10e2684]: task-021 Import restart
+        - generic [ref=f10e2685]: 0/1 completed
+        - button "Open project" [ref=f10e2686] [cursor=pointer]
+      - generic [ref=f10e2687]:
+        - generic [ref=f10e2688]: task-021 Transfer target
+        - generic [ref=f10e2689]: 1/3 completed
+        - button "Open project" [ref=f10e2690] [cursor=pointer]
+      - generic [ref=f10e2691]:
+        - generic [ref=f10e2692]: task-021 Transfer source
+        - generic [ref=f10e2693]: 0/1 completed
+        - button "Open project" [ref=f10e2694] [cursor=pointer]
+      - generic [ref=f10e2695]:
+        - generic [ref=f10e2696]: task-021 Filtered transfer target
+        - generic [ref=f10e2697]: 0/2 completed
+        - button "Open project" [ref=f10e2698] [cursor=pointer]
+      - generic [ref=f10e2699]:
+        - generic [ref=f10e2700]: task-021 Filtered transfer source
+        - generic [ref=f10e2701]: 1/5 completed
+        - button "Open project" [ref=f10e2702] [cursor=pointer]
+      - generic [ref=f10e2703]:
+        - generic [ref=f10e2704]: task-021 Options owner
+        - generic [ref=f10e2705]: 0/1 completed
+        - button "Open project" [ref=f10e2706] [cursor=pointer]
+      - generic [ref=f10e2707]:
+        - generic [ref=f10e2708]: task-021 Read-only transfer target
+        - generic [ref=f10e2709]: 0/1 completed
+        - button "Open project" [ref=f10e2710] [cursor=pointer]
+      - generic [ref=f10e2711]:
+        - generic [ref=f10e2712]: task-021 Read-only transfer owner
+        - generic [ref=f10e2713]: 0/2 completed
+        - button "Open project" [ref=f10e2714] [cursor=pointer]
+      - generic [ref=f10e2715]:
+        - generic [ref=f10e2716]: task-021 Notes values
+        - generic [ref=f10e2717]: 0/2 completed
+        - button "Open project" [ref=f10e2718] [cursor=pointer]
+      - generic [ref=f10e2719]:
+        - generic [ref=f10e2720]: task-021 Notes target
+        - generic [ref=f10e2721]: 0/1 completed
+        - button "Open project" [ref=f10e2722] [cursor=pointer]
+      - generic [ref=f10e2723]:
+        - generic [ref=f10e2724]: task-021 Notes owner
+        - generic [ref=f10e2725]: 0/3 completed
+        - button "Open project" [ref=f10e2726] [cursor=pointer]
+      - generic [ref=f10e2727]:
+        - generic [ref=f10e2728]: task-021 Priority intersection
+        - generic [ref=f10e2729]: 1/4 completed
+        - button "Open project" [ref=f10e2730] [cursor=pointer]
+      - generic [ref=f10e2731]:
+        - generic [ref=f10e2732]: task-021 Priority live filters
+        - generic [ref=f10e2733]: 1/4 completed
+        - button "Open project" [ref=f10e2734] [cursor=pointer]
+      - generic [ref=f10e2735]:
+        - generic [ref=f10e2736]: task-021 Priority rename filters
+        - generic [ref=f10e2737]: 1/3 completed
+        - button "Open project" [ref=f10e2738] [cursor=pointer]
+      - generic [ref=f10e2739]:
+        - generic [ref=f10e2740]: task-021 Archived combined filters
+        - generic [ref=f10e2741]: 1/2 completed
+        - button "Open project" [ref=f10e2742] [cursor=pointer]
+      - generic [ref=f10e2743]:
+        - generic [ref=f10e2744]: task-021 Priority ownership
+        - generic [ref=f10e2745]: 0/2 completed
+        - button "Open project" [ref=f10e2746] [cursor=pointer]
+      - generic [ref=f10e2747]:
+        - generic [ref=f10e2748]: task-021 Priority other owner
+        - generic [ref=f10e2749]: 0/1 completed
+        - button "Open project" [ref=f10e2750] [cursor=pointer]
+      - generic [ref=f10e2751]:
+        - generic [ref=f10e2752]: task-021 Priority completion
+        - generic [ref=f10e2753]: 1/2 completed
+        - button "Open project" [ref=f10e2754] [cursor=pointer]
+      - generic [ref=f10e2755]:
+        - generic [ref=f10e2756]: task-021 Priority archive
+        - generic [ref=f10e2757]: 0/1 completed
+        - button "Open project" [ref=f10e2758] [cursor=pointer]
+      - generic [ref=f10e2759]:
+        - generic [ref=f10e2760]: task-021 Return owner
+        - generic [ref=f10e2761]: 1/4 completed
+        - button "Open project" [ref=f10e2762] [cursor=pointer]
+      - generic [ref=f10e2763]:
+        - generic [ref=f10e2764]: task-021 Returned owner renamed
+        - generic [ref=f10e2765]: 0/3 completed
+        - button "Open project" [ref=f10e2766] [cursor=pointer]
+      - generic [ref=f10e2767]:
+        - generic [ref=f10e2768]: task-021 Position second owner
+        - generic [ref=f10e2769]: 0/2 completed
+        - button "Open project" [ref=f10e2770] [cursor=pointer]
+      - generic [ref=f10e2771]:
+        - generic [ref=f10e2772]: task-021 Position first owner
+        - generic [ref=f10e2773]: 0/4 completed
+        - button "Open project" [ref=f10e2774] [cursor=pointer]
+      - generic [ref=f10e2775]:
+        - generic [ref=f10e2776]: task-021 Whitespace retained owner
+        - generic [ref=f10e2777]: 0/2 completed
+        - button "Open project" [ref=f10e2778] [cursor=pointer]
+      - generic [ref=f10e2779]:
+        - generic [ref=f10e2780]: task-021 Search task intersections
+        - generic [ref=f10e2781]: 1/6 completed
+        - button "Open project" [ref=f10e2782] [cursor=pointer]
+      - generic [ref=f10e2783]:
+        - generic [ref=f10e2784]: task-021 Search internal spacing
+        - generic [ref=f10e2785]: 0/2 completed
+        - button "Open project" [ref=f10e2786] [cursor=pointer]
+      - generic [ref=f10e2787]:
+        - generic [ref=f10e2788]: task-021 Task reload
+        - generic [ref=f10e2789]: 0/1 completed
+        - button "Open project" [ref=f10e2790] [cursor=pointer]
+      - generic [ref=f10e2791]:
+        - generic [ref=f10e2792]: task-021 Task owner
+        - generic [ref=f10e2793]: 0/1 completed
+        - button "Open project" [ref=f10e2794] [cursor=pointer]
+      - generic [ref=f10e2795]:
+        - generic [ref=f10e2796]: task-021 Task filters
+        - generic [ref=f10e2797]: 0/2 completed
+        - button "Open project" [ref=f10e2798] [cursor=pointer]
+      - generic [ref=f10e2799]:
+        - generic [ref=f10e2800]: task-021 Archive tasks
+        - generic [ref=f10e2801]: 1/1 completed
+        - button "Open project" [ref=f10e2802] [cursor=pointer]
+      - generic [ref=f10e2803]:
+        - generic [ref=f10e2804]: task-021 Summary project
+        - generic [ref=f10e2805]: 1/2 completed
+        - button "Open project" [ref=f10e2806] [cursor=pointer]
+      - generic [ref=f10e2807]:
+        - generic [ref=f10e2808]: task-021 Identity updated
+        - generic [ref=f10e2809]: 1/1 completed
+        - button "Open project" [ref=f10e2810] [cursor=pointer]
+      - generic [ref=f10e2811]:
+        - generic [ref=f10e2812]: task-021 Task rename identity
+        - generic [ref=f10e2813]: 1/2 completed
+        - button "Open project" [ref=f10e2814] [cursor=pointer]
+      - generic [ref=f10e2815]:
+        - generic [ref=f10e2816]: task-021 Task rename invalid
+        - generic [ref=f10e2817]: 0/1 completed
+        - button "Open project" [ref=f10e2818] [cursor=pointer]
+      - generic [ref=f10e2819]:
+        - generic [ref=f10e2820]: task-021 Task rename archive
+        - generic [ref=f10e2821]: 0/1 completed
+        - button "Open project" [ref=f10e2822] [cursor=pointer]
+      - generic [ref=f10e2823]:
+        - generic [ref=f10e2824]: task-022 Bulk first owner
+        - generic [ref=f10e2825]: 0/7 completed
+        - button "Open project" [ref=f10e2826] [cursor=pointer]
+      - generic [ref=f10e2827]:
+        - generic [ref=f10e2828]: task-022 Bulk second owner
+        - generic [ref=f10e2829]: 0/2 completed
+        - button "Open project" [ref=f10e2830] [cursor=pointer]
+      - generic [ref=f10e2831]:
+        - generic [ref=f10e2832]: task-022 Bulk protected
+        - generic [ref=f10e2833]: 1/1 completed
+        - button "Open project" [ref=f10e2834] [cursor=pointer]
+      - generic [ref=f10e2835]:
+        - generic [ref=f10e2836]: task-022 Bulk restart first
+        - generic [ref=f10e2837]: 1/1 completed
+        - button "Open project" [ref=f10e2838] [cursor=pointer]
+      - generic [ref=f10e2839]:
+        - generic [ref=f10e2840]: task-022 Bulk restart second
+        - generic [ref=f10e2841]: 1/1 completed
+        - button "Open project" [ref=f10e2842] [cursor=pointer]
+      - generic [ref=f10e2843]:
+        - generic [ref=f10e2844]: task-022 Defaults independent
+        - generic [ref=f10e2845]: 0/1 completed
+        - button "Open project" [ref=f10e2846] [cursor=pointer]
+      - generic [ref=f10e2847]:
+        - generic [ref=f10e2848]: task-022 Defaults inheritance
+        - generic [ref=f10e2849]: 1/4 completed
+        - button "Open project" [ref=f10e2850] [cursor=pointer]
+      - generic [ref=f10e2851]:
+        - generic [ref=f10e2852]: task-022 Defaults renamed
+        - generic [ref=f10e2853]: 0/2 completed
+        - button "Open project" [ref=f10e2854] [cursor=pointer]
+      - generic [ref=f10e2855]:
+        - generic [ref=f10e2856]: task-022 Deletion fields
+        - generic [ref=f10e2857]: 4/6 completed
+        - button "Open project" [ref=f10e2858] [cursor=pointer]
+      - generic [ref=f10e2859]:
+        - generic [ref=f10e2860]: task-022 Deletion target
+        - generic [ref=f10e2861]: 1/3 completed
+        - button "Open project" [ref=f10e2862] [cursor=pointer]
+      - generic [ref=f10e2863]:
+        - generic [ref=f10e2864]: task-022 Deletion order
+        - generic [ref=f10e2865]: 0/3 completed
+        - button "Open project" [ref=f10e2866] [cursor=pointer]
+      - generic [ref=f10e2867]:
+        - generic [ref=f10e2868]: task-022 Ordering Zulu owner
+        - generic [ref=f10e2869]: 0/3 completed
+        - button "Open project" [ref=f10e2870] [cursor=pointer]
+      - generic [ref=f10e2871]:
+        - generic [ref=f10e2872]: task-022 Ordering Alpha owner
+        - generic [ref=f10e2873]: 0/2 completed
+        - button "Open project" [ref=f10e2874] [cursor=pointer]
+      - generic [ref=f10e2875]:
+        - generic [ref=f10e2876]: task-022 Ordering actions owner
+        - generic [ref=f10e2877]: 3/5 completed
+        - button "Open project" [ref=f10e2878] [cursor=pointer]
+      - generic [ref=f10e2879]:
+        - generic [ref=f10e2880]: task-022 Ordering active guard owner
+        - generic [ref=f10e2881]: 0/1 completed
+        - button "Open project" [ref=f10e2882] [cursor=pointer]
+      - generic [ref=f10e2883]:
+        - generic [ref=f10e2884]: task-022 Ordering Unicode owner
+        - generic [ref=f10e2885]: 0/4 completed
+        - button "Open project" [ref=f10e2886] [cursor=pointer]
+      - generic [ref=f10e2887]:
+        - generic [ref=f10e2888]: task-022 Summary first owner
+        - generic [ref=f10e2889]: 1/4 completed
+        - button "Open project" [ref=f10e2890] [cursor=pointer]
+      - generic [ref=f10e2891]:
+        - generic [ref=f10e2892]: task-022 Summary second owner
+        - generic [ref=f10e2893]: 1/2 completed
+        - button "Open project" [ref=f10e2894] [cursor=pointer]
+      - generic [ref=f10e2895]:
+        - generic [ref=f10e2896]: task-022 Summary empty owner
+        - generic [ref=f10e2897]: 1/1 completed
+        - button "Open project" [ref=f10e2898] [cursor=pointer]
+      - generic [ref=f10e2899]:
+        - generic [ref=f10e2900]: task-022 Directory Zulu owner
+        - generic [ref=f10e2901]: 1/3 completed
+        - button "Open project" [ref=f10e2902] [cursor=pointer]
+      - generic [ref=f10e2903]:
+        - generic [ref=f10e2904]: task-022 Directory Alpha owner
+        - generic [ref=f10e2905]: 0/1 completed
+        - button "Open project" [ref=f10e2906] [cursor=pointer]
+      - generic [ref=f10e2907]:
+        - generic [ref=f10e2908]: task-022 Directory filter owner
+        - generic [ref=f10e2909]: 1/5 completed
+        - button "Open project" [ref=f10e2910] [cursor=pointer]
+      - generic [ref=f10e2911]:
+        - generic [ref=f10e2912]: task-022 Directory whitespace
+        - generic [ref=f10e2913]: 0/1 completed
+        - button "Open project" [ref=f10e2914] [cursor=pointer]
+      - generic [ref=f10e2915]:
+        - generic [ref=f10e2916]: task-022 Calendar persistence
+        - generic [ref=f10e2917]: 0/1 completed
+        - button "Open project" [ref=f10e2918] [cursor=pointer]
+      - generic [ref=f10e2919]:
+        - generic [ref=f10e2920]: task-022 Calendar validation
+        - generic [ref=f10e2921]: 0/1 completed
+        - button "Open project" [ref=f10e2922] [cursor=pointer]
+      - generic [ref=f10e2923]:
+        - generic [ref=f10e2924]: task-022 Calendar independence
+        - generic [ref=f10e2925]: 2/3 completed
+        - button "Open project" [ref=f10e2926] [cursor=pointer]
+      - generic [ref=f10e2927]:
+        - generic [ref=f10e2928]: task-022 Calendar second owner
+        - generic [ref=f10e2929]: 0/1 completed
+        - button "Open project" [ref=f10e2930] [cursor=pointer]
+      - generic [ref=f10e2931]:
+        - generic [ref=f10e2932]: task-022 Calendar archival
+        - generic [ref=f10e2933]: 0/1 completed
+        - button "Open project" [ref=f10e2934] [cursor=pointer]
+      - generic [ref=f10e2935]:
+        - generic [ref=f10e2936]: task-022 Range boundaries
+        - generic [ref=f10e2937]: 0/5 completed
+        - button "Open project" [ref=f10e2938] [cursor=pointer]
+      - generic [ref=f10e2939]:
+        - generic [ref=f10e2940]: task-022 Range intersections
+        - generic [ref=f10e2941]: 0/4 completed
+        - button "Open project" [ref=f10e2942] [cursor=pointer]
+      - generic [ref=f10e2943]:
+        - generic [ref=f10e2944]: task-022 Range validation
+        - generic [ref=f10e2945]: 0/2 completed
+        - button "Open project" [ref=f10e2946] [cursor=pointer]
+      - generic [ref=f10e2947]:
+        - generic [ref=f10e2948]: task-022 Range archival
+        - generic [ref=f10e2949]: 0/2 completed
+        - button "Open project" [ref=f10e2950] [cursor=pointer]
+      - generic [ref=f10e2951]:
+        - generic [ref=f10e2952]: task-022 Range owner renamed
+        - generic [ref=f10e2953]: 0/3 completed
+        - button "Open project" [ref=f10e2954] [cursor=pointer]
+      - generic [ref=f10e2955]:
+        - generic [ref=f10e2956]: task-022 Export foreign
+        - generic [ref=f10e2957]: 0/1 completed
+        - button "Open project" [ref=f10e2958] [cursor=pointer]
+      - generic [ref=f10e2959]:
+        - generic [ref=f10e2960]: task-022 Export full Ω
+        - generic [ref=f10e2961]: 0/2 completed
+        - button "Open project" [ref=f10e2962] [cursor=pointer]
+      - generic [ref=f10e2963]:
+        - generic [ref=f10e2964]: task-022 Import origin
+        - generic [ref=f10e2965]: 0/2 completed
+        - button "Open project" [ref=f10e2966] [cursor=pointer]
+      - generic [ref=f10e2967]:
+        - generic [ref=f10e2968]: task-022 Import copy
+        - generic [ref=f10e2969]: 1/4 completed
+        - button "Open project" [ref=f10e2970] [cursor=pointer]
+      - generic [ref=f10e2971]:
+        - generic [ref=f10e2972]: task-022 Parse guard existing
+        - generic [ref=f10e2973]: 0/1 completed
+        - button "Open project" [ref=f10e2974] [cursor=pointer]
+      - generic [ref=f10e2975]:
+        - generic [ref=f10e2976]: task-022 Task guard existing
+        - generic [ref=f10e2977]: 0/1 completed
+        - button "Open project" [ref=f10e2978] [cursor=pointer]
+      - generic [ref=f10e2979]:
+        - generic [ref=f10e2980]: task-022 Import restart
+        - generic [ref=f10e2981]: 0/1 completed
+        - button "Open project" [ref=f10e2982] [cursor=pointer]
+      - generic [ref=f10e2983]:
+        - generic [ref=f10e2984]: task-022 Transfer target
+        - generic [ref=f10e2985]: 1/3 completed
+        - button "Open project" [ref=f10e2986] [cursor=pointer]
+      - generic [ref=f10e2987]:
+        - generic [ref=f10e2988]: task-022 Transfer source
+        - generic [ref=f10e2989]: 0/1 completed
+        - button "Open project" [ref=f10e2990] [cursor=pointer]
+      - generic [ref=f10e2991]:
+        - generic [ref=f10e2992]: task-022 Filtered transfer target
+        - generic [ref=f10e2993]: 0/2 completed
+        - button "Open project" [ref=f10e2994] [cursor=pointer]
+      - generic [ref=f10e2995]:
+        - generic [ref=f10e2996]: task-022 Filtered transfer source
+        - generic [ref=f10e2997]: 1/5 completed
+        - button "Open project" [ref=f10e2998] [cursor=pointer]
+      - generic [ref=f10e2999]:
+        - generic [ref=f10e3000]: task-022 Options owner
+        - generic [ref=f10e3001]: 0/1 completed
+        - button "Open project" [ref=f10e3002] [cursor=pointer]
+      - generic [ref=f10e3003]:
+        - generic [ref=f10e3004]: task-022 Read-only transfer target
+        - generic [ref=f10e3005]: 0/1 completed
+        - button "Open project" [ref=f10e3006] [cursor=pointer]
+      - generic [ref=f10e3007]:
+        - generic [ref=f10e3008]: task-022 Read-only transfer owner
+        - generic [ref=f10e3009]: 0/2 completed
+        - button "Open project" [ref=f10e3010] [cursor=pointer]
+      - generic [ref=f10e3011]:
+        - generic [ref=f10e3012]: task-022 Notes values
+        - generic [ref=f10e3013]: 0/2 completed
+        - button "Open project" [ref=f10e3014] [cursor=pointer]
+      - generic [ref=f10e3015]:
+        - generic [ref=f10e3016]: task-022 Notes target
+        - generic [ref=f10e3017]: 0/1 completed
+        - button "Open project" [ref=f10e3018] [cursor=pointer]
+      - generic [ref=f10e3019]:
+        - generic [ref=f10e3020]: task-022 Notes owner
+        - generic [ref=f10e3021]: 0/3 completed
+        - button "Open project" [ref=f10e3022] [cursor=pointer]
+      - generic [ref=f10e3023]:
+        - generic [ref=f10e3024]: task-022 Priority intersection
+        - generic [ref=f10e3025]: 1/4 completed
+        - button "Open project" [ref=f10e3026] [cursor=pointer]
+      - generic [ref=f10e3027]:
+        - generic [ref=f10e3028]: task-022 Priority live filters
+        - generic [ref=f10e3029]: 1/4 completed
+        - button "Open project" [ref=f10e3030] [cursor=pointer]
+      - generic [ref=f10e3031]:
+        - generic [ref=f10e3032]: task-022 Priority rename filters
+        - generic [ref=f10e3033]: 1/3 completed
+        - button "Open project" [ref=f10e3034] [cursor=pointer]
+      - generic [ref=f10e3035]:
+        - generic [ref=f10e3036]: task-022 Archived combined filters
+        - generic [ref=f10e3037]: 1/2 completed
+        - button "Open project" [ref=f10e3038] [cursor=pointer]
+      - generic [ref=f10e3039]:
+        - generic [ref=f10e3040]: task-022 Priority ownership
+        - generic [ref=f10e3041]: 0/2 completed
+        - button "Open project" [ref=f10e3042] [cursor=pointer]
+      - generic [ref=f10e3043]:
+        - generic [ref=f10e3044]: task-022 Priority other owner
+        - generic [ref=f10e3045]: 0/1 completed
+        - button "Open project" [ref=f10e3046] [cursor=pointer]
+      - generic [ref=f10e3047]:
+        - generic [ref=f10e3048]: task-022 Priority completion
+        - generic [ref=f10e3049]: 1/2 completed
+        - button "Open project" [ref=f10e3050] [cursor=pointer]
+      - generic [ref=f10e3051]:
+        - generic [ref=f10e3052]: task-022 Priority archive
+        - generic [ref=f10e3053]: 0/1 completed
+        - button "Open project" [ref=f10e3054] [cursor=pointer]
+      - generic [ref=f10e3055]:
+        - generic [ref=f10e3056]: task-022 Return owner
+        - generic [ref=f10e3057]: 1/4 completed
+        - button "Open project" [ref=f10e3058] [cursor=pointer]
+      - generic [ref=f10e3059]:
+        - generic [ref=f10e3060]: task-022 Returned owner renamed
+        - generic [ref=f10e3061]: 0/3 completed
+        - button "Open project" [ref=f10e3062] [cursor=pointer]
+      - generic [ref=f10e3063]:
+        - generic [ref=f10e3064]: task-022 Position second owner
+        - generic [ref=f10e3065]: 0/2 completed
+        - button "Open project" [ref=f10e3066] [cursor=pointer]
+      - generic [ref=f10e3067]:
+        - generic [ref=f10e3068]: task-022 Position first owner
+        - generic [ref=f10e3069]: 0/4 completed
+        - button "Open project" [ref=f10e3070] [cursor=pointer]
+      - generic [ref=f10e3071]:
+        - generic [ref=f10e3072]: task-022 Whitespace retained owner
+        - generic [ref=f10e3073]: 0/2 completed
+        - button "Open project" [ref=f10e3074] [cursor=pointer]
+      - generic [ref=f10e3075]:
+        - generic [ref=f10e3076]: task-022 Search task intersections
+        - generic [ref=f10e3077]: 1/6 completed
+        - button "Open project" [ref=f10e3078] [cursor=pointer]
+      - generic [ref=f10e3079]:
+        - generic [ref=f10e3080]: task-022 Search internal spacing
+        - generic [ref=f10e3081]: 0/2 completed
+        - button "Open project" [ref=f10e3082] [cursor=pointer]
+      - generic [ref=f10e3083]:
+        - generic [ref=f10e3084]: task-022 Task reload
+        - generic [ref=f10e3085]: 0/1 completed
+        - button "Open project" [ref=f10e3086] [cursor=pointer]
+      - generic [ref=f10e3087]:
+        - generic [ref=f10e3088]: task-022 Task owner
+        - generic [ref=f10e3089]: 0/1 completed
+        - button "Open project" [ref=f10e3090] [cursor=pointer]
+      - generic [ref=f10e3091]:
+        - generic [ref=f10e3092]: task-022 Task filters
+        - generic [ref=f10e3093]: 0/2 completed
+        - button "Open project" [ref=f10e3094] [cursor=pointer]
+      - generic [ref=f10e3095]:
+        - generic [ref=f10e3096]: task-022 Archive tasks
+        - generic [ref=f10e3097]: 1/1 completed
+        - button "Open project" [ref=f10e3098] [cursor=pointer]
+      - generic [ref=f10e3099]:
+        - generic [ref=f10e3100]: task-022 Summary project
+        - generic [ref=f10e3101]: 1/2 completed
+        - button "Open project" [ref=f10e3102] [cursor=pointer]
+      - generic [ref=f10e3103]:
+        - generic [ref=f10e3104]: task-022 Identity updated
+        - generic [ref=f10e3105]: 1/1 completed
+        - button "Open project" [ref=f10e3106] [cursor=pointer]
+      - generic [ref=f10e3107]:
+        - generic [ref=f10e3108]: task-022 Task rename identity
+        - generic [ref=f10e3109]: 1/2 completed
+        - button "Open project" [ref=f10e3110] [cursor=pointer]
+      - generic [ref=f10e3111]:
+        - generic [ref=f10e3112]: task-022 Task rename invalid
+        - generic [ref=f10e3113]: 0/1 completed
+        - button "Open project" [ref=f10e3114] [cursor=pointer]
+      - generic [ref=f10e3115]:
+        - generic [ref=f10e3116]: task-022 Task rename archive
+        - generic [ref=f10e3117]: 0/1 completed
+        - button "Open project" [ref=f10e3118] [cursor=pointer]
+      - generic [ref=f10e3119]:
+        - generic [ref=f10e3120]: task-023 Bulk first owner
+        - generic [ref=f10e3121]: 0/7 completed
+        - button "Open project" [ref=f10e3122] [cursor=pointer]
+      - generic [ref=f10e3123]:
+        - generic [ref=f10e3124]: task-023 Bulk second owner
+        - generic [ref=f10e3125]: 0/2 completed
+        - button "Open project" [ref=f10e3126] [cursor=pointer]
+      - generic [ref=f10e3127]:
+        - generic [ref=f10e3128]: task-023 Bulk protected
+        - generic [ref=f10e3129]: 1/1 completed
+        - button "Open project" [ref=f10e3130] [cursor=pointer]
+      - generic [ref=f10e3131]:
+        - generic [ref=f10e3132]: task-023 Bulk restart first
+        - generic [ref=f10e3133]: 1/1 completed
+        - button "Open project" [ref=f10e3134] [cursor=pointer]
+      - generic [ref=f10e3135]:
+        - generic [ref=f10e3136]: task-023 Bulk restart second
+        - generic [ref=f10e3137]: 1/1 completed
+        - button "Open project" [ref=f10e3138] [cursor=pointer]
+      - generic [ref=f10e3139]:
+        - generic [ref=f10e3140]: task-023 Defaults independent
+        - generic [ref=f10e3141]: 0/1 completed
+        - button "Open project" [ref=f10e3142] [cursor=pointer]
+      - generic [ref=f10e3143]:
+        - generic [ref=f10e3144]: task-023 Defaults inheritance
+        - generic [ref=f10e3145]: 1/4 completed
+        - button "Open project" [ref=f10e3146] [cursor=pointer]
+      - generic [ref=f10e3147]:
+        - generic [ref=f10e3148]: task-023 Defaults renamed
+        - generic [ref=f10e3149]: 0/2 completed
+        - button "Open project" [ref=f10e3150] [cursor=pointer]
+      - generic [ref=f10e3151]:
+        - generic [ref=f10e3152]: task-023 Deletion fields
+        - generic [ref=f10e3153]: 4/6 completed
+        - button "Open project" [ref=f10e3154] [cursor=pointer]
+      - generic [ref=f10e3155]:
+        - generic [ref=f10e3156]: task-023 Deletion target
+        - generic [ref=f10e3157]: 1/3 completed
+        - button "Open project" [ref=f10e3158] [cursor=pointer]
+      - generic [ref=f10e3159]:
+        - generic [ref=f10e3160]: task-023 Deletion order
+        - generic [ref=f10e3161]: 0/3 completed
+        - button "Open project" [ref=f10e3162] [cursor=pointer]
+      - generic [ref=f10e3163]:
+        - generic [ref=f10e3164]: task-023 Ordering Zulu owner
+        - generic [ref=f10e3165]: 0/3 completed
+        - button "Open project" [ref=f10e3166] [cursor=pointer]
+      - generic [ref=f10e3167]:
+        - generic [ref=f10e3168]: task-023 Ordering Alpha owner
+        - generic [ref=f10e3169]: 0/2 completed
+        - button "Open project" [ref=f10e3170] [cursor=pointer]
+      - generic [ref=f10e3171]:
+        - generic [ref=f10e3172]: task-023 Ordering actions owner
+        - generic [ref=f10e3173]: 3/5 completed
+        - button "Open project" [ref=f10e3174] [cursor=pointer]
+      - generic [ref=f10e3175]:
+        - generic [ref=f10e3176]: task-023 Ordering active guard owner
+        - generic [ref=f10e3177]: 0/1 completed
+        - button "Open project" [ref=f10e3178] [cursor=pointer]
+      - generic [ref=f10e3179]:
+        - generic [ref=f10e3180]: task-023 Ordering Unicode owner
+        - generic [ref=f10e3181]: 0/4 completed
+        - button "Open project" [ref=f10e3182] [cursor=pointer]
+      - generic [ref=f10e3183]:
+        - generic [ref=f10e3184]: task-023 Owner totals zulu first
+        - generic [ref=f10e3185]: 1/2 completed
+        - button "Open project" [ref=f10e3186] [cursor=pointer]
+      - generic [ref=f10e3187]:
+        - generic [ref=f10e3188]: task-023 Owner totals alpha second
+        - generic [ref=f10e3189]: 1/1 completed
+        - button "Open project" [ref=f10e3190] [cursor=pointer]
+      - generic [ref=f10e3191]:
+        - generic [ref=f10e3192]: task-023 Duplicate owner first
+        - generic [ref=f10e3193]: 0/1 completed
+        - button "Open project" [ref=f10e3194] [cursor=pointer]
+      - generic [ref=f10e3195]:
+        - generic [ref=f10e3196]: task-023 Duplicate owner first
+        - generic [ref=f10e3197]: 1/1 completed
+        - button "Open project" [ref=f10e3198] [cursor=pointer]
+      - generic [ref=f10e3199]:
+        - generic [ref=f10e3200]: task-023 Duplicate owner first
+        - generic [ref=f10e3201]: 0/1 completed
+        - button "Open project" [ref=f10e3202] [cursor=pointer]
+      - generic [ref=f10e3203]:
+        - generic [ref=f10e3204]: task-023 Summary first owner
+        - generic [ref=f10e3205]: 1/4 completed
+        - button "Open project" [ref=f10e3206] [cursor=pointer]
+      - generic [ref=f10e3207]:
+        - generic [ref=f10e3208]: task-023 Summary second owner
+        - generic [ref=f10e3209]: 1/2 completed
+        - button "Open project" [ref=f10e3210] [cursor=pointer]
+      - generic [ref=f10e3211]:
+        - generic [ref=f10e3212]: task-023 Summary empty owner
+        - generic [ref=f10e3213]: 1/1 completed
+        - button "Open project" [ref=f10e3214] [cursor=pointer]
+      - generic [ref=f10e3215]:
+        - generic [ref=f10e3216]: task-023 Directory Zulu owner
+        - generic [ref=f10e3217]: 1/3 completed
+        - button "Open project" [ref=f10e3218] [cursor=pointer]
+      - generic [ref=f10e3219]:
+        - generic [ref=f10e3220]: task-023 Directory Alpha owner
+        - generic [ref=f10e3221]: 0/1 completed
+        - button "Open project" [ref=f10e3222] [cursor=pointer]
+      - generic [ref=f10e3223]:
+        - generic [ref=f10e3224]: task-023 Directory filter owner
+        - generic [ref=f10e3225]: 1/5 completed
+        - button "Open project" [ref=f10e3226] [cursor=pointer]
+      - generic [ref=f10e3227]:
+        - generic [ref=f10e3228]: task-023 Directory whitespace
+        - generic [ref=f10e3229]: 0/1 completed
+        - button "Open project" [ref=f10e3230] [cursor=pointer]
+      - generic [ref=f10e3231]:
+        - generic [ref=f10e3232]: task-023 Calendar persistence
+        - generic [ref=f10e3233]: 0/1 completed
+        - button "Open project" [ref=f10e3234] [cursor=pointer]
+      - generic [ref=f10e3235]:
+        - generic [ref=f10e3236]: task-023 Calendar validation
+        - generic [ref=f10e3237]: 0/1 completed
+        - button "Open project" [ref=f10e3238] [cursor=pointer]
+      - generic [ref=f10e3239]:
+        - generic [ref=f10e3240]: task-023 Calendar independence
+        - generic [ref=f10e3241]: 2/3 completed
+        - button "Open project" [ref=f10e3242] [cursor=pointer]
+      - generic [ref=f10e3243]:
+        - generic [ref=f10e3244]: task-023 Calendar second owner
+        - generic [ref=f10e3245]: 0/1 completed
+        - button "Open project" [ref=f10e3246] [cursor=pointer]
+      - generic [ref=f10e3247]:
+        - generic [ref=f10e3248]: task-023 Calendar archival
+        - generic [ref=f10e3249]: 0/1 completed
+        - button "Open project" [ref=f10e3250] [cursor=pointer]
+      - generic [ref=f10e3251]:
+        - generic [ref=f10e3252]: task-023 Range boundaries
+        - generic [ref=f10e3253]: 0/5 completed
+        - button "Open project" [ref=f10e3254] [cursor=pointer]
+      - generic [ref=f10e3255]:
+        - generic [ref=f10e3256]: task-023 Range intersections
+        - generic [ref=f10e3257]: 0/4 completed
+        - button "Open project" [ref=f10e3258] [cursor=pointer]
+      - generic [ref=f10e3259]:
+        - generic [ref=f10e3260]: task-023 Range validation
+        - generic [ref=f10e3261]: 0/2 completed
+        - button "Open project" [ref=f10e3262] [cursor=pointer]
+      - generic [ref=f10e3263]:
+        - generic [ref=f10e3264]: task-023 Range archival
+        - generic [ref=f10e3265]: 0/2 completed
+        - button "Open project" [ref=f10e3266] [cursor=pointer]
+      - generic [ref=f10e3267]:
+        - generic [ref=f10e3268]: task-023 Range owner renamed
+        - generic [ref=f10e3269]: 0/3 completed
+        - button "Open project" [ref=f10e3270] [cursor=pointer]
+      - generic [ref=f10e3271]:
+        - generic [ref=f10e3272]: task-023 Export foreign
+        - generic [ref=f10e3273]: 0/1 completed
+        - button "Open project" [ref=f10e3274] [cursor=pointer]
+      - generic [ref=f10e3275]:
+        - generic [ref=f10e3276]: task-023 Export full Ω
+        - generic [ref=f10e3277]: 0/2 completed
+        - button "Open project" [ref=f10e3278] [cursor=pointer]
+      - generic [ref=f10e3279]:
+        - generic [ref=f10e3280]: task-023 Import origin
+        - generic [ref=f10e3281]: 0/2 completed
+        - button "Open project" [ref=f10e3282] [cursor=pointer]
+      - generic [ref=f10e3283]:
+        - generic [ref=f10e3284]: task-023 Import copy
+        - generic [ref=f10e3285]: 1/4 completed
+        - button "Open project" [ref=f10e3286] [cursor=pointer]
+      - generic [ref=f10e3287]:
+        - generic [ref=f10e3288]: task-023 Parse guard existing
+        - generic [ref=f10e3289]: 0/1 completed
+        - button "Open project" [ref=f10e3290] [cursor=pointer]
+      - generic [ref=f10e3291]:
+        - generic [ref=f10e3292]: task-023 Task guard existing
+        - generic [ref=f10e3293]: 0/1 completed
+        - button "Open project" [ref=f10e3294] [cursor=pointer]
+      - generic [ref=f10e3295]:
+        - generic [ref=f10e3296]: task-023 Import restart
+        - generic [ref=f10e3297]: 0/1 completed
+        - button "Open project" [ref=f10e3298] [cursor=pointer]
+      - generic [ref=f10e3299]:
+        - generic [ref=f10e3300]: task-023 Transfer target
+        - generic [ref=f10e3301]: 1/3 completed
+        - button "Open project" [ref=f10e3302] [cursor=pointer]
+      - generic [ref=f10e3303]:
+        - generic [ref=f10e3304]: task-023 Transfer source
+        - generic [ref=f10e3305]: 0/1 completed
+        - button "Open project" [ref=f10e3306] [cursor=pointer]
+      - generic [ref=f10e3307]:
+        - generic [ref=f10e3308]: task-023 Filtered transfer target
+        - generic [ref=f10e3309]: 0/2 completed
+        - button "Open project" [ref=f10e3310] [cursor=pointer]
+      - generic [ref=f10e3311]:
+        - generic [ref=f10e3312]: task-023 Filtered transfer source
+        - generic [ref=f10e3313]: 1/5 completed
+        - button "Open project" [ref=f10e3314] [cursor=pointer]
+      - generic [ref=f10e3315]:
+        - generic [ref=f10e3316]: task-023 Options owner
+        - generic [ref=f10e3317]: 0/1 completed
+        - button "Open project" [ref=f10e3318] [cursor=pointer]
+      - generic [ref=f10e3319]:
+        - generic [ref=f10e3320]: task-023 Read-only transfer target
+        - generic [ref=f10e3321]: 0/1 completed
+        - button "Open project" [ref=f10e3322] [cursor=pointer]
+      - generic [ref=f10e3323]:
+        - generic [ref=f10e3324]: task-023 Read-only transfer owner
+        - generic [ref=f10e3325]: 0/2 completed
+        - button "Open project" [ref=f10e3326] [cursor=pointer]
+      - generic [ref=f10e3327]:
+        - generic [ref=f10e3328]: task-023 Notes values
+        - generic [ref=f10e3329]: 0/2 completed
+        - button "Open project" [ref=f10e3330] [cursor=pointer]
+      - generic [ref=f10e3331]:
+        - generic [ref=f10e3332]: task-023 Notes target
+        - generic [ref=f10e3333]: 0/1 completed
+        - button "Open project" [ref=f10e3334] [cursor=pointer]
+      - generic [ref=f10e3335]:
+        - generic [ref=f10e3336]: task-023 Notes owner
+        - generic [ref=f10e3337]: 0/3 completed
+        - button "Open project" [ref=f10e3338] [cursor=pointer]
+      - generic [ref=f10e3339]:
+        - generic [ref=f10e3340]: task-023 Priority intersection
+        - generic [ref=f10e3341]: 1/4 completed
+        - button "Open project" [ref=f10e3342] [cursor=pointer]
+      - generic [ref=f10e3343]:
+        - generic [ref=f10e3344]: task-023 Priority live filters
+        - generic [ref=f10e3345]: 1/4 completed
+        - button "Open project" [ref=f10e3346] [cursor=pointer]
+      - generic [ref=f10e3347]:
+        - generic [ref=f10e3348]: task-023 Priority rename filters
+        - generic [ref=f10e3349]: 1/3 completed
+        - button "Open project" [ref=f10e3350] [cursor=pointer]
+      - generic [ref=f10e3351]:
+        - generic [ref=f10e3352]: task-023 Archived combined filters
+        - generic [ref=f10e3353]: 1/2 completed
+        - button "Open project" [ref=f10e3354] [cursor=pointer]
+      - generic [ref=f10e3355]:
+        - generic [ref=f10e3356]: task-023 Priority ownership
+        - generic [ref=f10e3357]: 0/2 completed
+        - button "Open project" [ref=f10e3358] [cursor=pointer]
+      - generic [ref=f10e3359]:
+        - generic [ref=f10e3360]: task-023 Priority other owner
+        - generic [ref=f10e3361]: 0/1 completed
+        - button "Open project" [ref=f10e3362] [cursor=pointer]
+      - generic [ref=f10e3363]:
+        - generic [ref=f10e3364]: task-023 Priority completion
+        - generic [ref=f10e3365]: 1/2 completed
+        - button "Open project" [ref=f10e3366] [cursor=pointer]
+      - generic [ref=f10e3367]:
+        - generic [ref=f10e3368]: task-023 Priority archive
+        - generic [ref=f10e3369]: 0/1 completed
+        - button "Open project" [ref=f10e3370] [cursor=pointer]
+      - generic [ref=f10e3371]:
+        - generic [ref=f10e3372]: task-023 Return owner
+        - generic [ref=f10e3373]: 1/4 completed
+        - button "Open project" [ref=f10e3374] [cursor=pointer]
+      - generic [ref=f10e3375]:
+        - generic [ref=f10e3376]: task-023 Returned owner renamed
+        - generic [ref=f10e3377]: 0/3 completed
+        - button "Open project" [ref=f10e3378] [cursor=pointer]
+      - generic [ref=f10e3379]:
+        - generic [ref=f10e3380]: task-023 Position second owner
+        - generic [ref=f10e3381]: 0/2 completed
+        - button "Open project" [ref=f10e3382] [cursor=pointer]
+      - generic [ref=f10e3383]:
+        - generic [ref=f10e3384]: task-023 Position first owner
+        - generic [ref=f10e3385]: 0/4 completed
+        - button "Open project" [ref=f10e3386] [cursor=pointer]
+      - generic [ref=f10e3387]:
+        - generic [ref=f10e3388]: task-023 Whitespace retained owner
+        - generic [ref=f10e3389]: 0/2 completed
+        - button "Open project" [ref=f10e3390] [cursor=pointer]
+      - generic [ref=f10e3391]:
+        - generic [ref=f10e3392]: task-023 Search task intersections
+        - generic [ref=f10e3393]: 1/6 completed
+        - button "Open project" [ref=f10e3394] [cursor=pointer]
+      - generic [ref=f10e3395]:
+        - generic [ref=f10e3396]: task-023 Search internal spacing
+        - generic [ref=f10e3397]: 0/2 completed
+        - button "Open project" [ref=f10e3398] [cursor=pointer]
+      - generic [ref=f10e3399]:
+        - generic [ref=f10e3400]: task-023 Task reload
+        - generic [ref=f10e3401]: 0/1 completed
+        - button "Open project" [ref=f10e3402] [cursor=pointer]
+      - generic [ref=f10e3403]:
+        - generic [ref=f10e3404]: task-023 Task owner
+        - generic [ref=f10e3405]: 0/1 completed
+        - button "Open project" [ref=f10e3406] [cursor=pointer]
+      - generic [ref=f10e3407]:
+        - generic [ref=f10e3408]: task-023 Task filters
+        - generic [ref=f10e3409]: 0/2 completed
+        - button "Open project" [ref=f10e3410] [cursor=pointer]
+      - generic [ref=f10e3411]:
+        - generic [ref=f10e3412]: task-023 Archive tasks
+        - generic [ref=f10e3413]: 1/1 completed
+        - button "Open project" [ref=f10e3414] [cursor=pointer]
+      - generic [ref=f10e3415]:
+        - generic [ref=f10e3416]: task-023 Summary project
+        - generic [ref=f10e3417]: 1/2 completed
+        - button "Open project" [ref=f10e3418] [cursor=pointer]
+      - generic [ref=f10e3419]:
+        - generic [ref=f10e3420]: task-023 Identity updated
+        - generic [ref=f10e3421]: 1/1 completed
+        - button "Open project" [ref=f10e3422] [cursor=pointer]
+      - generic [ref=f10e3423]:
+        - generic [ref=f10e3424]: task-023 Task rename identity
+        - generic [ref=f10e3425]: 1/2 completed
+        - button "Open project" [ref=f10e3426] [cursor=pointer]
+      - generic [ref=f10e3427]:
+        - generic [ref=f10e3428]: task-023 Task rename invalid
+        - generic [ref=f10e3429]: 0/1 completed
+        - button "Open project" [ref=f10e3430] [cursor=pointer]
+      - generic [ref=f10e3431]:
+        - generic [ref=f10e3432]: task-023 Task rename archive
+        - generic [ref=f10e3433]: 0/1 completed
+        - button "Open project" [ref=f10e3434] [cursor=pointer]
+      - generic [ref=f10e3435]:
+        - generic [ref=f10e3436]: task-024 Bulk first owner
+        - generic [ref=f10e3437]: 0/7 completed
+        - button "Open project" [ref=f10e3438] [cursor=pointer]
+      - generic [ref=f10e3439]:
+        - generic [ref=f10e3440]: task-024 Bulk second owner
+        - generic [ref=f10e3441]: 0/2 completed
+        - button "Open project" [ref=f10e3442] [cursor=pointer]
+      - generic [ref=f10e3443]:
+        - generic [ref=f10e3444]: task-024 Bulk protected
+        - generic [ref=f10e3445]: 1/1 completed
+        - button "Open project" [ref=f10e3446] [cursor=pointer]
+      - generic [ref=f10e3447]:
+        - generic [ref=f10e3448]: task-024 Bulk restart first
+        - generic [ref=f10e3449]: 1/1 completed
+        - button "Open project" [ref=f10e3450] [cursor=pointer]
+      - generic [ref=f10e3451]:
+        - generic [ref=f10e3452]: task-024 Bulk restart second
+        - generic [ref=f10e3453]: 1/1 completed
+        - button "Open project" [ref=f10e3454] [cursor=pointer]
+      - generic [ref=f10e3455]:
+        - generic [ref=f10e3456]: task-024 Defaults independent
+        - generic [ref=f10e3457]: 0/1 completed
+        - button "Open project" [ref=f10e3458] [cursor=pointer]
+      - generic [ref=f10e3459]:
+        - generic [ref=f10e3460]: task-024 Defaults inheritance
+        - generic [ref=f10e3461]: 1/4 completed
+        - button "Open project" [ref=f10e3462] [cursor=pointer]
+      - generic [ref=f10e3463]:
+        - generic [ref=f10e3464]: task-024 Defaults renamed
+        - generic [ref=f10e3465]: 0/2 completed
+        - button "Open project" [ref=f10e3466] [cursor=pointer]
+      - generic [ref=f10e3467]:
+        - generic [ref=f10e3468]: task-024 Deletion fields
+        - generic [ref=f10e3469]: 4/6 completed
+        - button "Open project" [ref=f10e3470] [cursor=pointer]
+      - generic [ref=f10e3471]:
+        - generic [ref=f10e3472]: task-024 Deletion target
+        - generic [ref=f10e3473]: 1/3 completed
+        - button "Open project" [ref=f10e3474] [cursor=pointer]
+      - generic [ref=f10e3475]:
+        - generic [ref=f10e3476]: task-024 Deletion order
+        - generic [ref=f10e3477]: 0/3 completed
+        - button "Open project" [ref=f10e3478] [cursor=pointer]
+      - generic [ref=f10e3479]:
+        - generic [ref=f10e3480]: task-024 Bulk position first
+        - generic [ref=f10e3481]: 1/3 completed
+        - button "Open project" [ref=f10e3482] [cursor=pointer]
+      - generic [ref=f10e3483]:
+        - generic [ref=f10e3484]: task-024 Bulk position second
+        - generic [ref=f10e3485]: 0/2 completed
+        - button "Open project" [ref=f10e3486] [cursor=pointer]
+      - generic [ref=f10e3487]:
+        - generic [ref=f10e3488]: task-024 Bulk deletion restart first
+        - generic [ref=f10e3489]: 0/3 completed
+        - button "Open project" [ref=f10e3490] [cursor=pointer]
+      - generic [ref=f10e3491]:
+        - generic [ref=f10e3492]: task-024 Bulk deletion restart holding
+        - generic [ref=f10e3493]: 0/2 completed
+        - button "Open project" [ref=f10e3494] [cursor=pointer]
+      - generic [ref=f10e3495]:
+        - generic [ref=f10e3496]: task-024 Bulk delete first owner
+        - generic [ref=f10e3497]: 1/6 completed
+        - button "Open project" [ref=f10e3498] [cursor=pointer]
+      - generic [ref=f10e3499]:
+        - generic [ref=f10e3500]: task-024 Bulk delete second owner
+        - generic [ref=f10e3501]: 0/3 completed
+        - button "Open project" [ref=f10e3502] [cursor=pointer]
+      - generic [ref=f10e3503]:
+        - generic [ref=f10e3504]: task-024 Bulk duplicate owner
+        - generic [ref=f10e3505]: 0/3 completed
+        - button "Open project" [ref=f10e3506] [cursor=pointer]
+      - generic [ref=f10e3507]:
+        - generic [ref=f10e3508]: task-024 Bulk duplicate owner
+        - generic [ref=f10e3509]: 1/3 completed
+        - button "Open project" [ref=f10e3510] [cursor=pointer]
+      - generic [ref=f10e3511]:
+        - generic [ref=f10e3512]: task-024 Ordering Zulu owner
+        - generic [ref=f10e3513]: 0/3 completed
+        - button "Open project" [ref=f10e3514] [cursor=pointer]
+      - generic [ref=f10e3515]:
+        - generic [ref=f10e3516]: task-024 Ordering Alpha owner
+        - generic [ref=f10e3517]: 0/2 completed
+        - button "Open project" [ref=f10e3518] [cursor=pointer]
+      - generic [ref=f10e3519]:
+        - generic [ref=f10e3520]: task-024 Ordering actions owner
+        - generic [ref=f10e3521]: 3/5 completed
+        - button "Open project" [ref=f10e3522] [cursor=pointer]
+      - generic [ref=f10e3523]:
+        - generic [ref=f10e3524]: task-024 Ordering active guard owner
+        - generic [ref=f10e3525]: 0/1 completed
+        - button "Open project" [ref=f10e3526] [cursor=pointer]
+      - generic [ref=f10e3527]:
+        - generic [ref=f10e3528]: task-024 Ordering Unicode owner
+        - generic [ref=f10e3529]: 0/4 completed
+        - button "Open project" [ref=f10e3530] [cursor=pointer]
+      - generic [ref=f10e3531]:
+        - generic [ref=f10e3532]: task-024 Owner totals zulu first
+        - generic [ref=f10e3533]: 1/2 completed
+        - button "Open project" [ref=f10e3534] [cursor=pointer]
+      - generic [ref=f10e3535]:
+        - generic [ref=f10e3536]: task-024 Owner totals alpha second
+        - generic [ref=f10e3537]: 1/1 completed
+        - button "Open project" [ref=f10e3538] [cursor=pointer]
+      - generic [ref=f10e3539]:
+        - generic [ref=f10e3540]: task-024 Duplicate owner first
+        - generic [ref=f10e3541]: 0/1 completed
+        - button "Open project" [ref=f10e3542] [cursor=pointer]
+      - generic [ref=f10e3543]:
+        - generic [ref=f10e3544]: task-024 Duplicate owner first
+        - generic [ref=f10e3545]: 1/1 completed
+        - button "Open project" [ref=f10e3546] [cursor=pointer]
+      - generic [ref=f10e3547]:
+        - generic [ref=f10e3548]: task-024 Duplicate owner first
+        - generic [ref=f10e3549]: 0/1 completed
+        - button "Open project" [ref=f10e3550] [cursor=pointer]
+      - generic [ref=f10e3551]:
+        - generic [ref=f10e3552]: task-024 Summary first owner
+        - generic [ref=f10e3553]: 1/4 completed
+        - button "Open project" [ref=f10e3554] [cursor=pointer]
+      - generic [ref=f10e3555]:
+        - generic [ref=f10e3556]: task-024 Summary second owner
+        - generic [ref=f10e3557]: 1/2 completed
+        - button "Open project" [ref=f10e3558] [cursor=pointer]
+      - generic [ref=f10e3559]:
+        - generic [ref=f10e3560]: task-024 Summary empty owner
+        - generic [ref=f10e3561]: 1/1 completed
+        - button "Open project" [ref=f10e3562] [cursor=pointer]
+      - generic [ref=f10e3563]:
+        - generic [ref=f10e3564]: task-024 Directory Zulu owner
+        - generic [ref=f10e3565]: 1/3 completed
+        - button "Open project" [ref=f10e3566] [cursor=pointer]
+      - generic [ref=f10e3567]:
+        - generic [ref=f10e3568]: task-024 Directory Alpha owner
+        - generic [ref=f10e3569]: 0/1 completed
+        - button "Open project" [ref=f10e3570] [cursor=pointer]
+      - generic [ref=f10e3571]:
+        - generic [ref=f10e3572]: task-024 Directory filter owner
+        - generic [ref=f10e3573]: 1/5 completed
+        - button "Open project" [ref=f10e3574] [cursor=pointer]
+      - generic [ref=f10e3575]:
+        - generic [ref=f10e3576]: task-024 Directory whitespace
+        - generic [ref=f10e3577]: 0/1 completed
+        - button "Open project" [ref=f10e3578] [cursor=pointer]
+      - generic [ref=f10e3579]:
+        - generic [ref=f10e3580]: task-024 Calendar persistence
+        - generic [ref=f10e3581]: 0/1 completed
+        - button "Open project" [ref=f10e3582] [cursor=pointer]
+      - generic [ref=f10e3583]:
+        - generic [ref=f10e3584]: task-024 Calendar validation
+        - generic [ref=f10e3585]: 0/1 completed
+        - button "Open project" [ref=f10e3586] [cursor=pointer]
+      - generic [ref=f10e3587]:
+        - generic [ref=f10e3588]: task-024 Calendar independence
+        - generic [ref=f10e3589]: 2/3 completed
+        - button "Open project" [ref=f10e3590] [cursor=pointer]
+      - generic [ref=f10e3591]:
+        - generic [ref=f10e3592]: task-024 Calendar second owner
+        - generic [ref=f10e3593]: 0/1 completed
+        - button "Open project" [ref=f10e3594] [cursor=pointer]
+      - generic [ref=f10e3595]:
+        - generic [ref=f10e3596]: task-024 Calendar archival
+        - generic [ref=f10e3597]: 0/1 completed
+        - button "Open project" [ref=f10e3598] [cursor=pointer]
+      - generic [ref=f10e3599]:
+        - generic [ref=f10e3600]: task-024 Range boundaries
+        - generic [ref=f10e3601]: 0/5 completed
+        - button "Open project" [ref=f10e3602] [cursor=pointer]
+      - generic [ref=f10e3603]:
+        - generic [ref=f10e3604]: task-024 Range intersections
+        - generic [ref=f10e3605]: 0/4 completed
+        - button "Open project" [ref=f10e3606] [cursor=pointer]
+      - generic [ref=f10e3607]:
+        - generic [ref=f10e3608]: task-024 Range validation
+        - generic [ref=f10e3609]: 0/2 completed
+        - button "Open project" [ref=f10e3610] [cursor=pointer]
+      - generic [ref=f10e3611]:
+        - generic [ref=f10e3612]: task-024 Range archival
+        - generic [ref=f10e3613]: 0/2 completed
+        - button "Open project" [ref=f10e3614] [cursor=pointer]
+      - generic [ref=f10e3615]:
+        - generic [ref=f10e3616]: task-024 Range owner renamed
+        - generic [ref=f10e3617]: 0/3 completed
+        - button "Open project" [ref=f10e3618] [cursor=pointer]
+      - generic [ref=f10e3619]:
+        - generic [ref=f10e3620]: task-024 Export foreign
+        - generic [ref=f10e3621]: 0/1 completed
+        - button "Open project" [ref=f10e3622] [cursor=pointer]
+      - generic [ref=f10e3623]:
+        - generic [ref=f10e3624]: task-024 Export full Ω
+        - generic [ref=f10e3625]: 0/2 completed
+        - button "Open project" [ref=f10e3626] [cursor=pointer]
+      - generic [ref=f10e3627]:
+        - generic [ref=f10e3628]: task-024 Import origin
+        - generic [ref=f10e3629]: 0/2 completed
+        - button "Open project" [ref=f10e3630] [cursor=pointer]
+      - generic [ref=f10e3631]:
+        - generic [ref=f10e3632]: task-024 Import copy
+        - generic [ref=f10e3633]: 1/4 completed
+        - button "Open project" [ref=f10e3634] [cursor=pointer]
+      - generic [ref=f10e3635]:
+        - generic [ref=f10e3636]: task-024 Parse guard existing
+        - generic [ref=f10e3637]: 0/1 completed
+        - button "Open project" [ref=f10e3638] [cursor=pointer]
+      - generic [ref=f10e3639]:
+        - generic [ref=f10e3640]: task-024 Task guard existing
+        - generic [ref=f10e3641]: 0/1 completed
+        - button "Open project" [ref=f10e3642] [cursor=pointer]
+      - generic [ref=f10e3643]:
+        - generic [ref=f10e3644]: task-024 Import restart
+        - generic [ref=f10e3645]: 0/1 completed
+        - button "Open project" [ref=f10e3646] [cursor=pointer]
+      - generic [ref=f10e3647]:
+        - generic [ref=f10e3648]: task-024 Transfer target
+        - generic [ref=f10e3649]: 1/3 completed
+        - button "Open project" [ref=f10e3650] [cursor=pointer]
+      - generic [ref=f10e3651]:
+        - generic [ref=f10e3652]: task-024 Transfer source
+        - generic [ref=f10e3653]: 0/1 completed
+        - button "Open project" [ref=f10e3654] [cursor=pointer]
+      - generic [ref=f10e3655]:
+        - generic [ref=f10e3656]: task-024 Filtered transfer target
+        - generic [ref=f10e3657]: 0/2 completed
+        - button "Open project" [ref=f10e3658] [cursor=pointer]
+      - generic [ref=f10e3659]:
+        - generic [ref=f10e3660]: task-024 Filtered transfer source
+        - generic [ref=f10e3661]: 1/5 completed
+        - button "Open project" [ref=f10e3662] [cursor=pointer]
+      - generic [ref=f10e3663]:
+        - generic [ref=f10e3664]: task-024 Options owner
+        - generic [ref=f10e3665]: 0/1 completed
+        - button "Open project" [ref=f10e3666] [cursor=pointer]
+      - generic [ref=f10e3667]:
+        - generic [ref=f10e3668]: task-024 Read-only transfer target
+        - generic [ref=f10e3669]: 0/1 completed
+        - button "Open project" [ref=f10e3670] [cursor=pointer]
+      - generic [ref=f10e3671]:
+        - generic [ref=f10e3672]: task-024 Read-only transfer owner
+        - generic [ref=f10e3673]: 0/2 completed
+        - button "Open project" [ref=f10e3674] [cursor=pointer]
+      - generic [ref=f10e3675]:
+        - generic [ref=f10e3676]: task-024 Notes values
+        - generic [ref=f10e3677]: 0/2 completed
+        - button "Open project" [ref=f10e3678] [cursor=pointer]
+      - generic [ref=f10e3679]:
+        - generic [ref=f10e3680]: task-024 Notes target
+        - generic [ref=f10e3681]: 0/1 completed
+        - button "Open project" [ref=f10e3682] [cursor=pointer]
+      - generic [ref=f10e3683]:
+        - generic [ref=f10e3684]: task-024 Notes owner
+        - generic [ref=f10e3685]: 0/3 completed
+        - button "Open project" [ref=f10e3686] [cursor=pointer]
+      - generic [ref=f10e3687]:
+        - generic [ref=f10e3688]: task-024 Priority intersection
+        - generic [ref=f10e3689]: 1/4 completed
+        - button "Open project" [ref=f10e3690] [cursor=pointer]
+      - generic [ref=f10e3691]:
+        - generic [ref=f10e3692]: task-024 Priority live filters
+        - generic [ref=f10e3693]: 1/4 completed
+        - button "Open project" [ref=f10e3694] [cursor=pointer]
+      - generic [ref=f10e3695]:
+        - generic [ref=f10e3696]: task-024 Priority rename filters
+        - generic [ref=f10e3697]: 1/3 completed
+        - button "Open project" [ref=f10e3698] [cursor=pointer]
+      - generic [ref=f10e3699]:
+        - generic [ref=f10e3700]: task-024 Archived combined filters
+        - generic [ref=f10e3701]: 1/2 completed
+        - button "Open project" [ref=f10e3702] [cursor=pointer]
+      - generic [ref=f10e3703]:
+        - generic [ref=f10e3704]: task-024 Priority ownership
+        - generic [ref=f10e3705]: 0/2 completed
+        - button "Open project" [ref=f10e3706] [cursor=pointer]
+      - generic [ref=f10e3707]:
+        - generic [ref=f10e3708]: task-024 Priority other owner
+        - generic [ref=f10e3709]: 0/1 completed
+        - button "Open project" [ref=f10e3710] [cursor=pointer]
+      - generic [ref=f10e3711]:
+        - generic [ref=f10e3712]: task-024 Priority completion
+        - generic [ref=f10e3713]: 1/2 completed
+        - button "Open project" [ref=f10e3714] [cursor=pointer]
+      - generic [ref=f10e3715]:
+        - generic [ref=f10e3716]: task-024 Priority archive
+        - generic [ref=f10e3717]: 0/1 completed
+        - button "Open project" [ref=f10e3718] [cursor=pointer]
+      - generic [ref=f10e3719]:
+        - generic [ref=f10e3720]: task-024 Return owner
+        - generic [ref=f10e3721]: 1/4 completed
+        - button "Open project" [ref=f10e3722] [cursor=pointer]
+      - generic [ref=f10e3723]:
+        - generic [ref=f10e3724]: task-024 Returned owner renamed
+        - generic [ref=f10e3725]: 0/3 completed
+        - button "Open project" [ref=f10e3726] [cursor=pointer]
+      - generic [ref=f10e3727]:
+        - generic [ref=f10e3728]: task-024 Position second owner
+        - generic [ref=f10e3729]: 0/2 completed
+        - button "Open project" [ref=f10e3730] [cursor=pointer]
+      - generic [ref=f10e3731]:
+        - generic [ref=f10e3732]: task-024 Position first owner
+        - generic [ref=f10e3733]: 0/4 completed
+        - button "Open project" [ref=f10e3734] [cursor=pointer]
+      - generic [ref=f10e3735]:
+        - generic [ref=f10e3736]: task-024 Whitespace retained owner
+        - generic [ref=f10e3737]: 0/2 completed
+        - button "Open project" [ref=f10e3738] [cursor=pointer]
+      - generic [ref=f10e3739]:
+        - generic [ref=f10e3740]: task-024 Search task intersections
+        - generic [ref=f10e3741]: 1/6 completed
+        - button "Open project" [ref=f10e3742] [cursor=pointer]
+      - generic [ref=f10e3743]:
+        - generic [ref=f10e3744]: task-024 Search internal spacing
+        - generic [ref=f10e3745]: 0/2 completed
+        - button "Open project" [ref=f10e3746] [cursor=pointer]
+      - generic [ref=f10e3747]:
+        - generic [ref=f10e3748]: task-024 Task reload
+        - generic [ref=f10e3749]: 0/1 completed
+        - button "Open project" [ref=f10e3750] [cursor=pointer]
+      - generic [ref=f10e3751]:
+        - generic [ref=f10e3752]: task-024 Task owner
+        - generic [ref=f10e3753]: 0/1 completed
+        - button "Open project" [ref=f10e3754] [cursor=pointer]
+      - generic [ref=f10e3755]:
+        - generic [ref=f10e3756]: task-024 Task filters
+        - generic [ref=f10e3757]: 0/2 completed
+        - button "Open project" [ref=f10e3758] [cursor=pointer]
+      - generic [ref=f10e3759]:
+        - generic [ref=f10e3760]: task-024 Archive tasks
+        - generic [ref=f10e3761]: 1/1 completed
+        - button "Open project" [ref=f10e3762] [cursor=pointer]
+      - generic [ref=f10e3763]:
+        - generic [ref=f10e3764]: task-024 Summary project
+        - generic [ref=f10e3765]: 1/2 completed
+        - button "Open project" [ref=f10e3766] [cursor=pointer]
+      - generic [ref=f10e3767]:
+        - generic [ref=f10e3768]: task-024 Identity updated
+        - generic [ref=f10e3769]: 1/1 completed
+        - button "Open project" [ref=f10e3770] [cursor=pointer]
+      - generic [ref=f10e3771]:
+        - generic [ref=f10e3772]: task-024 Task rename identity
+        - generic [ref=f10e3773]: 1/2 completed
+        - button "Open project" [ref=f10e3774] [cursor=pointer]
+      - generic [ref=f10e3775]:
+        - generic [ref=f10e3776]: task-024 Task rename invalid
+        - generic [ref=f10e3777]: 0/1 completed
+        - button "Open project" [ref=f10e3778] [cursor=pointer]
+      - generic [ref=f10e3779]:
+        - generic [ref=f10e3780]: task-024 Task rename archive
+        - generic [ref=f10e3781]: 0/1 completed
+        - button "Open project" [ref=f10e3782] [cursor=pointer]
+      - generic [ref=f10e3783]:
+        - generic [ref=f10e3784]: task-025 Bulk first owner
+        - generic [ref=f10e3785]: 0/7 completed
+        - button "Open project" [ref=f10e3786] [cursor=pointer]
+      - generic [ref=f10e3787]:
+        - generic [ref=f10e3788]: task-025 Bulk second owner
+        - generic [ref=f10e3789]: 0/2 completed
+        - button "Open project" [ref=f10e3790] [cursor=pointer]
+      - generic [ref=f10e3791]:
+        - generic [ref=f10e3792]: task-025 Bulk protected
+        - generic [ref=f10e3793]: 1/1 completed
+        - button "Open project" [ref=f10e3794] [cursor=pointer]
+      - generic [ref=f10e3795]:
+        - generic [ref=f10e3796]: task-025 Bulk restart first
+        - generic [ref=f10e3797]: 1/1 completed
+        - button "Open project" [ref=f10e3798] [cursor=pointer]
+      - generic [ref=f10e3799]:
+        - generic [ref=f10e3800]: task-025 Bulk restart second
+        - generic [ref=f10e3801]: 1/1 completed
+        - button "Open project" [ref=f10e3802] [cursor=pointer]
+      - generic [ref=f10e3803]:
+        - generic [ref=f10e3804]: task-025 Defaults independent
+        - generic [ref=f10e3805]: 0/1 completed
+        - button "Open project" [ref=f10e3806] [cursor=pointer]
+      - generic [ref=f10e3807]:
+        - generic [ref=f10e3808]: task-025 Defaults inheritance
+        - generic [ref=f10e3809]: 1/4 completed
+        - button "Open project" [ref=f10e3810] [cursor=pointer]
+      - generic [ref=f10e3811]:
+        - generic [ref=f10e3812]: task-025 Defaults renamed
+        - generic [ref=f10e3813]: 0/2 completed
+        - button "Open project" [ref=f10e3814] [cursor=pointer]
+      - generic [ref=f10e3815]:
+        - generic [ref=f10e3816]: task-025 Deletion fields
+        - generic [ref=f10e3817]: 4/6 completed
+        - button "Open project" [ref=f10e3818] [cursor=pointer]
+      - generic [ref=f10e3819]:
+        - generic [ref=f10e3820]: task-025 Deletion target
+        - generic [ref=f10e3821]: 1/3 completed
+        - button "Open project" [ref=f10e3822] [cursor=pointer]
+      - generic [ref=f10e3823]:
+        - generic [ref=f10e3824]: task-025 Deletion order
+        - generic [ref=f10e3825]: 0/3 completed
+        - button "Open project" [ref=f10e3826] [cursor=pointer]
+      - generic [ref=f10e3827]:
+        - generic [ref=f10e3828]: task-025 Bulk position first
+        - generic [ref=f10e3829]: 1/3 completed
+        - button "Open project" [ref=f10e3830] [cursor=pointer]
+      - generic [ref=f10e3831]:
+        - generic [ref=f10e3832]: task-025 Bulk position second
+        - generic [ref=f10e3833]: 0/2 completed
+        - button "Open project" [ref=f10e3834] [cursor=pointer]
+      - generic [ref=f10e3835]:
+        - generic [ref=f10e3836]: task-025 Bulk deletion restart first
+        - generic [ref=f10e3837]: 0/3 completed
+        - button "Open project" [ref=f10e3838] [cursor=pointer]
+      - generic [ref=f10e3839]:
+        - generic [ref=f10e3840]: task-025 Bulk deletion restart holding
+        - generic [ref=f10e3841]: 0/2 completed
+        - button "Open project" [ref=f10e3842] [cursor=pointer]
+      - generic [ref=f10e3843]:
+        - generic [ref=f10e3844]: task-025 Bulk delete first owner
+        - generic [ref=f10e3845]: 1/6 completed
+        - button "Open project" [ref=f10e3846] [cursor=pointer]
+      - generic [ref=f10e3847]:
+        - generic [ref=f10e3848]: task-025 Bulk delete second owner
+        - generic [ref=f10e3849]: 0/3 completed
+        - button "Open project" [ref=f10e3850] [cursor=pointer]
+      - generic [ref=f10e3851]:
+        - generic [ref=f10e3852]: task-025 Bulk duplicate owner
+        - generic [ref=f10e3853]: 0/3 completed
+        - button "Open project" [ref=f10e3854] [cursor=pointer]
+      - generic [ref=f10e3855]:
+        - generic [ref=f10e3856]: task-025 Bulk duplicate owner
+        - generic [ref=f10e3857]: 1/3 completed
+        - button "Open project" [ref=f10e3858] [cursor=pointer]
+      - generic [ref=f10e3859]:
+        - generic [ref=f10e3860]: task-025 Ordering Zulu owner
+        - generic [ref=f10e3861]: 0/3 completed
+        - button "Open project" [ref=f10e3862] [cursor=pointer]
+      - generic [ref=f10e3863]:
+        - generic [ref=f10e3864]: task-025 Ordering Alpha owner
+        - generic [ref=f10e3865]: 0/2 completed
+        - button "Open project" [ref=f10e3866] [cursor=pointer]
+      - generic [ref=f10e3867]:
+        - generic [ref=f10e3868]: task-025 Ordering actions owner
+        - generic [ref=f10e3869]: 3/5 completed
+        - button "Open project" [ref=f10e3870] [cursor=pointer]
+      - generic [ref=f10e3871]:
+        - generic [ref=f10e3872]: task-025 Ordering active guard owner
+        - generic [ref=f10e3873]: 0/1 completed
+        - button "Open project" [ref=f10e3874] [cursor=pointer]
+      - generic [ref=f10e3875]:
+        - generic [ref=f10e3876]: task-025 Ordering Unicode owner
+        - generic [ref=f10e3877]: 0/4 completed
+        - button "Open project" [ref=f10e3878] [cursor=pointer]
+      - generic [ref=f10e3879]:
+        - generic [ref=f10e3880]: task-025 Owner totals zulu first
+        - generic [ref=f10e3881]: 1/2 completed
+        - button "Open project" [ref=f10e3882] [cursor=pointer]
+      - generic [ref=f10e3883]:
+        - generic [ref=f10e3884]: task-025 Owner totals alpha second
+        - generic [ref=f10e3885]: 1/1 completed
+        - button "Open project" [ref=f10e3886] [cursor=pointer]
+      - generic [ref=f10e3887]:
+        - generic [ref=f10e3888]: task-025 Duplicate owner first
+        - generic [ref=f10e3889]: 0/1 completed
+        - button "Open project" [ref=f10e3890] [cursor=pointer]
+      - generic [ref=f10e3891]:
+        - generic [ref=f10e3892]: task-025 Duplicate owner first
+        - generic [ref=f10e3893]: 1/1 completed
+        - button "Open project" [ref=f10e3894] [cursor=pointer]
+      - generic [ref=f10e3895]:
+        - generic [ref=f10e3896]: task-025 Duplicate owner first
+        - generic [ref=f10e3897]: 0/1 completed
+        - button "Open project" [ref=f10e3898] [cursor=pointer]
+      - generic [ref=f10e3899]:
+        - generic [ref=f10e3900]: task-025 Priority reserved first
+        - generic [ref=f10e3901]: 0/3 completed
+        - button "Open project" [ref=f10e3902] [cursor=pointer]
+      - generic [ref=f10e3903]:
+        - generic [ref=f10e3904]: task-025 Priority reserved second
+        - generic [ref=f10e3905]: 0/2 completed
+        - button "Open project" [ref=f10e3906] [cursor=pointer]
+    - generic [ref=f10e3907]:
+      - generic [ref=f10e3908]:
+        - generic [ref=f10e3909]: Task preserved
+        - generic [ref=f10e3910]: task-002 Task reload
+        - generic [ref=f10e3911]: Open
+        - generic [ref=f10e3912]: Normal
+        - button "Open project" [ref=f10e3913] [cursor=pointer]
+      - generic [ref=f10e3914]:
+        - generic [ref=f10e3915]: Private to owner
+        - generic [ref=f10e3916]: task-002 Task owner
+        - generic [ref=f10e3917]: Open
+        - generic [ref=f10e3918]: Normal
+        - button "Open project" [ref=f10e3919] [cursor=pointer]
+      - generic [ref=f10e3920]:
+        - generic [ref=f10e3921]: Done task
+        - generic [ref=f10e3922]: task-002 Task filters
+        - generic [ref=f10e3923]: Open
+        - generic [ref=f10e3924]: Normal
+        - button "Open project" [ref=f10e3925] [cursor=pointer]
+      - generic [ref=f10e3926]:
+        - generic [ref=f10e3927]: Open task
+        - generic [ref=f10e3928]: task-002 Task filters
+        - generic [ref=f10e3929]: Open
+        - generic [ref=f10e3930]: Normal
+        - button "Open project" [ref=f10e3931] [cursor=pointer]
+      - generic [ref=f10e3932]:
+        - generic [ref=f10e3933]: Remember me
+        - generic [ref=f10e3934]: task-002 Persistence sentinel
+        - generic [ref=f10e3935]: Completed
+        - generic [ref=f10e3936]: Normal
+        - button "Open project" [ref=f10e3937] [cursor=pointer]
+      - generic [ref=f10e3938]:
+        - generic [ref=f10e3939]: Task preserved
+        - generic [ref=f10e3940]: task-003 Task reload
+        - generic [ref=f10e3941]: Open
+        - generic [ref=f10e3942]: Normal
+        - button "Open project" [ref=f10e3943] [cursor=pointer]
+      - generic [ref=f10e3944]:
+        - generic [ref=f10e3945]: Private to owner
+        - generic [ref=f10e3946]: task-003 Task owner
+        - generic [ref=f10e3947]: Open
+        - generic [ref=f10e3948]: Normal
+        - button "Open project" [ref=f10e3949] [cursor=pointer]
+      - generic [ref=f10e3950]:
+        - generic [ref=f10e3951]: Done task
+        - generic [ref=f10e3952]: task-003 Task filters
+        - generic [ref=f10e3953]: Open
+        - generic [ref=f10e3954]: Normal
+        - button "Open project" [ref=f10e3955] [cursor=pointer]
+      - generic [ref=f10e3956]:
+        - generic [ref=f10e3957]: Open task
+        - generic [ref=f10e3958]: task-003 Task filters
+        - generic [ref=f10e3959]: Open
+        - generic [ref=f10e3960]: Normal
+        - button "Open project" [ref=f10e3961] [cursor=pointer]
+      - generic [ref=f10e3962]:
+        - generic [ref=f10e3963]: Retained task
+        - generic [ref=f10e3964]: task-003 Archive tasks
+        - generic [ref=f10e3965]: Completed
+        - generic [ref=f10e3966]: Normal
+        - button "Open project" [ref=f10e3967] [cursor=pointer]
+      - generic [ref=f10e3968]:
+        - generic [ref=f10e3969]: Summary one
+        - generic [ref=f10e3970]: task-003 Summary project
+        - generic [ref=f10e3971]: Completed
+        - generic [ref=f10e3972]: Normal
+        - button "Open project" [ref=f10e3973] [cursor=pointer]
+      - generic [ref=f10e3974]:
+        - generic [ref=f10e3975]: Summary two
+        - generic [ref=f10e3976]: task-003 Summary project
+        - generic [ref=f10e3977]: Open
+        - generic [ref=f10e3978]: Normal
+        - button "Open project" [ref=f10e3979] [cursor=pointer]
+      - generic [ref=f10e3980]:
+        - generic [ref=f10e3981]: Task preserved
+        - generic [ref=f10e3982]: task-004 Task reload
+        - generic [ref=f10e3983]: Open
+        - generic [ref=f10e3984]: Normal
+        - button "Open project" [ref=f10e3985] [cursor=pointer]
+      - generic [ref=f10e3986]:
+        - generic [ref=f10e3987]: Private to owner
+        - generic [ref=f10e3988]: task-004 Task owner
+        - generic [ref=f10e3989]: Open
+        - generic [ref=f10e3990]: Normal
+        - button "Open project" [ref=f10e3991] [cursor=pointer]
+      - generic [ref=f10e3992]:
+        - generic [ref=f10e3993]: Done task
+        - generic [ref=f10e3994]: task-004 Task filters
+        - generic [ref=f10e3995]: Open
+        - generic [ref=f10e3996]: Normal
+        - button "Open project" [ref=f10e3997] [cursor=pointer]
+      - generic [ref=f10e3998]:
+        - generic [ref=f10e3999]: Open task
+        - generic [ref=f10e4000]: task-004 Task filters
+        - generic [ref=f10e4001]: Open
+        - generic [ref=f10e4002]: Normal
+        - button "Open project" [ref=f10e4003] [cursor=pointer]
+      - generic [ref=f10e4004]:
+        - generic [ref=f10e4005]: Retained task
+        - generic [ref=f10e4006]: task-004 Archive tasks
+        - generic [ref=f10e4007]: Completed
+        - generic [ref=f10e4008]: Normal
+        - button "Open project" [ref=f10e4009] [cursor=pointer]
+      - generic [ref=f10e4010]:
+        - generic [ref=f10e4011]: Summary one
+        - generic [ref=f10e4012]: task-004 Summary project
+        - generic [ref=f10e4013]: Completed
+        - generic [ref=f10e4014]: Normal
+        - button "Open project" [ref=f10e4015] [cursor=pointer]
+      - generic [ref=f10e4016]:
+        - generic [ref=f10e4017]: Summary two
+        - generic [ref=f10e4018]: task-004 Summary project
+        - generic [ref=f10e4019]: Open
+        - generic [ref=f10e4020]: Normal
+        - button "Open project" [ref=f10e4021] [cursor=pointer]
+      - generic [ref=f10e4022]:
+        - generic [ref=f10e4023]: Identity task
+        - generic [ref=f10e4024]: task-004 Identity updated
+        - generic [ref=f10e4025]: Completed
+        - generic [ref=f10e4026]: Normal
+        - button "Open project" [ref=f10e4027] [cursor=pointer]
+      - generic [ref=f10e4028]:
+        - generic [ref=f10e4029]: Task preserved
+        - generic [ref=f10e4030]: task-005 Task reload
+        - generic [ref=f10e4031]: Open
+        - generic [ref=f10e4032]: Normal
+        - button "Open project" [ref=f10e4033] [cursor=pointer]
+      - generic [ref=f10e4034]:
+        - generic [ref=f10e4035]: Private to owner
+        - generic [ref=f10e4036]: task-005 Task owner
+        - generic [ref=f10e4037]: Open
+        - generic [ref=f10e4038]: Normal
+        - button "Open project" [ref=f10e4039] [cursor=pointer]
+      - generic [ref=f10e4040]:
+        - generic [ref=f10e4041]: Done task
+        - generic [ref=f10e4042]: task-005 Task filters
+        - generic [ref=f10e4043]: Open
+        - generic [ref=f10e4044]: Normal
+        - button "Open project" [ref=f10e4045] [cursor=pointer]
+      - generic [ref=f10e4046]:
+        - generic [ref=f10e4047]: Open task
+        - generic [ref=f10e4048]: task-005 Task filters
+        - generic [ref=f10e4049]: Open
+        - generic [ref=f10e4050]: Normal
+        - button "Open project" [ref=f10e4051] [cursor=pointer]
+      - generic [ref=f10e4052]:
+        - generic [ref=f10e4053]: Retained task
+        - generic [ref=f10e4054]: task-005 Archive tasks
+        - generic [ref=f10e4055]: Completed
+        - generic [ref=f10e4056]: Normal
+        - button "Open project" [ref=f10e4057] [cursor=pointer]
+      - generic [ref=f10e4058]:
+        - generic [ref=f10e4059]: Summary one
+        - generic [ref=f10e4060]: task-005 Summary project
+        - generic [ref=f10e4061]: Completed
+        - generic [ref=f10e4062]: Normal
+        - button "Open project" [ref=f10e4063] [cursor=pointer]
+      - generic [ref=f10e4064]:
+        - generic [ref=f10e4065]: Summary two
+        - generic [ref=f10e4066]: task-005 Summary project
+        - generic [ref=f10e4067]: Open
+        - generic [ref=f10e4068]: Normal
+        - button "Open project" [ref=f10e4069] [cursor=pointer]
+      - generic [ref=f10e4070]:
+        - generic [ref=f10e4071]: Identity task
+        - generic [ref=f10e4072]: task-005 Identity updated
+        - generic [ref=f10e4073]: Completed
+        - generic [ref=f10e4074]: Normal
+        - button "Open project" [ref=f10e4075] [cursor=pointer]
+      - generic [ref=f10e4076]:
+        - generic [ref=f10e4077]: Name updated
+        - generic [ref=f10e4078]: task-005 Task rename identity
+        - generic [ref=f10e4079]: Completed
+        - generic [ref=f10e4080]: Normal
+        - button "Open project" [ref=f10e4081] [cursor=pointer]
+      - generic [ref=f10e4082]:
+        - generic [ref=f10e4083]: Name second
+        - generic [ref=f10e4084]: task-005 Task rename identity
+        - generic [ref=f10e4085]: Open
+        - generic [ref=f10e4086]: Normal
+        - button "Open project" [ref=f10e4087] [cursor=pointer]
+      - generic [ref=f10e4088]:
+        - generic [ref=f10e4089]: Kept title
+        - generic [ref=f10e4090]: task-005 Task rename invalid
+        - generic [ref=f10e4091]: Open
+        - generic [ref=f10e4092]: Normal
+        - button "Open project" [ref=f10e4093] [cursor=pointer]
+      - generic [ref=f10e4094]:
+        - generic [ref=f10e4095]: Archived title
+        - generic [ref=f10e4096]: task-005 Task rename archive
+        - generic [ref=f10e4097]: Open
+        - generic [ref=f10e4098]: Normal
+        - button "Open project" [ref=f10e4099] [cursor=pointer]
+      - generic [ref=f10e4100]:
+        - generic [ref=f10e4101]: Priority renamed
+        - generic [ref=f10e4102]: task-006 Priority ownership
+        - generic [ref=f10e4103]: Open
+        - generic [ref=f10e4104]: High
+        - button "Open project" [ref=f10e4105] [cursor=pointer]
+      - generic [ref=f10e4106]:
+        - generic [ref=f10e4107]: Priority second
+        - generic [ref=f10e4108]: task-006 Priority ownership
+        - generic [ref=f10e4109]: Open
+        - generic [ref=f10e4110]: Low
+        - button "Open project" [ref=f10e4111] [cursor=pointer]
+      - generic [ref=f10e4112]:
+        - generic [ref=f10e4113]: Priority other task
+        - generic [ref=f10e4114]: task-006 Priority other owner
+        - generic [ref=f10e4115]: Open
+        - generic [ref=f10e4116]: Normal
+        - button "Open project" [ref=f10e4117] [cursor=pointer]
+      - generic [ref=f10e4118]:
+        - generic [ref=f10e4119]: Priority completed
+        - generic [ref=f10e4120]: task-006 Priority completion
+        - generic [ref=f10e4121]: Completed
+        - generic [ref=f10e4122]: Low
+        - button "Open project" [ref=f10e4123] [cursor=pointer]
+      - generic [ref=f10e4124]:
+        - generic [ref=f10e4125]: Priority open
+        - generic [ref=f10e4126]: task-006 Priority completion
+        - generic [ref=f10e4127]: Open
+        - generic [ref=f10e4128]: High
+        - button "Open project" [ref=f10e4129] [cursor=pointer]
+      - generic [ref=f10e4130]:
+        - generic [ref=f10e4131]: Priority retained
+        - generic [ref=f10e4132]: task-006 Priority archive
+        - generic [ref=f10e4133]: Open
+        - generic [ref=f10e4134]: Normal
+        - button "Open project" [ref=f10e4135] [cursor=pointer]
+      - generic [ref=f10e4136]:
+        - generic [ref=f10e4137]: Task preserved
+        - generic [ref=f10e4138]: task-006 Task reload
+        - generic [ref=f10e4139]: Open
+        - generic [ref=f10e4140]: Normal
+        - button "Open project" [ref=f10e4141] [cursor=pointer]
+      - generic [ref=f10e4142]:
+        - generic [ref=f10e4143]: Private to owner
+        - generic [ref=f10e4144]: task-006 Task owner
+        - generic [ref=f10e4145]: Open
+        - generic [ref=f10e4146]: Normal
+        - button "Open project" [ref=f10e4147] [cursor=pointer]
+      - generic [ref=f10e4148]:
+        - generic [ref=f10e4149]: Done task
+        - generic [ref=f10e4150]: task-006 Task filters
+        - generic [ref=f10e4151]: Open
+        - generic [ref=f10e4152]: Normal
+        - button "Open project" [ref=f10e4153] [cursor=pointer]
+      - generic [ref=f10e4154]:
+        - generic [ref=f10e4155]: Open task
+        - generic [ref=f10e4156]: task-006 Task filters
+        - generic [ref=f10e4157]: Open
+        - generic [ref=f10e4158]: Normal
+        - button "Open project" [ref=f10e4159] [cursor=pointer]
+      - generic [ref=f10e4160]:
+        - generic [ref=f10e4161]: Retained task
+        - generic [ref=f10e4162]: task-006 Archive tasks
+        - generic [ref=f10e4163]: Completed
+        - generic [ref=f10e4164]: Normal
+        - button "Open project" [ref=f10e4165] [cursor=pointer]
+      - generic [ref=f10e4166]:
+        - generic [ref=f10e4167]: Summary one
+        - generic [ref=f10e4168]: task-006 Summary project
+        - generic [ref=f10e4169]: Completed
+        - generic [ref=f10e4170]: Normal
+        - button "Open project" [ref=f10e4171] [cursor=pointer]
+      - generic [ref=f10e4172]:
+        - generic [ref=f10e4173]: Summary two
+        - generic [ref=f10e4174]: task-006 Summary project
+        - generic [ref=f10e4175]: Open
+        - generic [ref=f10e4176]: Normal
+        - button "Open project" [ref=f10e4177] [cursor=pointer]
+      - generic [ref=f10e4178]:
+        - generic [ref=f10e4179]: Identity task
+        - generic [ref=f10e4180]: task-006 Identity updated
+        - generic [ref=f10e4181]: Completed
+        - generic [ref=f10e4182]: Normal
+        - button "Open project" [ref=f10e4183] [cursor=pointer]
+      - generic [ref=f10e4184]:
+        - generic [ref=f10e4185]: Name updated
+        - generic [ref=f10e4186]: task-006 Task rename identity
+        - generic [ref=f10e4187]: Completed
+        - generic [ref=f10e4188]: Normal
+        - button "Open project" [ref=f10e4189] [cursor=pointer]
+      - generic [ref=f10e4190]:
+        - generic [ref=f10e4191]: Name second
+        - generic [ref=f10e4192]: task-006 Task rename identity
+        - generic [ref=f10e4193]: Open
+        - generic [ref=f10e4194]: Normal
+        - button "Open project" [ref=f10e4195] [cursor=pointer]
+      - generic [ref=f10e4196]:
+        - generic [ref=f10e4197]: Kept title
+        - generic [ref=f10e4198]: task-006 Task rename invalid
+        - generic [ref=f10e4199]: Open
+        - generic [ref=f10e4200]: Normal
+        - button "Open project" [ref=f10e4201] [cursor=pointer]
+      - generic [ref=f10e4202]:
+        - generic [ref=f10e4203]: Archived title
+        - generic [ref=f10e4204]: task-006 Task rename archive
+        - generic [ref=f10e4205]: Open
+        - generic [ref=f10e4206]: Normal
+        - button "Open project" [ref=f10e4207] [cursor=pointer]
+      - generic [ref=f10e4208]:
+        - generic [ref=f10e4209]: High open first
+        - generic [ref=f10e4210]: task-007 Priority intersection
+        - generic [ref=f10e4211]: Open
+        - generic [ref=f10e4212]: High
+        - button "Open project" [ref=f10e4213] [cursor=pointer]
+      - generic [ref=f10e4214]:
+        - generic [ref=f10e4215]: Low open
+        - generic [ref=f10e4216]: task-007 Priority intersection
+        - generic [ref=f10e4217]: Open
+        - generic [ref=f10e4218]: Low
+        - button "Open project" [ref=f10e4219] [cursor=pointer]
+      - generic [ref=f10e4220]:
+        - generic [ref=f10e4221]: High completed
+        - generic [ref=f10e4222]: task-007 Priority intersection
+        - generic [ref=f10e4223]: Completed
+        - generic [ref=f10e4224]: High
+        - button "Open project" [ref=f10e4225] [cursor=pointer]
+      - generic [ref=f10e4226]:
+        - generic [ref=f10e4227]: High open last
+        - generic [ref=f10e4228]: task-007 Priority intersection
+        - generic [ref=f10e4229]: Open
+        - generic [ref=f10e4230]: High
+        - button "Open project" [ref=f10e4231] [cursor=pointer]
+      - generic [ref=f10e4232]:
+        - generic [ref=f10e4233]: Leaving priority
+        - generic [ref=f10e4234]: task-007 Priority live filters
+        - generic [ref=f10e4235]: Open
+        - generic [ref=f10e4236]: Low
+        - button "Open project" [ref=f10e4237] [cursor=pointer]
+      - generic [ref=f10e4238]:
+        - generic [ref=f10e4239]: Leaving completion
+        - generic [ref=f10e4240]: task-007 Priority live filters
+        - generic [ref=f10e4241]: Open
+        - generic [ref=f10e4242]: High
+        - button "Open project" [ref=f10e4243] [cursor=pointer]
+      - generic [ref=f10e4244]:
+        - generic [ref=f10e4245]: Completed high guard
+        - generic [ref=f10e4246]: task-007 Priority live filters
+        - generic [ref=f10e4247]: Completed
+        - generic [ref=f10e4248]: High
+        - button "Open project" [ref=f10e4249] [cursor=pointer]
+      - generic [ref=f10e4250]:
+        - generic [ref=f10e4251]: Open normal guard
+        - generic [ref=f10e4252]: task-007 Priority live filters
+        - generic [ref=f10e4253]: Open
+        - generic [ref=f10e4254]: Normal
+        - button "Open project" [ref=f10e4255] [cursor=pointer]
+      - generic [ref=f10e4256]:
+        - generic [ref=f10e4257]: Filtered new title
+        - generic [ref=f10e4258]: task-007 Priority rename filters
+        - generic [ref=f10e4259]: Open
+        - generic [ref=f10e4260]: Low
+        - button "Open project" [ref=f10e4261] [cursor=pointer]
+      - generic [ref=f10e4262]:
+        - generic [ref=f10e4263]: Unmatched normal task
+        - generic [ref=f10e4264]: task-007 Priority rename filters
+        - generic [ref=f10e4265]: Open
+        - generic [ref=f10e4266]: Normal
+        - button "Open project" [ref=f10e4267] [cursor=pointer]
+      - generic [ref=f10e4268]:
+        - generic [ref=f10e4269]: Completed low guard
+        - generic [ref=f10e4270]: task-007 Priority rename filters
+        - generic [ref=f10e4271]: Completed
+        - generic [ref=f10e4272]: Low
+        - button "Open project" [ref=f10e4273] [cursor=pointer]
+      - generic [ref=f10e4274]:
+        - generic [ref=f10e4275]: Archived high open
+        - generic [ref=f10e4276]: task-007 Archived combined filters
+        - generic [ref=f10e4277]: Open
+        - generic [ref=f10e4278]: High
+        - button "Open project" [ref=f10e4279] [cursor=pointer]
+      - generic [ref=f10e4280]:
+        - generic [ref=f10e4281]: Archived normal completed
+        - generic [ref=f10e4282]: task-007 Archived combined filters
+        - generic [ref=f10e4283]: Completed
+        - generic [ref=f10e4284]: Normal
+        - button "Open project" [ref=f10e4285] [cursor=pointer]
+      - generic [ref=f10e4286]:
+        - generic [ref=f10e4287]: Priority renamed
+        - generic [ref=f10e4288]: task-007 Priority ownership
+        - generic [ref=f10e4289]: Open
+        - generic [ref=f10e4290]: High
+        - button "Open project" [ref=f10e4291] [cursor=pointer]
+      - generic [ref=f10e4292]:
+        - generic [ref=f10e4293]: Priority second
+        - generic [ref=f10e4294]: task-007 Priority ownership
+        - generic [ref=f10e4295]: Open
+        - generic [ref=f10e4296]: Low
+        - button "Open project" [ref=f10e4297] [cursor=pointer]
+      - generic [ref=f10e4298]:
+        - generic [ref=f10e4299]: Priority other task
+        - generic [ref=f10e4300]: task-007 Priority other owner
+        - generic [ref=f10e4301]: Open
+        - generic [ref=f10e4302]: Normal
+        - button "Open project" [ref=f10e4303] [cursor=pointer]
+      - generic [ref=f10e4304]:
+        - generic [ref=f10e4305]: Priority completed
+        - generic [ref=f10e4306]: task-007 Priority completion
+        - generic [ref=f10e4307]: Completed
+        - generic [ref=f10e4308]: Low
+        - button "Open project" [ref=f10e4309] [cursor=pointer]
+      - generic [ref=f10e4310]:
+        - generic [ref=f10e4311]: Priority open
+        - generic [ref=f10e4312]: task-007 Priority completion
+        - generic [ref=f10e4313]: Open
+        - generic [ref=f10e4314]: High
+        - button "Open project" [ref=f10e4315] [cursor=pointer]
+      - generic [ref=f10e4316]:
+        - generic [ref=f10e4317]: Priority retained
+        - generic [ref=f10e4318]: task-007 Priority archive
+        - generic [ref=f10e4319]: Open
+        - generic [ref=f10e4320]: Normal
+        - button "Open project" [ref=f10e4321] [cursor=pointer]
+      - generic [ref=f10e4322]:
+        - generic [ref=f10e4323]: Task preserved
+        - generic [ref=f10e4324]: task-007 Task reload
+        - generic [ref=f10e4325]: Open
+        - generic [ref=f10e4326]: Normal
+        - button "Open project" [ref=f10e4327] [cursor=pointer]
+      - generic [ref=f10e4328]:
+        - generic [ref=f10e4329]: Private to owner
+        - generic [ref=f10e4330]: task-007 Task owner
+        - generic [ref=f10e4331]: Open
+        - generic [ref=f10e4332]: Normal
+        - button "Open project" [ref=f10e4333] [cursor=pointer]
+      - generic [ref=f10e4334]:
+        - generic [ref=f10e4335]: Done task
+        - generic [ref=f10e4336]: task-007 Task filters
+        - generic [ref=f10e4337]: Open
+        - generic [ref=f10e4338]: Normal
+        - button "Open project" [ref=f10e4339] [cursor=pointer]
+      - generic [ref=f10e4340]:
+        - generic [ref=f10e4341]: Open task
+        - generic [ref=f10e4342]: task-007 Task filters
+        - generic [ref=f10e4343]: Open
+        - generic [ref=f10e4344]: Normal
+        - button "Open project" [ref=f10e4345] [cursor=pointer]
+      - generic [ref=f10e4346]:
+        - generic [ref=f10e4347]: Retained task
+        - generic [ref=f10e4348]: task-007 Archive tasks
+        - generic [ref=f10e4349]: Completed
+        - generic [ref=f10e4350]: Normal
+        - button "Open project" [ref=f10e4351] [cursor=pointer]
+      - generic [ref=f10e4352]:
+        - generic [ref=f10e4353]: Summary one
+        - generic [ref=f10e4354]: task-007 Summary project
+        - generic [ref=f10e4355]: Completed
+        - generic [ref=f10e4356]: Normal
+        - button "Open project" [ref=f10e4357] [cursor=pointer]
+      - generic [ref=f10e4358]:
+        - generic [ref=f10e4359]: Summary two
+        - generic [ref=f10e4360]: task-007 Summary project
+        - generic [ref=f10e4361]: Open
+        - generic [ref=f10e4362]: Normal
+        - button "Open project" [ref=f10e4363] [cursor=pointer]
+      - generic [ref=f10e4364]:
+        - generic [ref=f10e4365]: Identity task
+        - generic [ref=f10e4366]: task-007 Identity updated
+        - generic [ref=f10e4367]: Completed
+        - generic [ref=f10e4368]: Normal
+        - button "Open project" [ref=f10e4369] [cursor=pointer]
+      - generic [ref=f10e4370]:
+        - generic [ref=f10e4371]: Name updated
+        - generic [ref=f10e4372]: task-007 Task rename identity
+        - generic [ref=f10e4373]: Completed
+        - generic [ref=f10e4374]: Normal
+        - button "Open project" [ref=f10e4375] [cursor=pointer]
+      - generic [ref=f10e4376]:
+        - generic [ref=f10e4377]: Name second
+        - generic [ref=f10e4378]: task-007 Task rename identity
+        - generic [ref=f10e4379]: Open
+        - generic [ref=f10e4380]: Normal
+        - button "Open project" [ref=f10e4381] [cursor=pointer]
+      - generic [ref=f10e4382]:
+        - generic [ref=f10e4383]: Kept title
+        - generic [ref=f10e4384]: task-007 Task rename invalid
+        - generic [ref=f10e4385]: Open
+        - generic [ref=f10e4386]: Normal
+        - button "Open project" [ref=f10e4387] [cursor=pointer]
+      - generic [ref=f10e4388]:
+        - generic [ref=f10e4389]: Archived title
+        - generic [ref=f10e4390]: task-007 Task rename archive
+        - generic [ref=f10e4391]: Open
+        - generic [ref=f10e4392]: Normal
+        - button "Open project" [ref=f10e4393] [cursor=pointer]
+      - generic [ref=f10e4394]:
+        - generic [ref=f10e4395]: Independent normal
+        - generic [ref=f10e4396]: task-008 Defaults independent
+        - generic [ref=f10e4397]: Open
+        - generic [ref=f10e4398]: Normal
+        - button "Open project" [ref=f10e4399] [cursor=pointer]
+      - generic [ref=f10e4400]:
+        - generic [ref=f10e4401]: Before default change
+        - generic [ref=f10e4402]: task-008 Defaults inheritance
+        - generic [ref=f10e4403]: Completed
+        - generic [ref=f10e4404]: Normal
+        - button "Open project" [ref=f10e4405] [cursor=pointer]
+      - generic [ref=f10e4406]:
+        - generic [ref=f10e4407]: Inherited high
+        - generic [ref=f10e4408]: task-008 Defaults inheritance
+        - generic [ref=f10e4409]: Open
+        - generic [ref=f10e4410]: High
+        - button "Open project" [ref=f10e4411] [cursor=pointer]
+      - generic [ref=f10e4412]:
+        - generic [ref=f10e4413]: Inherited low
+        - generic [ref=f10e4414]: task-008 Defaults inheritance
+        - generic [ref=f10e4415]: Open
+        - generic [ref=f10e4416]: Low
+        - button "Open project" [ref=f10e4417] [cursor=pointer]
+      - generic [ref=f10e4418]:
+        - generic [ref=f10e4419]: Inherited normal
+        - generic [ref=f10e4420]: task-008 Defaults inheritance
+        - generic [ref=f10e4421]: Open
+        - generic [ref=f10e4422]: Normal
+        - button "Open project" [ref=f10e4423] [cursor=pointer]
+      - generic [ref=f10e4424]:
+        - generic [ref=f10e4425]: Lifecycle task
+        - generic [ref=f10e4426]: task-008 Defaults renamed
+        - generic [ref=f10e4427]: Open
+        - generic [ref=f10e4428]: Low
+        - button "Open project" [ref=f10e4429] [cursor=pointer]
+      - generic [ref=f10e4430]:
+        - generic [ref=f10e4431]: Restored inherits
+        - generic [ref=f10e4432]: task-008 Defaults renamed
+        - generic [ref=f10e4433]: Open
+        - generic [ref=f10e4434]: Low
+        - button "Open project" [ref=f10e4435] [cursor=pointer]
+      - generic [ref=f10e4436]:
+        - generic [ref=f10e4437]: High open first
+        - generic [ref=f10e4438]: task-008 Priority intersection
+        - generic [ref=f10e4439]: Open
+        - generic [ref=f10e4440]: High
+        - button "Open project" [ref=f10e4441] [cursor=pointer]
+      - generic [ref=f10e4442]:
+        - generic [ref=f10e4443]: Low open
+        - generic [ref=f10e4444]: task-008 Priority intersection
+        - generic [ref=f10e4445]: Open
+        - generic [ref=f10e4446]: Low
+        - button "Open project" [ref=f10e4447] [cursor=pointer]
+      - generic [ref=f10e4448]:
+        - generic [ref=f10e4449]: High completed
+        - generic [ref=f10e4450]: task-008 Priority intersection
+        - generic [ref=f10e4451]: Completed
+        - generic [ref=f10e4452]: High
+        - button "Open project" [ref=f10e4453] [cursor=pointer]
+      - generic [ref=f10e4454]:
+        - generic [ref=f10e4455]: High open last
+        - generic [ref=f10e4456]: task-008 Priority intersection
+        - generic [ref=f10e4457]: Open
+        - generic [ref=f10e4458]: High
+        - button "Open project" [ref=f10e4459] [cursor=pointer]
+      - generic [ref=f10e4460]:
+        - generic [ref=f10e4461]: Leaving priority
+        - generic [ref=f10e4462]: task-008 Priority live filters
+        - generic [ref=f10e4463]: Open
+        - generic [ref=f10e4464]: Low
+        - button "Open project" [ref=f10e4465] [cursor=pointer]
+      - generic [ref=f10e4466]:
+        - generic [ref=f10e4467]: Leaving completion
+        - generic [ref=f10e4468]: task-008 Priority live filters
+        - generic [ref=f10e4469]: Open
+        - generic [ref=f10e4470]: High
+        - button "Open project" [ref=f10e4471] [cursor=pointer]
+      - generic [ref=f10e4472]:
+        - generic [ref=f10e4473]: Completed high guard
+        - generic [ref=f10e4474]: task-008 Priority live filters
+        - generic [ref=f10e4475]: Completed
+        - generic [ref=f10e4476]: High
+        - button "Open project" [ref=f10e4477] [cursor=pointer]
+      - generic [ref=f10e4478]:
+        - generic [ref=f10e4479]: Open normal guard
+        - generic [ref=f10e4480]: task-008 Priority live filters
+        - generic [ref=f10e4481]: Open
+        - generic [ref=f10e4482]: Normal
+        - button "Open project" [ref=f10e4483] [cursor=pointer]
+      - generic [ref=f10e4484]:
+        - generic [ref=f10e4485]: Filtered new title
+        - generic [ref=f10e4486]: task-008 Priority rename filters
+        - generic [ref=f10e4487]: Open
+        - generic [ref=f10e4488]: Low
+        - button "Open project" [ref=f10e4489] [cursor=pointer]
+      - generic [ref=f10e4490]:
+        - generic [ref=f10e4491]: Unmatched normal task
+        - generic [ref=f10e4492]: task-008 Priority rename filters
+        - generic [ref=f10e4493]: Open
+        - generic [ref=f10e4494]: Normal
+        - button "Open project" [ref=f10e4495] [cursor=pointer]
+      - generic [ref=f10e4496]:
+        - generic [ref=f10e4497]: Completed low guard
+        - generic [ref=f10e4498]: task-008 Priority rename filters
+        - generic [ref=f10e4499]: Completed
+        - generic [ref=f10e4500]: Low
+        - button "Open project" [ref=f10e4501] [cursor=pointer]
+      - generic [ref=f10e4502]:
+        - generic [ref=f10e4503]: Archived high open
+        - generic [ref=f10e4504]: task-008 Archived combined filters
+        - generic [ref=f10e4505]: Open
+        - generic [ref=f10e4506]: High
+        - button "Open project" [ref=f10e4507] [cursor=pointer]
+      - generic [ref=f10e4508]:
+        - generic [ref=f10e4509]: Archived normal completed
+        - generic [ref=f10e4510]: task-008 Archived combined filters
+        - generic [ref=f10e4511]: Completed
+        - generic [ref=f10e4512]: Normal
+        - button "Open project" [ref=f10e4513] [cursor=pointer]
+      - generic [ref=f10e4514]:
+        - generic [ref=f10e4515]: Priority renamed
+        - generic [ref=f10e4516]: task-008 Priority ownership
+        - generic [ref=f10e4517]: Open
+        - generic [ref=f10e4518]: High
+        - button "Open project" [ref=f10e4519] [cursor=pointer]
+      - generic [ref=f10e4520]:
+        - generic [ref=f10e4521]: Priority second
+        - generic [ref=f10e4522]: task-008 Priority ownership
+        - generic [ref=f10e4523]: Open
+        - generic [ref=f10e4524]: Low
+        - button "Open project" [ref=f10e4525] [cursor=pointer]
+      - generic [ref=f10e4526]:
+        - generic [ref=f10e4527]: Priority other task
+        - generic [ref=f10e4528]: task-008 Priority other owner
+        - generic [ref=f10e4529]: Open
+        - generic [ref=f10e4530]: Normal
+        - button "Open project" [ref=f10e4531] [cursor=pointer]
+      - generic [ref=f10e4532]:
+        - generic [ref=f10e4533]: Priority completed
+        - generic [ref=f10e4534]: task-008 Priority completion
+        - generic [ref=f10e4535]: Completed
+        - generic [ref=f10e4536]: Low
+        - button "Open project" [ref=f10e4537] [cursor=pointer]
+      - generic [ref=f10e4538]:
+        - generic [ref=f10e4539]: Priority open
+        - generic [ref=f10e4540]: task-008 Priority completion
+        - generic [ref=f10e4541]: Open
+        - generic [ref=f10e4542]: High
+        - button "Open project" [ref=f10e4543] [cursor=pointer]
+      - generic [ref=f10e4544]:
+        - generic [ref=f10e4545]: Priority retained
+        - generic [ref=f10e4546]: task-008 Priority archive
+        - generic [ref=f10e4547]: Open
+        - generic [ref=f10e4548]: Normal
+        - button "Open project" [ref=f10e4549] [cursor=pointer]
+      - generic [ref=f10e4550]:
+        - generic [ref=f10e4551]: Task preserved
+        - generic [ref=f10e4552]: task-008 Task reload
+        - generic [ref=f10e4553]: Open
+        - generic [ref=f10e4554]: Normal
+        - button "Open project" [ref=f10e4555] [cursor=pointer]
+      - generic [ref=f10e4556]:
+        - generic [ref=f10e4557]: Private to owner
+        - generic [ref=f10e4558]: task-008 Task owner
+        - generic [ref=f10e4559]: Open
+        - generic [ref=f10e4560]: Normal
+        - button "Open project" [ref=f10e4561] [cursor=pointer]
+      - generic [ref=f10e4562]:
+        - generic [ref=f10e4563]: Done task
+        - generic [ref=f10e4564]: task-008 Task filters
+        - generic [ref=f10e4565]: Open
+        - generic [ref=f10e4566]: Normal
+        - button "Open project" [ref=f10e4567] [cursor=pointer]
+      - generic [ref=f10e4568]:
+        - generic [ref=f10e4569]: Open task
+        - generic [ref=f10e4570]: task-008 Task filters
+        - generic [ref=f10e4571]: Open
+        - generic [ref=f10e4572]: Normal
+        - button "Open project" [ref=f10e4573] [cursor=pointer]
+      - generic [ref=f10e4574]:
+        - generic [ref=f10e4575]: Retained task
+        - generic [ref=f10e4576]: task-008 Archive tasks
+        - generic [ref=f10e4577]: Completed
+        - generic [ref=f10e4578]: Normal
+        - button "Open project" [ref=f10e4579] [cursor=pointer]
+      - generic [ref=f10e4580]:
+        - generic [ref=f10e4581]: Summary one
+        - generic [ref=f10e4582]: task-008 Summary project
+        - generic [ref=f10e4583]: Completed
+        - generic [ref=f10e4584]: Normal
+        - button "Open project" [ref=f10e4585] [cursor=pointer]
+      - generic [ref=f10e4586]:
+        - generic [ref=f10e4587]: Summary two
+        - generic [ref=f10e4588]: task-008 Summary project
+        - generic [ref=f10e4589]: Open
+        - generic [ref=f10e4590]: Normal
+        - button "Open project" [ref=f10e4591] [cursor=pointer]
+      - generic [ref=f10e4592]:
+        - generic [ref=f10e4593]: Identity task
+        - generic [ref=f10e4594]: task-008 Identity updated
+        - generic [ref=f10e4595]: Completed
+        - generic [ref=f10e4596]: Normal
+        - button "Open project" [ref=f10e4597] [cursor=pointer]
+      - generic [ref=f10e4598]:
+        - generic [ref=f10e4599]: Name updated
+        - generic [ref=f10e4600]: task-008 Task rename identity
+        - generic [ref=f10e4601]: Completed
+        - generic [ref=f10e4602]: Normal
+        - button "Open project" [ref=f10e4603] [cursor=pointer]
+      - generic [ref=f10e4604]:
+        - generic [ref=f10e4605]: Name second
+        - generic [ref=f10e4606]: task-008 Task rename identity
+        - generic [ref=f10e4607]: Open
+        - generic [ref=f10e4608]: Normal
+        - button "Open project" [ref=f10e4609] [cursor=pointer]
+      - generic [ref=f10e4610]:
+        - generic [ref=f10e4611]: Kept title
+        - generic [ref=f10e4612]: task-008 Task rename invalid
+        - generic [ref=f10e4613]: Open
+        - generic [ref=f10e4614]: Normal
+        - button "Open project" [ref=f10e4615] [cursor=pointer]
+      - generic [ref=f10e4616]:
+        - generic [ref=f10e4617]: Archived title
+        - generic [ref=f10e4618]: task-008 Task rename archive
+        - generic [ref=f10e4619]: Open
+        - generic [ref=f10e4620]: Normal
+        - button "Open project" [ref=f10e4621] [cursor=pointer]
+      - generic [ref=f10e4622]:
+        - generic [ref=f10e4623]: Independent normal
+        - generic [ref=f10e4624]: task-009 Defaults independent
+        - generic [ref=f10e4625]: Open
+        - generic [ref=f10e4626]: Normal
+        - button "Open project" [ref=f10e4627] [cursor=pointer]
+      - generic [ref=f10e4628]:
+        - generic [ref=f10e4629]: Before default change
+        - generic [ref=f10e4630]: task-009 Defaults inheritance
+        - generic [ref=f10e4631]: Completed
+        - generic [ref=f10e4632]: Normal
+        - button "Open project" [ref=f10e4633] [cursor=pointer]
+      - generic [ref=f10e4634]:
+        - generic [ref=f10e4635]: Inherited high
+        - generic [ref=f10e4636]: task-009 Defaults inheritance
+        - generic [ref=f10e4637]: Open
+        - generic [ref=f10e4638]: High
+        - button "Open project" [ref=f10e4639] [cursor=pointer]
+      - generic [ref=f10e4640]:
+        - generic [ref=f10e4641]: Inherited low
+        - generic [ref=f10e4642]: task-009 Defaults inheritance
+        - generic [ref=f10e4643]: Open
+        - generic [ref=f10e4644]: Low
+        - button "Open project" [ref=f10e4645] [cursor=pointer]
+      - generic [ref=f10e4646]:
+        - generic [ref=f10e4647]: Inherited normal
+        - generic [ref=f10e4648]: task-009 Defaults inheritance
+        - generic [ref=f10e4649]: Open
+        - generic [ref=f10e4650]: Normal
+        - button "Open project" [ref=f10e4651] [cursor=pointer]
+      - generic [ref=f10e4652]:
+        - generic [ref=f10e4653]: Lifecycle task
+        - generic [ref=f10e4654]: task-009 Defaults renamed
+        - generic [ref=f10e4655]: Open
+        - generic [ref=f10e4656]: Low
+        - button "Open project" [ref=f10e4657] [cursor=pointer]
+      - generic [ref=f10e4658]:
+        - generic [ref=f10e4659]: Restored inherits
+        - generic [ref=f10e4660]: task-009 Defaults renamed
+        - generic [ref=f10e4661]: Open
+        - generic [ref=f10e4662]: Low
+        - button "Open project" [ref=f10e4663] [cursor=pointer]
+      - generic [ref=f10e4664]:
+        - generic [ref=f10e4665]: Calendar renamed
+        - generic [ref=f10e4666]: task-009 Calendar persistence
+        - generic [ref=f10e4667]: Open
+        - generic [ref=f10e4668]: Normal
+        - button "Open project" [ref=f10e4669] [cursor=pointer]
+      - generic [ref=f10e4670]:
+        - generic [ref=f10e4671]: Calendar valid
+        - generic [ref=f10e4672]: task-009 Calendar validation
+        - generic [ref=f10e4673]: Open
+        - generic [ref=f10e4674]: Normal
+        - generic [ref=f10e4675]: 2028-04-30
+        - button "Open project" [ref=f10e4676] [cursor=pointer]
+      - generic [ref=f10e4677]:
+        - generic [ref=f10e4678]: Dated first
+        - generic [ref=f10e4679]: task-009 Calendar independence
+        - generic [ref=f10e4680]: Completed
+        - generic [ref=f10e4681]: High
+        - generic [ref=f10e4682]: 2029-01-01
+        - button "Open project" [ref=f10e4683] [cursor=pointer]
+      - generic [ref=f10e4684]:
+        - generic [ref=f10e4685]: Undated second
+        - generic [ref=f10e4686]: task-009 Calendar independence
+        - generic [ref=f10e4687]: Open
+        - generic [ref=f10e4688]: Normal
+        - button "Open project" [ref=f10e4689] [cursor=pointer]
+      - generic [ref=f10e4690]:
+        - generic [ref=f10e4691]: Completed normal guard
+        - generic [ref=f10e4692]: task-009 Calendar independence
+        - generic [ref=f10e4693]: Completed
+        - generic [ref=f10e4694]: Normal
+        - button "Open project" [ref=f10e4695] [cursor=pointer]
+      - generic [ref=f10e4696]:
+        - generic [ref=f10e4697]: Owner task
+        - generic [ref=f10e4698]: task-009 Calendar second owner
+        - generic [ref=f10e4699]: Open
+        - generic [ref=f10e4700]: Normal
+        - button "Open project" [ref=f10e4701] [cursor=pointer]
+      - generic [ref=f10e4702]:
+        - generic [ref=f10e4703]: Archive dated
+        - generic [ref=f10e4704]: task-009 Calendar archival
+        - generic [ref=f10e4705]: Open
+        - generic [ref=f10e4706]: Normal
+        - generic [ref=f10e4707]: 2030-12-31
+        - button "Open project" [ref=f10e4708] [cursor=pointer]
+      - generic [ref=f10e4709]:
+        - generic [ref=f10e4710]: High open first
+        - generic [ref=f10e4711]: task-009 Priority intersection
+        - generic [ref=f10e4712]: Open
+        - generic [ref=f10e4713]: High
+        - button "Open project" [ref=f10e4714] [cursor=pointer]
+      - generic [ref=f10e4715]:
+        - generic [ref=f10e4716]: Low open
+        - generic [ref=f10e4717]: task-009 Priority intersection
+        - generic [ref=f10e4718]: Open
+        - generic [ref=f10e4719]: Low
+        - button "Open project" [ref=f10e4720] [cursor=pointer]
+      - generic [ref=f10e4721]:
+        - generic [ref=f10e4722]: High completed
+        - generic [ref=f10e4723]: task-009 Priority intersection
+        - generic [ref=f10e4724]: Completed
+        - generic [ref=f10e4725]: High
+        - button "Open project" [ref=f10e4726] [cursor=pointer]
+      - generic [ref=f10e4727]:
+        - generic [ref=f10e4728]: High open last
+        - generic [ref=f10e4729]: task-009 Priority intersection
+        - generic [ref=f10e4730]: Open
+        - generic [ref=f10e4731]: High
+        - button "Open project" [ref=f10e4732] [cursor=pointer]
+      - generic [ref=f10e4733]:
+        - generic [ref=f10e4734]: Leaving priority
+        - generic [ref=f10e4735]: task-009 Priority live filters
+        - generic [ref=f10e4736]: Open
+        - generic [ref=f10e4737]: Low
+        - button "Open project" [ref=f10e4738] [cursor=pointer]
+      - generic [ref=f10e4739]:
+        - generic [ref=f10e4740]: Leaving completion
+        - generic [ref=f10e4741]: task-009 Priority live filters
+        - generic [ref=f10e4742]: Open
+        - generic [ref=f10e4743]: High
+        - button "Open project" [ref=f10e4744] [cursor=pointer]
+      - generic [ref=f10e4745]:
+        - generic [ref=f10e4746]: Completed high guard
+        - generic [ref=f10e4747]: task-009 Priority live filters
+        - generic [ref=f10e4748]: Completed
+        - generic [ref=f10e4749]: High
+        - button "Open project" [ref=f10e4750] [cursor=pointer]
+      - generic [ref=f10e4751]:
+        - generic [ref=f10e4752]: Open normal guard
+        - generic [ref=f10e4753]: task-009 Priority live filters
+        - generic [ref=f10e4754]: Open
+        - generic [ref=f10e4755]: Normal
+        - button "Open project" [ref=f10e4756] [cursor=pointer]
+      - generic [ref=f10e4757]:
+        - generic [ref=f10e4758]: Filtered new title
+        - generic [ref=f10e4759]: task-009 Priority rename filters
+        - generic [ref=f10e4760]: Open
+        - generic [ref=f10e4761]: Low
+        - button "Open project" [ref=f10e4762] [cursor=pointer]
+      - generic [ref=f10e4763]:
+        - generic [ref=f10e4764]: Unmatched normal task
+        - generic [ref=f10e4765]: task-009 Priority rename filters
+        - generic [ref=f10e4766]: Open
+        - generic [ref=f10e4767]: Normal
+        - button "Open project" [ref=f10e4768] [cursor=pointer]
+      - generic [ref=f10e4769]:
+        - generic [ref=f10e4770]: Completed low guard
+        - generic [ref=f10e4771]: task-009 Priority rename filters
+        - generic [ref=f10e4772]: Completed
+        - generic [ref=f10e4773]: Low
+        - button "Open project" [ref=f10e4774] [cursor=pointer]
+      - generic [ref=f10e4775]:
+        - generic [ref=f10e4776]: Archived high open
+        - generic [ref=f10e4777]: task-009 Archived combined filters
+        - generic [ref=f10e4778]: Open
+        - generic [ref=f10e4779]: High
+        - button "Open project" [ref=f10e4780] [cursor=pointer]
+      - generic [ref=f10e4781]:
+        - generic [ref=f10e4782]: Archived normal completed
+        - generic [ref=f10e4783]: task-009 Archived combined filters
+        - generic [ref=f10e4784]: Completed
+        - generic [ref=f10e4785]: Normal
+        - button "Open project" [ref=f10e4786] [cursor=pointer]
+      - generic [ref=f10e4787]:
+        - generic [ref=f10e4788]: Priority renamed
+        - generic [ref=f10e4789]: task-009 Priority ownership
+        - generic [ref=f10e4790]: Open
+        - generic [ref=f10e4791]: High
+        - button "Open project" [ref=f10e4792] [cursor=pointer]
+      - generic [ref=f10e4793]:
+        - generic [ref=f10e4794]: Priority second
+        - generic [ref=f10e4795]: task-009 Priority ownership
+        - generic [ref=f10e4796]: Open
+        - generic [ref=f10e4797]: Low
+        - button "Open project" [ref=f10e4798] [cursor=pointer]
+      - generic [ref=f10e4799]:
+        - generic [ref=f10e4800]: Priority other task
+        - generic [ref=f10e4801]: task-009 Priority other owner
+        - generic [ref=f10e4802]: Open
+        - generic [ref=f10e4803]: Normal
+        - button "Open project" [ref=f10e4804] [cursor=pointer]
+      - generic [ref=f10e4805]:
+        - generic [ref=f10e4806]: Priority completed
+        - generic [ref=f10e4807]: task-009 Priority completion
+        - generic [ref=f10e4808]: Completed
+        - generic [ref=f10e4809]: Low
+        - button "Open project" [ref=f10e4810] [cursor=pointer]
+      - generic [ref=f10e4811]:
+        - generic [ref=f10e4812]: Priority open
+        - generic [ref=f10e4813]: task-009 Priority completion
+        - generic [ref=f10e4814]: Open
+        - generic [ref=f10e4815]: High
+        - button "Open project" [ref=f10e4816] [cursor=pointer]
+      - generic [ref=f10e4817]:
+        - generic [ref=f10e4818]: Priority retained
+        - generic [ref=f10e4819]: task-009 Priority archive
+        - generic [ref=f10e4820]: Open
+        - generic [ref=f10e4821]: Normal
+        - button "Open project" [ref=f10e4822] [cursor=pointer]
+      - generic [ref=f10e4823]:
+        - generic [ref=f10e4824]: Task preserved
+        - generic [ref=f10e4825]: task-009 Task reload
+        - generic [ref=f10e4826]: Open
+        - generic [ref=f10e4827]: Normal
+        - button "Open project" [ref=f10e4828] [cursor=pointer]
+      - generic [ref=f10e4829]:
+        - generic [ref=f10e4830]: Private to owner
+        - generic [ref=f10e4831]: task-009 Task owner
+        - generic [ref=f10e4832]: Open
+        - generic [ref=f10e4833]: Normal
+        - button "Open project" [ref=f10e4834] [cursor=pointer]
+      - generic [ref=f10e4835]:
+        - generic [ref=f10e4836]: Done task
+        - generic [ref=f10e4837]: task-009 Task filters
+        - generic [ref=f10e4838]: Open
+        - generic [ref=f10e4839]: Normal
+        - button "Open project" [ref=f10e4840] [cursor=pointer]
+      - generic [ref=f10e4841]:
+        - generic [ref=f10e4842]: Open task
+        - generic [ref=f10e4843]: task-009 Task filters
+        - generic [ref=f10e4844]: Open
+        - generic [ref=f10e4845]: Normal
+        - button "Open project" [ref=f10e4846] [cursor=pointer]
+      - generic [ref=f10e4847]:
+        - generic [ref=f10e4848]: Retained task
+        - generic [ref=f10e4849]: task-009 Archive tasks
+        - generic [ref=f10e4850]: Completed
+        - generic [ref=f10e4851]: Normal
+        - button "Open project" [ref=f10e4852] [cursor=pointer]
+      - generic [ref=f10e4853]:
+        - generic [ref=f10e4854]: Summary one
+        - generic [ref=f10e4855]: task-009 Summary project
+        - generic [ref=f10e4856]: Completed
+        - generic [ref=f10e4857]: Normal
+        - button "Open project" [ref=f10e4858] [cursor=pointer]
+      - generic [ref=f10e4859]:
+        - generic [ref=f10e4860]: Summary two
+        - generic [ref=f10e4861]: task-009 Summary project
+        - generic [ref=f10e4862]: Open
+        - generic [ref=f10e4863]: Normal
+        - button "Open project" [ref=f10e4864] [cursor=pointer]
+      - generic [ref=f10e4865]:
+        - generic [ref=f10e4866]: Identity task
+        - generic [ref=f10e4867]: task-009 Identity updated
+        - generic [ref=f10e4868]: Completed
+        - generic [ref=f10e4869]: Normal
+        - button "Open project" [ref=f10e4870] [cursor=pointer]
+      - generic [ref=f10e4871]:
+        - generic [ref=f10e4872]: Name updated
+        - generic [ref=f10e4873]: task-009 Task rename identity
+        - generic [ref=f10e4874]: Completed
+        - generic [ref=f10e4875]: Normal
+        - button "Open project" [ref=f10e4876] [cursor=pointer]
+      - generic [ref=f10e4877]:
+        - generic [ref=f10e4878]: Name second
+        - generic [ref=f10e4879]: task-009 Task rename identity
+        - generic [ref=f10e4880]: Open
+        - generic [ref=f10e4881]: Normal
+        - button "Open project" [ref=f10e4882] [cursor=pointer]
+      - generic [ref=f10e4883]:
+        - generic [ref=f10e4884]: Kept title
+        - generic [ref=f10e4885]: task-009 Task rename invalid
+        - generic [ref=f10e4886]: Open
+        - generic [ref=f10e4887]: Normal
+        - button "Open project" [ref=f10e4888] [cursor=pointer]
+      - generic [ref=f10e4889]:
+        - generic [ref=f10e4890]: Archived title
+        - generic [ref=f10e4891]: task-009 Task rename archive
+        - generic [ref=f10e4892]: Open
+        - generic [ref=f10e4893]: Normal
+        - button "Open project" [ref=f10e4894] [cursor=pointer]
+      - generic [ref=f10e4895]:
+        - generic [ref=f10e4896]: Independent normal
+        - generic [ref=f10e4897]: task-010 Defaults independent
+        - generic [ref=f10e4898]: Open
+        - generic [ref=f10e4899]: Normal
+        - button "Open project" [ref=f10e4900] [cursor=pointer]
+      - generic [ref=f10e4901]:
+        - generic [ref=f10e4902]: Before default change
+        - generic [ref=f10e4903]: task-010 Defaults inheritance
+        - generic [ref=f10e4904]: Completed
+        - generic [ref=f10e4905]: Normal
+        - button "Open project" [ref=f10e4906] [cursor=pointer]
+      - generic [ref=f10e4907]:
+        - generic [ref=f10e4908]: Inherited high
+        - generic [ref=f10e4909]: task-010 Defaults inheritance
+        - generic [ref=f10e4910]: Open
+        - generic [ref=f10e4911]: High
+        - button "Open project" [ref=f10e4912] [cursor=pointer]
+      - generic [ref=f10e4913]:
+        - generic [ref=f10e4914]: Inherited low
+        - generic [ref=f10e4915]: task-010 Defaults inheritance
+        - generic [ref=f10e4916]: Open
+        - generic [ref=f10e4917]: Low
+        - button "Open project" [ref=f10e4918] [cursor=pointer]
+      - generic [ref=f10e4919]:
+        - generic [ref=f10e4920]: Inherited normal
+        - generic [ref=f10e4921]: task-010 Defaults inheritance
+        - generic [ref=f10e4922]: Open
+        - generic [ref=f10e4923]: Normal
+        - button "Open project" [ref=f10e4924] [cursor=pointer]
+      - generic [ref=f10e4925]:
+        - generic [ref=f10e4926]: Lifecycle task
+        - generic [ref=f10e4927]: task-010 Defaults renamed
+        - generic [ref=f10e4928]: Open
+        - generic [ref=f10e4929]: Low
+        - button "Open project" [ref=f10e4930] [cursor=pointer]
+      - generic [ref=f10e4931]:
+        - generic [ref=f10e4932]: Restored inherits
+        - generic [ref=f10e4933]: task-010 Defaults renamed
+        - generic [ref=f10e4934]: Open
+        - generic [ref=f10e4935]: Low
+        - button "Open project" [ref=f10e4936] [cursor=pointer]
+      - generic [ref=f10e4937]:
+        - generic [ref=f10e4938]: Calendar renamed
+        - generic [ref=f10e4939]: task-010 Calendar persistence
+        - generic [ref=f10e4940]: Open
+        - generic [ref=f10e4941]: Normal
+        - button "Open project" [ref=f10e4942] [cursor=pointer]
+      - generic [ref=f10e4943]:
+        - generic [ref=f10e4944]: Calendar valid
+        - generic [ref=f10e4945]: task-010 Calendar validation
+        - generic [ref=f10e4946]: Open
+        - generic [ref=f10e4947]: Normal
+        - generic [ref=f10e4948]: 2028-04-30
+        - button "Open project" [ref=f10e4949] [cursor=pointer]
+      - generic [ref=f10e4950]:
+        - generic [ref=f10e4951]: Dated first
+        - generic [ref=f10e4952]: task-010 Calendar independence
+        - generic [ref=f10e4953]: Completed
+        - generic [ref=f10e4954]: High
+        - generic [ref=f10e4955]: 2029-01-01
+        - button "Open project" [ref=f10e4956] [cursor=pointer]
+      - generic [ref=f10e4957]:
+        - generic [ref=f10e4958]: Undated second
+        - generic [ref=f10e4959]: task-010 Calendar independence
+        - generic [ref=f10e4960]: Open
+        - generic [ref=f10e4961]: Normal
+        - button "Open project" [ref=f10e4962] [cursor=pointer]
+      - generic [ref=f10e4963]:
+        - generic [ref=f10e4964]: Completed normal guard
+        - generic [ref=f10e4965]: task-010 Calendar independence
+        - generic [ref=f10e4966]: Completed
+        - generic [ref=f10e4967]: Normal
+        - button "Open project" [ref=f10e4968] [cursor=pointer]
+      - generic [ref=f10e4969]:
+        - generic [ref=f10e4970]: Owner task
+        - generic [ref=f10e4971]: task-010 Calendar second owner
+        - generic [ref=f10e4972]: Open
+        - generic [ref=f10e4973]: Normal
+        - button "Open project" [ref=f10e4974] [cursor=pointer]
+      - generic [ref=f10e4975]:
+        - generic [ref=f10e4976]: Archive dated
+        - generic [ref=f10e4977]: task-010 Calendar archival
+        - generic [ref=f10e4978]: Open
+        - generic [ref=f10e4979]: Normal
+        - generic [ref=f10e4980]: 2030-12-31
+        - button "Open project" [ref=f10e4981] [cursor=pointer]
+      - generic [ref=f10e4982]:
+        - generic [ref=f10e4983]: Before range
+        - generic [ref=f10e4984]: task-010 Range boundaries
+        - generic [ref=f10e4985]: Open
+        - generic [ref=f10e4986]: Normal
+        - generic [ref=f10e4987]: 2028-02-28
+        - button "Open project" [ref=f10e4988] [cursor=pointer]
+      - generic [ref=f10e4989]:
+        - generic [ref=f10e4990]: Range first
+        - generic [ref=f10e4991]: task-010 Range boundaries
+        - generic [ref=f10e4992]: Open
+        - generic [ref=f10e4993]: Normal
+        - generic [ref=f10e4994]: 2028-02-29
+        - button "Open project" [ref=f10e4995] [cursor=pointer]
+      - generic [ref=f10e4996]:
+        - generic [ref=f10e4997]: No calendar date
+        - generic [ref=f10e4998]: task-010 Range boundaries
+        - generic [ref=f10e4999]: Open
+        - generic [ref=f10e5000]: Normal
+        - button "Open project" [ref=f10e5001] [cursor=pointer]
+      - generic [ref=f10e5002]:
+        - generic [ref=f10e5003]: Range last
+        - generic [ref=f10e5004]: task-010 Range boundaries
+        - generic [ref=f10e5005]: Open
+        - generic [ref=f10e5006]: Normal
+        - generic [ref=f10e5007]: 2028-03-02
+        - button "Open project" [ref=f10e5008] [cursor=pointer]
+      - generic [ref=f10e5009]:
+        - generic [ref=f10e5010]: After range
+        - generic [ref=f10e5011]: task-010 Range boundaries
+        - generic [ref=f10e5012]: Open
+        - generic [ref=f10e5013]: Normal
+        - generic [ref=f10e5014]: 2028-03-03
+        - button "Open project" [ref=f10e5015] [cursor=pointer]
+      - generic [ref=f10e5016]:
+        - generic [ref=f10e5017]: Range matching
+        - generic [ref=f10e5018]: task-010 Range intersections
+        - generic [ref=f10e5019]: Open
+        - generic [ref=f10e5020]: High
+        - generic [ref=f10e5021]: 2029-02-01
+        - button "Open project" [ref=f10e5022] [cursor=pointer]
+      - generic [ref=f10e5023]:
+        - generic [ref=f10e5024]: Range low
+        - generic [ref=f10e5025]: task-010 Range intersections
+        - generic [ref=f10e5026]: Open
+        - generic [ref=f10e5027]: Normal
+        - generic [ref=f10e5028]: 2029-01-15
+        - button "Open project" [ref=f10e5029] [cursor=pointer]
+      - generic [ref=f10e5030]:
+        - generic [ref=f10e5031]: Range completed
+        - generic [ref=f10e5032]: task-010 Range intersections
+        - generic [ref=f10e5033]: Open
+        - generic [ref=f10e5034]: Low
+        - generic [ref=f10e5035]: 2029-01-15
+        - button "Open project" [ref=f10e5036] [cursor=pointer]
+      - generic [ref=f10e5037]:
+        - generic [ref=f10e5038]: Range undated
+        - generic [ref=f10e5039]: task-010 Range intersections
+        - generic [ref=f10e5040]: Open
+        - generic [ref=f10e5041]: High
+        - button "Open project" [ref=f10e5042] [cursor=pointer]
+      - generic [ref=f10e5043]:
+        - generic [ref=f10e5044]: Valid member
+        - generic [ref=f10e5045]: task-010 Range validation
+        - generic [ref=f10e5046]: Open
+        - generic [ref=f10e5047]: Normal
+        - generic [ref=f10e5048]: 2028-06-15
+        - button "Open project" [ref=f10e5049] [cursor=pointer]
+      - generic [ref=f10e5050]:
+        - generic [ref=f10e5051]: Undated outsider
+        - generic [ref=f10e5052]: task-010 Range validation
+        - generic [ref=f10e5053]: Open
+        - generic [ref=f10e5054]: Normal
+        - button "Open project" [ref=f10e5055] [cursor=pointer]
+      - generic [ref=f10e5056]:
+        - generic [ref=f10e5057]: Archived date renamed
+        - generic [ref=f10e5058]: task-010 Range archival
+        - generic [ref=f10e5059]: Open
+        - generic [ref=f10e5060]: Normal
+        - generic [ref=f10e5061]: 2030-01-01
+        - button "Open project" [ref=f10e5062] [cursor=pointer]
+      - generic [ref=f10e5063]:
+        - generic [ref=f10e5064]: Archived undated outsider
+        - generic [ref=f10e5065]: task-010 Range archival
+        - generic [ref=f10e5066]: Open
+        - generic [ref=f10e5067]: Normal
+        - button "Open project" [ref=f10e5068] [cursor=pointer]
+      - generic [ref=f10e5069]:
+        - generic [ref=f10e5070]: Retained range member
+        - generic [ref=f10e5071]: task-010 Range owner renamed
+        - generic [ref=f10e5072]: Open
+        - generic [ref=f10e5073]: High
+        - generic [ref=f10e5074]: 2031-03-01
+        - button "Open project" [ref=f10e5075] [cursor=pointer]
+      - generic [ref=f10e5076]:
+        - generic [ref=f10e5077]: Retained undated outsider
+        - generic [ref=f10e5078]: task-010 Range owner renamed
+        - generic [ref=f10e5079]: Open
+        - generic [ref=f10e5080]: Normal
+        - button "Open project" [ref=f10e5081] [cursor=pointer]
+      - generic [ref=f10e5082]:
+        - generic [ref=f10e5083]: Created outside range
+        - generic [ref=f10e5084]: task-010 Range owner renamed
+        - generic [ref=f10e5085]: Open
+        - generic [ref=f10e5086]: Low
+        - button "Open project" [ref=f10e5087] [cursor=pointer]
+      - generic [ref=f10e5088]:
+        - generic [ref=f10e5089]: High open first
+        - generic [ref=f10e5090]: task-010 Priority intersection
+        - generic [ref=f10e5091]: Open
+        - generic [ref=f10e5092]: High
+        - button "Open project" [ref=f10e5093] [cursor=pointer]
+      - generic [ref=f10e5094]:
+        - generic [ref=f10e5095]: Low open
+        - generic [ref=f10e5096]: task-010 Priority intersection
+        - generic [ref=f10e5097]: Open
+        - generic [ref=f10e5098]: Low
+        - button "Open project" [ref=f10e5099] [cursor=pointer]
+      - generic [ref=f10e5100]:
+        - generic [ref=f10e5101]: High completed
+        - generic [ref=f10e5102]: task-010 Priority intersection
+        - generic [ref=f10e5103]: Completed
+        - generic [ref=f10e5104]: High
+        - button "Open project" [ref=f10e5105] [cursor=pointer]
+      - generic [ref=f10e5106]:
+        - generic [ref=f10e5107]: High open last
+        - generic [ref=f10e5108]: task-010 Priority intersection
+        - generic [ref=f10e5109]: Open
+        - generic [ref=f10e5110]: High
+        - button "Open project" [ref=f10e5111] [cursor=pointer]
+      - generic [ref=f10e5112]:
+        - generic [ref=f10e5113]: Leaving priority
+        - generic [ref=f10e5114]: task-010 Priority live filters
+        - generic [ref=f10e5115]: Open
+        - generic [ref=f10e5116]: Low
+        - button "Open project" [ref=f10e5117] [cursor=pointer]
+      - generic [ref=f10e5118]:
+        - generic [ref=f10e5119]: Leaving completion
+        - generic [ref=f10e5120]: task-010 Priority live filters
+        - generic [ref=f10e5121]: Open
+        - generic [ref=f10e5122]: High
+        - button "Open project" [ref=f10e5123] [cursor=pointer]
+      - generic [ref=f10e5124]:
+        - generic [ref=f10e5125]: Completed high guard
+        - generic [ref=f10e5126]: task-010 Priority live filters
+        - generic [ref=f10e5127]: Completed
+        - generic [ref=f10e5128]: High
+        - button "Open project" [ref=f10e5129] [cursor=pointer]
+      - generic [ref=f10e5130]:
+        - generic [ref=f10e5131]: Open normal guard
+        - generic [ref=f10e5132]: task-010 Priority live filters
+        - generic [ref=f10e5133]: Open
+        - generic [ref=f10e5134]: Normal
+        - button "Open project" [ref=f10e5135] [cursor=pointer]
+      - generic [ref=f10e5136]:
+        - generic [ref=f10e5137]: Filtered new title
+        - generic [ref=f10e5138]: task-010 Priority rename filters
+        - generic [ref=f10e5139]: Open
+        - generic [ref=f10e5140]: Low
+        - button "Open project" [ref=f10e5141] [cursor=pointer]
+      - generic [ref=f10e5142]:
+        - generic [ref=f10e5143]: Unmatched normal task
+        - generic [ref=f10e5144]: task-010 Priority rename filters
+        - generic [ref=f10e5145]: Open
+        - generic [ref=f10e5146]: Normal
+        - button "Open project" [ref=f10e5147] [cursor=pointer]
+      - generic [ref=f10e5148]:
+        - generic [ref=f10e5149]: Completed low guard
+        - generic [ref=f10e5150]: task-010 Priority rename filters
+        - generic [ref=f10e5151]: Completed
+        - generic [ref=f10e5152]: Low
+        - button "Open project" [ref=f10e5153] [cursor=pointer]
+      - generic [ref=f10e5154]:
+        - generic [ref=f10e5155]: Archived high open
+        - generic [ref=f10e5156]: task-010 Archived combined filters
+        - generic [ref=f10e5157]: Open
+        - generic [ref=f10e5158]: High
+        - button "Open project" [ref=f10e5159] [cursor=pointer]
+      - generic [ref=f10e5160]:
+        - generic [ref=f10e5161]: Archived normal completed
+        - generic [ref=f10e5162]: task-010 Archived combined filters
+        - generic [ref=f10e5163]: Completed
+        - generic [ref=f10e5164]: Normal
+        - button "Open project" [ref=f10e5165] [cursor=pointer]
+      - generic [ref=f10e5166]:
+        - generic [ref=f10e5167]: Priority renamed
+        - generic [ref=f10e5168]: task-010 Priority ownership
+        - generic [ref=f10e5169]: Open
+        - generic [ref=f10e5170]: High
+        - button "Open project" [ref=f10e5171] [cursor=pointer]
+      - generic [ref=f10e5172]:
+        - generic [ref=f10e5173]: Priority second
+        - generic [ref=f10e5174]: task-010 Priority ownership
+        - generic [ref=f10e5175]: Open
+        - generic [ref=f10e5176]: Low
+        - button "Open project" [ref=f10e5177] [cursor=pointer]
+      - generic [ref=f10e5178]:
+        - generic [ref=f10e5179]: Priority other task
+        - generic [ref=f10e5180]: task-010 Priority other owner
+        - generic [ref=f10e5181]: Open
+        - generic [ref=f10e5182]: Normal
+        - button "Open project" [ref=f10e5183] [cursor=pointer]
+      - generic [ref=f10e5184]:
+        - generic [ref=f10e5185]: Priority completed
+        - generic [ref=f10e5186]: task-010 Priority completion
+        - generic [ref=f10e5187]: Completed
+        - generic [ref=f10e5188]: Low
+        - button "Open project" [ref=f10e5189] [cursor=pointer]
+      - generic [ref=f10e5190]:
+        - generic [ref=f10e5191]: Priority open
+        - generic [ref=f10e5192]: task-010 Priority completion
+        - generic [ref=f10e5193]: Open
+        - generic [ref=f10e5194]: High
+        - button "Open project" [ref=f10e5195] [cursor=pointer]
+      - generic [ref=f10e5196]:
+        - generic [ref=f10e5197]: Priority retained
+        - generic [ref=f10e5198]: task-010 Priority archive
+        - generic [ref=f10e5199]: Open
+        - generic [ref=f10e5200]: Normal
+        - button "Open project" [ref=f10e5201] [cursor=pointer]
+      - generic [ref=f10e5202]:
+        - generic [ref=f10e5203]: Task preserved
+        - generic [ref=f10e5204]: task-010 Task reload
+        - generic [ref=f10e5205]: Open
+        - generic [ref=f10e5206]: Normal
+        - button "Open project" [ref=f10e5207] [cursor=pointer]
+      - generic [ref=f10e5208]:
+        - generic [ref=f10e5209]: Private to owner
+        - generic [ref=f10e5210]: task-010 Task owner
+        - generic [ref=f10e5211]: Open
+        - generic [ref=f10e5212]: Normal
+        - button "Open project" [ref=f10e5213] [cursor=pointer]
+      - generic [ref=f10e5214]:
+        - generic [ref=f10e5215]: Done task
+        - generic [ref=f10e5216]: task-010 Task filters
+        - generic [ref=f10e5217]: Open
+        - generic [ref=f10e5218]: Normal
+        - button "Open project" [ref=f10e5219] [cursor=pointer]
+      - generic [ref=f10e5220]:
+        - generic [ref=f10e5221]: Open task
+        - generic [ref=f10e5222]: task-010 Task filters
+        - generic [ref=f10e5223]: Open
+        - generic [ref=f10e5224]: Normal
+        - button "Open project" [ref=f10e5225] [cursor=pointer]
+      - generic [ref=f10e5226]:
+        - generic [ref=f10e5227]: Retained task
+        - generic [ref=f10e5228]: task-010 Archive tasks
+        - generic [ref=f10e5229]: Completed
+        - generic [ref=f10e5230]: Normal
+        - button "Open project" [ref=f10e5231] [cursor=pointer]
+      - generic [ref=f10e5232]:
+        - generic [ref=f10e5233]: Summary one
+        - generic [ref=f10e5234]: task-010 Summary project
+        - generic [ref=f10e5235]: Completed
+        - generic [ref=f10e5236]: Normal
+        - button "Open project" [ref=f10e5237] [cursor=pointer]
+      - generic [ref=f10e5238]:
+        - generic [ref=f10e5239]: Summary two
+        - generic [ref=f10e5240]: task-010 Summary project
+        - generic [ref=f10e5241]: Open
+        - generic [ref=f10e5242]: Normal
+        - button "Open project" [ref=f10e5243] [cursor=pointer]
+      - generic [ref=f10e5244]:
+        - generic [ref=f10e5245]: Identity task
+        - generic [ref=f10e5246]: task-010 Identity updated
+        - generic [ref=f10e5247]: Completed
+        - generic [ref=f10e5248]: Normal
+        - button "Open project" [ref=f10e5249] [cursor=pointer]
+      - generic [ref=f10e5250]:
+        - generic [ref=f10e5251]: Name updated
+        - generic [ref=f10e5252]: task-010 Task rename identity
+        - generic [ref=f10e5253]: Completed
+        - generic [ref=f10e5254]: Normal
+        - button "Open project" [ref=f10e5255] [cursor=pointer]
+      - generic [ref=f10e5256]:
+        - generic [ref=f10e5257]: Name second
+        - generic [ref=f10e5258]: task-010 Task rename identity
+        - generic [ref=f10e5259]: Open
+        - generic [ref=f10e5260]: Normal
+        - button "Open project" [ref=f10e5261] [cursor=pointer]
+      - generic [ref=f10e5262]:
+        - generic [ref=f10e5263]: Kept title
+        - generic [ref=f10e5264]: task-010 Task rename invalid
+        - generic [ref=f10e5265]: Open
+        - generic [ref=f10e5266]: Normal
+        - button "Open project" [ref=f10e5267] [cursor=pointer]
+      - generic [ref=f10e5268]:
+        - generic [ref=f10e5269]: Archived title
+        - generic [ref=f10e5270]: task-010 Task rename archive
+        - generic [ref=f10e5271]: Open
+        - generic [ref=f10e5272]: Normal
+        - button "Open project" [ref=f10e5273] [cursor=pointer]
+      - generic [ref=f10e5274]:
+        - generic [ref=f10e5275]: Independent normal
+        - generic [ref=f10e5276]: task-011 Defaults independent
+        - generic [ref=f10e5277]: Open
+        - generic [ref=f10e5278]: Normal
+        - button "Open project" [ref=f10e5279] [cursor=pointer]
+      - generic [ref=f10e5280]:
+        - generic [ref=f10e5281]: Before default change
+        - generic [ref=f10e5282]: task-011 Defaults inheritance
+        - generic [ref=f10e5283]: Completed
+        - generic [ref=f10e5284]: Normal
+        - button "Open project" [ref=f10e5285] [cursor=pointer]
+      - generic [ref=f10e5286]:
+        - generic [ref=f10e5287]: Inherited high
+        - generic [ref=f10e5288]: task-011 Defaults inheritance
+        - generic [ref=f10e5289]: Open
+        - generic [ref=f10e5290]: High
+        - button "Open project" [ref=f10e5291] [cursor=pointer]
+      - generic [ref=f10e5292]:
+        - generic [ref=f10e5293]: Inherited low
+        - generic [ref=f10e5294]: task-011 Defaults inheritance
+        - generic [ref=f10e5295]: Open
+        - generic [ref=f10e5296]: Low
+        - button "Open project" [ref=f10e5297] [cursor=pointer]
+      - generic [ref=f10e5298]:
+        - generic [ref=f10e5299]: Inherited normal
+        - generic [ref=f10e5300]: task-011 Defaults inheritance
+        - generic [ref=f10e5301]: Open
+        - generic [ref=f10e5302]: Normal
+        - button "Open project" [ref=f10e5303] [cursor=pointer]
+      - generic [ref=f10e5304]:
+        - generic [ref=f10e5305]: Lifecycle task
+        - generic [ref=f10e5306]: task-011 Defaults renamed
+        - generic [ref=f10e5307]: Open
+        - generic [ref=f10e5308]: Low
+        - button "Open project" [ref=f10e5309] [cursor=pointer]
+      - generic [ref=f10e5310]:
+        - generic [ref=f10e5311]: Restored inherits
+        - generic [ref=f10e5312]: task-011 Defaults renamed
+        - generic [ref=f10e5313]: Open
+        - generic [ref=f10e5314]: Low
+        - button "Open project" [ref=f10e5315] [cursor=pointer]
+      - generic [ref=f10e5316]:
+        - generic [ref=f10e5317]: Calendar renamed
+        - generic [ref=f10e5318]: task-011 Calendar persistence
+        - generic [ref=f10e5319]: Open
+        - generic [ref=f10e5320]: Normal
+        - button "Open project" [ref=f10e5321] [cursor=pointer]
+      - generic [ref=f10e5322]:
+        - generic [ref=f10e5323]: Calendar valid
+        - generic [ref=f10e5324]: task-011 Calendar validation
+        - generic [ref=f10e5325]: Open
+        - generic [ref=f10e5326]: Normal
+        - generic [ref=f10e5327]: 2028-04-30
+        - button "Open project" [ref=f10e5328] [cursor=pointer]
+      - generic [ref=f10e5329]:
+        - generic [ref=f10e5330]: Dated first
+        - generic [ref=f10e5331]: task-011 Calendar independence
+        - generic [ref=f10e5332]: Completed
+        - generic [ref=f10e5333]: High
+        - generic [ref=f10e5334]: 2029-01-01
+        - button "Open project" [ref=f10e5335] [cursor=pointer]
+      - generic [ref=f10e5336]:
+        - generic [ref=f10e5337]: Undated second
+        - generic [ref=f10e5338]: task-011 Calendar independence
+        - generic [ref=f10e5339]: Open
+        - generic [ref=f10e5340]: Normal
+        - button "Open project" [ref=f10e5341] [cursor=pointer]
+      - generic [ref=f10e5342]:
+        - generic [ref=f10e5343]: Completed normal guard
+        - generic [ref=f10e5344]: task-011 Calendar independence
+        - generic [ref=f10e5345]: Completed
+        - generic [ref=f10e5346]: Normal
+        - button "Open project" [ref=f10e5347] [cursor=pointer]
+      - generic [ref=f10e5348]:
+        - generic [ref=f10e5349]: Owner task
+        - generic [ref=f10e5350]: task-011 Calendar second owner
+        - generic [ref=f10e5351]: Open
+        - generic [ref=f10e5352]: Normal
+        - button "Open project" [ref=f10e5353] [cursor=pointer]
+      - generic [ref=f10e5354]:
+        - generic [ref=f10e5355]: Archive dated
+        - generic [ref=f10e5356]: task-011 Calendar archival
+        - generic [ref=f10e5357]: Open
+        - generic [ref=f10e5358]: Normal
+        - generic [ref=f10e5359]: 2030-12-31
+        - button "Open project" [ref=f10e5360] [cursor=pointer]
+      - generic [ref=f10e5361]:
+        - generic [ref=f10e5362]: Before range
+        - generic [ref=f10e5363]: task-011 Range boundaries
+        - generic [ref=f10e5364]: Open
+        - generic [ref=f10e5365]: Normal
+        - generic [ref=f10e5366]: 2028-02-28
+        - button "Open project" [ref=f10e5367] [cursor=pointer]
+      - generic [ref=f10e5368]:
+        - generic [ref=f10e5369]: Range first
+        - generic [ref=f10e5370]: task-011 Range boundaries
+        - generic [ref=f10e5371]: Open
+        - generic [ref=f10e5372]: Normal
+        - generic [ref=f10e5373]: 2028-02-29
+        - button "Open project" [ref=f10e5374] [cursor=pointer]
+      - generic [ref=f10e5375]:
+        - generic [ref=f10e5376]: No calendar date
+        - generic [ref=f10e5377]: task-011 Range boundaries
+        - generic [ref=f10e5378]: Open
+        - generic [ref=f10e5379]: Normal
+        - button "Open project" [ref=f10e5380] [cursor=pointer]
+      - generic [ref=f10e5381]:
+        - generic [ref=f10e5382]: Range last
+        - generic [ref=f10e5383]: task-011 Range boundaries
+        - generic [ref=f10e5384]: Open
+        - generic [ref=f10e5385]: Normal
+        - generic [ref=f10e5386]: 2028-03-02
+        - button "Open project" [ref=f10e5387] [cursor=pointer]
+      - generic [ref=f10e5388]:
+        - generic [ref=f10e5389]: After range
+        - generic [ref=f10e5390]: task-011 Range boundaries
+        - generic [ref=f10e5391]: Open
+        - generic [ref=f10e5392]: Normal
+        - generic [ref=f10e5393]: 2028-03-03
+        - button "Open project" [ref=f10e5394] [cursor=pointer]
+      - generic [ref=f10e5395]:
+        - generic [ref=f10e5396]: Range matching
+        - generic [ref=f10e5397]: task-011 Range intersections
+        - generic [ref=f10e5398]: Open
+        - generic [ref=f10e5399]: High
+        - generic [ref=f10e5400]: 2029-02-01
+        - button "Open project" [ref=f10e5401] [cursor=pointer]
+      - generic [ref=f10e5402]:
+        - generic [ref=f10e5403]: Range low
+        - generic [ref=f10e5404]: task-011 Range intersections
+        - generic [ref=f10e5405]: Open
+        - generic [ref=f10e5406]: Normal
+        - generic [ref=f10e5407]: 2029-01-15
+        - button "Open project" [ref=f10e5408] [cursor=pointer]
+      - generic [ref=f10e5409]:
+        - generic [ref=f10e5410]: Range completed
+        - generic [ref=f10e5411]: task-011 Range intersections
+        - generic [ref=f10e5412]: Open
+        - generic [ref=f10e5413]: Low
+        - generic [ref=f10e5414]: 2029-01-15
+        - button "Open project" [ref=f10e5415] [cursor=pointer]
+      - generic [ref=f10e5416]:
+        - generic [ref=f10e5417]: Range undated
+        - generic [ref=f10e5418]: task-011 Range intersections
+        - generic [ref=f10e5419]: Open
+        - generic [ref=f10e5420]: High
+        - button "Open project" [ref=f10e5421] [cursor=pointer]
+      - generic [ref=f10e5422]:
+        - generic [ref=f10e5423]: Valid member
+        - generic [ref=f10e5424]: task-011 Range validation
+        - generic [ref=f10e5425]: Open
+        - generic [ref=f10e5426]: Normal
+        - generic [ref=f10e5427]: 2028-06-15
+        - button "Open project" [ref=f10e5428] [cursor=pointer]
+      - generic [ref=f10e5429]:
+        - generic [ref=f10e5430]: Undated outsider
+        - generic [ref=f10e5431]: task-011 Range validation
+        - generic [ref=f10e5432]: Open
+        - generic [ref=f10e5433]: Normal
+        - button "Open project" [ref=f10e5434] [cursor=pointer]
+      - generic [ref=f10e5435]:
+        - generic [ref=f10e5436]: Archived date renamed
+        - generic [ref=f10e5437]: task-011 Range archival
+        - generic [ref=f10e5438]: Open
+        - generic [ref=f10e5439]: Normal
+        - generic [ref=f10e5440]: 2030-01-01
+        - button "Open project" [ref=f10e5441] [cursor=pointer]
+      - generic [ref=f10e5442]:
+        - generic [ref=f10e5443]: Archived undated outsider
+        - generic [ref=f10e5444]: task-011 Range archival
+        - generic [ref=f10e5445]: Open
+        - generic [ref=f10e5446]: Normal
+        - button "Open project" [ref=f10e5447] [cursor=pointer]
+      - generic [ref=f10e5448]:
+        - generic [ref=f10e5449]: Retained range member
+        - generic [ref=f10e5450]: task-011 Range owner renamed
+        - generic [ref=f10e5451]: Open
+        - generic [ref=f10e5452]: High
+        - generic [ref=f10e5453]: 2031-03-01
+        - button "Open project" [ref=f10e5454] [cursor=pointer]
+      - generic [ref=f10e5455]:
+        - generic [ref=f10e5456]: Retained undated outsider
+        - generic [ref=f10e5457]: task-011 Range owner renamed
+        - generic [ref=f10e5458]: Open
+        - generic [ref=f10e5459]: Normal
+        - button "Open project" [ref=f10e5460] [cursor=pointer]
+      - generic [ref=f10e5461]:
+        - generic [ref=f10e5462]: Created outside range
+        - generic [ref=f10e5463]: task-011 Range owner renamed
+        - generic [ref=f10e5464]: Open
+        - generic [ref=f10e5465]: Low
+        - button "Open project" [ref=f10e5466] [cursor=pointer]
+      - generic [ref=f10e5467]:
+        - generic [ref=f10e5468]: Target first
+        - generic [ref=f10e5469]: task-011 Transfer target
+        - generic [ref=f10e5470]: Open
+        - generic [ref=f10e5471]: Normal
+        - button "Open project" [ref=f10e5472] [cursor=pointer]
+      - generic [ref=f10e5473]:
+        - generic [ref=f10e5474]: Target second
+        - generic [ref=f10e5475]: task-011 Transfer target
+        - generic [ref=f10e5476]: Open
+        - generic [ref=f10e5477]: Normal
+        - button "Open project" [ref=f10e5478] [cursor=pointer]
+      - generic [ref=f10e5479]:
+        - generic [ref=f10e5480]: Transferred complete
+        - generic [ref=f10e5481]: task-011 Transfer target
+        - generic [ref=f10e5482]: Completed
+        - generic [ref=f10e5483]: High
+        - generic [ref=f10e5484]: 2032-02-29
+        - button "Open project" [ref=f10e5485] [cursor=pointer]
+      - generic [ref=f10e5486]:
+        - generic [ref=f10e5487]: Source remaining
+        - generic [ref=f10e5488]: task-011 Transfer source
+        - generic [ref=f10e5489]: Open
+        - generic [ref=f10e5490]: Normal
+        - button "Open project" [ref=f10e5491] [cursor=pointer]
+      - generic [ref=f10e5492]:
+        - generic [ref=f10e5493]: Filtered target sentinel
+        - generic [ref=f10e5494]: task-011 Filtered transfer target
+        - generic [ref=f10e5495]: Open
+        - generic [ref=f10e5496]: Normal
+        - button "Open project" [ref=f10e5497] [cursor=pointer]
+      - generic [ref=f10e5498]:
+        - generic [ref=f10e5499]: Filtered moving
+        - generic [ref=f10e5500]: task-011 Filtered transfer target
+        - generic [ref=f10e5501]: Open
+        - generic [ref=f10e5502]: High
+        - generic [ref=f10e5503]: 2033-01-01
+        - button "Open project" [ref=f10e5504] [cursor=pointer]
+      - generic [ref=f10e5505]:
+        - generic [ref=f10e5506]: Filtered first
+        - generic [ref=f10e5507]: task-011 Filtered transfer source
+        - generic [ref=f10e5508]: Open
+        - generic [ref=f10e5509]: High
+        - generic [ref=f10e5510]: 2033-01-01
+        - button "Open project" [ref=f10e5511] [cursor=pointer]
+      - generic [ref=f10e5512]:
+        - generic [ref=f10e5513]: Filtered last
+        - generic [ref=f10e5514]: task-011 Filtered transfer source
+        - generic [ref=f10e5515]: Open
+        - generic [ref=f10e5516]: High
+        - generic [ref=f10e5517]: 2033-01-01
+        - button "Open project" [ref=f10e5518] [cursor=pointer]
+      - generic [ref=f10e5519]:
+        - generic [ref=f10e5520]: Filtered outside range
+        - generic [ref=f10e5521]: task-011 Filtered transfer source
+        - generic [ref=f10e5522]: Open
+        - generic [ref=f10e5523]: High
+        - generic [ref=f10e5524]: 2034-01-01
+        - button "Open project" [ref=f10e5525] [cursor=pointer]
+      - generic [ref=f10e5526]:
+        - generic [ref=f10e5527]: Filtered completed guard
+        - generic [ref=f10e5528]: task-011 Filtered transfer source
+        - generic [ref=f10e5529]: Completed
+        - generic [ref=f10e5530]: High
+        - button "Open project" [ref=f10e5531] [cursor=pointer]
+      - generic [ref=f10e5532]:
+        - generic [ref=f10e5533]: Filtered normal guard
+        - generic [ref=f10e5534]: task-011 Filtered transfer source
+        - generic [ref=f10e5535]: Open
+        - generic [ref=f10e5536]: Normal
+        - button "Open project" [ref=f10e5537] [cursor=pointer]
+      - generic [ref=f10e5538]:
+        - generic [ref=f10e5539]: Options task
+        - generic [ref=f10e5540]: task-011 Options owner
+        - generic [ref=f10e5541]: Open
+        - generic [ref=f10e5542]: Normal
+        - button "Open project" [ref=f10e5543] [cursor=pointer]
+      - generic [ref=f10e5544]:
+        - generic [ref=f10e5545]: Undated target sentinel
+        - generic [ref=f10e5546]: task-011 Read-only transfer target
+        - generic [ref=f10e5547]: Open
+        - generic [ref=f10e5548]: Normal
+        - button "Open project" [ref=f10e5549] [cursor=pointer]
+      - generic [ref=f10e5550]:
+        - generic [ref=f10e5551]: Undated owner sentinel
+        - generic [ref=f10e5552]: task-011 Read-only transfer owner
+        - generic [ref=f10e5553]: Open
+        - generic [ref=f10e5554]: Normal
+        - button "Open project" [ref=f10e5555] [cursor=pointer]
+      - generic [ref=f10e5556]:
+        - generic [ref=f10e5557]: Undated transfer
+        - generic [ref=f10e5558]: task-011 Read-only transfer owner
+        - generic [ref=f10e5559]: Open
+        - generic [ref=f10e5560]: Normal
+        - button "Open project" [ref=f10e5561] [cursor=pointer]
+      - generic [ref=f10e5562]:
+        - generic [ref=f10e5563]: High open first
+        - generic [ref=f10e5564]: task-011 Priority intersection
+        - generic [ref=f10e5565]: Open
+        - generic [ref=f10e5566]: High
+        - button "Open project" [ref=f10e5567] [cursor=pointer]
+      - generic [ref=f10e5568]:
+        - generic [ref=f10e5569]: Low open
+        - generic [ref=f10e5570]: task-011 Priority intersection
+        - generic [ref=f10e5571]: Open
+        - generic [ref=f10e5572]: Low
+        - button "Open project" [ref=f10e5573] [cursor=pointer]
+      - generic [ref=f10e5574]:
+        - generic [ref=f10e5575]: High completed
+        - generic [ref=f10e5576]: task-011 Priority intersection
+        - generic [ref=f10e5577]: Completed
+        - generic [ref=f10e5578]: High
+        - button "Open project" [ref=f10e5579] [cursor=pointer]
+      - generic [ref=f10e5580]:
+        - generic [ref=f10e5581]: High open last
+        - generic [ref=f10e5582]: task-011 Priority intersection
+        - generic [ref=f10e5583]: Open
+        - generic [ref=f10e5584]: High
+        - button "Open project" [ref=f10e5585] [cursor=pointer]
+      - generic [ref=f10e5586]:
+        - generic [ref=f10e5587]: Leaving priority
+        - generic [ref=f10e5588]: task-011 Priority live filters
+        - generic [ref=f10e5589]: Open
+        - generic [ref=f10e5590]: Low
+        - button "Open project" [ref=f10e5591] [cursor=pointer]
+      - generic [ref=f10e5592]:
+        - generic [ref=f10e5593]: Leaving completion
+        - generic [ref=f10e5594]: task-011 Priority live filters
+        - generic [ref=f10e5595]: Open
+        - generic [ref=f10e5596]: High
+        - button "Open project" [ref=f10e5597] [cursor=pointer]
+      - generic [ref=f10e5598]:
+        - generic [ref=f10e5599]: Completed high guard
+        - generic [ref=f10e5600]: task-011 Priority live filters
+        - generic [ref=f10e5601]: Completed
+        - generic [ref=f10e5602]: High
+        - button "Open project" [ref=f10e5603] [cursor=pointer]
+      - generic [ref=f10e5604]:
+        - generic [ref=f10e5605]: Open normal guard
+        - generic [ref=f10e5606]: task-011 Priority live filters
+        - generic [ref=f10e5607]: Open
+        - generic [ref=f10e5608]: Normal
+        - button "Open project" [ref=f10e5609] [cursor=pointer]
+      - generic [ref=f10e5610]:
+        - generic [ref=f10e5611]: Filtered new title
+        - generic [ref=f10e5612]: task-011 Priority rename filters
+        - generic [ref=f10e5613]: Open
+        - generic [ref=f10e5614]: Low
+        - button "Open project" [ref=f10e5615] [cursor=pointer]
+      - generic [ref=f10e5616]:
+        - generic [ref=f10e5617]: Unmatched normal task
+        - generic [ref=f10e5618]: task-011 Priority rename filters
+        - generic [ref=f10e5619]: Open
+        - generic [ref=f10e5620]: Normal
+        - button "Open project" [ref=f10e5621] [cursor=pointer]
+      - generic [ref=f10e5622]:
+        - generic [ref=f10e5623]: Completed low guard
+        - generic [ref=f10e5624]: task-011 Priority rename filters
+        - generic [ref=f10e5625]: Completed
+        - generic [ref=f10e5626]: Low
+        - button "Open project" [ref=f10e5627] [cursor=pointer]
+      - generic [ref=f10e5628]:
+        - generic [ref=f10e5629]: Archived high open
+        - generic [ref=f10e5630]: task-011 Archived combined filters
+        - generic [ref=f10e5631]: Open
+        - generic [ref=f10e5632]: High
+        - button "Open project" [ref=f10e5633] [cursor=pointer]
+      - generic [ref=f10e5634]:
+        - generic [ref=f10e5635]: Archived normal completed
+        - generic [ref=f10e5636]: task-011 Archived combined filters
+        - generic [ref=f10e5637]: Completed
+        - generic [ref=f10e5638]: Normal
+        - button "Open project" [ref=f10e5639] [cursor=pointer]
+      - generic [ref=f10e5640]:
+        - generic [ref=f10e5641]: Priority renamed
+        - generic [ref=f10e5642]: task-011 Priority ownership
+        - generic [ref=f10e5643]: Open
+        - generic [ref=f10e5644]: High
+        - button "Open project" [ref=f10e5645] [cursor=pointer]
+      - generic [ref=f10e5646]:
+        - generic [ref=f10e5647]: Priority second
+        - generic [ref=f10e5648]: task-011 Priority ownership
+        - generic [ref=f10e5649]: Open
+        - generic [ref=f10e5650]: Low
+        - button "Open project" [ref=f10e5651] [cursor=pointer]
+      - generic [ref=f10e5652]:
+        - generic [ref=f10e5653]: Priority other task
+        - generic [ref=f10e5654]: task-011 Priority other owner
+        - generic [ref=f10e5655]: Open
+        - generic [ref=f10e5656]: Normal
+        - button "Open project" [ref=f10e5657] [cursor=pointer]
+      - generic [ref=f10e5658]:
+        - generic [ref=f10e5659]: Priority completed
+        - generic [ref=f10e5660]: task-011 Priority completion
+        - generic [ref=f10e5661]: Completed
+        - generic [ref=f10e5662]: Low
+        - button "Open project" [ref=f10e5663] [cursor=pointer]
+      - generic [ref=f10e5664]:
+        - generic [ref=f10e5665]: Priority open
+        - generic [ref=f10e5666]: task-011 Priority completion
+        - generic [ref=f10e5667]: Open
+        - generic [ref=f10e5668]: High
+        - button "Open project" [ref=f10e5669] [cursor=pointer]
+      - generic [ref=f10e5670]:
+        - generic [ref=f10e5671]: Priority retained
+        - generic [ref=f10e5672]: task-011 Priority archive
+        - generic [ref=f10e5673]: Open
+        - generic [ref=f10e5674]: Normal
+        - button "Open project" [ref=f10e5675] [cursor=pointer]
+      - generic [ref=f10e5676]:
+        - generic [ref=f10e5677]: Task preserved
+        - generic [ref=f10e5678]: task-011 Task reload
+        - generic [ref=f10e5679]: Open
+        - generic [ref=f10e5680]: Normal
+        - button "Open project" [ref=f10e5681] [cursor=pointer]
+      - generic [ref=f10e5682]:
+        - generic [ref=f10e5683]: Private to owner
+        - generic [ref=f10e5684]: task-011 Task owner
+        - generic [ref=f10e5685]: Open
+        - generic [ref=f10e5686]: Normal
+        - button "Open project" [ref=f10e5687] [cursor=pointer]
+      - generic [ref=f10e5688]:
+        - generic [ref=f10e5689]: Done task
+        - generic [ref=f10e5690]: task-011 Task filters
+        - generic [ref=f10e5691]: Open
+        - generic [ref=f10e5692]: Normal
+        - button "Open project" [ref=f10e5693] [cursor=pointer]
+      - generic [ref=f10e5694]:
+        - generic [ref=f10e5695]: Open task
+        - generic [ref=f10e5696]: task-011 Task filters
+        - generic [ref=f10e5697]: Open
+        - generic [ref=f10e5698]: Normal
+        - button "Open project" [ref=f10e5699] [cursor=pointer]
+      - generic [ref=f10e5700]:
+        - generic [ref=f10e5701]: Retained task
+        - generic [ref=f10e5702]: task-011 Archive tasks
+        - generic [ref=f10e5703]: Completed
+        - generic [ref=f10e5704]: Normal
+        - button "Open project" [ref=f10e5705] [cursor=pointer]
+      - generic [ref=f10e5706]:
+        - generic [ref=f10e5707]: Summary one
+        - generic [ref=f10e5708]: task-011 Summary project
+        - generic [ref=f10e5709]: Completed
+        - generic [ref=f10e5710]: Normal
+        - button "Open project" [ref=f10e5711] [cursor=pointer]
+      - generic [ref=f10e5712]:
+        - generic [ref=f10e5713]: Summary two
+        - generic [ref=f10e5714]: task-011 Summary project
+        - generic [ref=f10e5715]: Open
+        - generic [ref=f10e5716]: Normal
+        - button "Open project" [ref=f10e5717] [cursor=pointer]
+      - generic [ref=f10e5718]:
+        - generic [ref=f10e5719]: Identity task
+        - generic [ref=f10e5720]: task-011 Identity updated
+        - generic [ref=f10e5721]: Completed
+        - generic [ref=f10e5722]: Normal
+        - button "Open project" [ref=f10e5723] [cursor=pointer]
+      - generic [ref=f10e5724]:
+        - generic [ref=f10e5725]: Name updated
+        - generic [ref=f10e5726]: task-011 Task rename identity
+        - generic [ref=f10e5727]: Completed
+        - generic [ref=f10e5728]: Normal
+        - button "Open project" [ref=f10e5729] [cursor=pointer]
+      - generic [ref=f10e5730]:
+        - generic [ref=f10e5731]: Name second
+        - generic [ref=f10e5732]: task-011 Task rename identity
+        - generic [ref=f10e5733]: Open
+        - generic [ref=f10e5734]: Normal
+        - button "Open project" [ref=f10e5735] [cursor=pointer]
+      - generic [ref=f10e5736]:
+        - generic [ref=f10e5737]: Kept title
+        - generic [ref=f10e5738]: task-011 Task rename invalid
+        - generic [ref=f10e5739]: Open
+        - generic [ref=f10e5740]: Normal
+        - button "Open project" [ref=f10e5741] [cursor=pointer]
+      - generic [ref=f10e5742]:
+        - generic [ref=f10e5743]: Archived title
+        - generic [ref=f10e5744]: task-011 Task rename archive
+        - generic [ref=f10e5745]: Open
+        - generic [ref=f10e5746]: Normal
+        - button "Open project" [ref=f10e5747] [cursor=pointer]
+      - generic [ref=f10e5748]:
+        - generic [ref=f10e5749]: Independent normal
+        - generic [ref=f10e5750]: task-012 Defaults independent
+        - generic [ref=f10e5751]: Open
+        - generic [ref=f10e5752]: Normal
+        - button "Open project" [ref=f10e5753] [cursor=pointer]
+      - generic [ref=f10e5754]:
+        - generic [ref=f10e5755]: Before default change
+        - generic [ref=f10e5756]: task-012 Defaults inheritance
+        - generic [ref=f10e5757]: Completed
+        - generic [ref=f10e5758]: Normal
+        - button "Open project" [ref=f10e5759] [cursor=pointer]
+      - generic [ref=f10e5760]:
+        - generic [ref=f10e5761]: Inherited high
+        - generic [ref=f10e5762]: task-012 Defaults inheritance
+        - generic [ref=f10e5763]: Open
+        - generic [ref=f10e5764]: High
+        - button "Open project" [ref=f10e5765] [cursor=pointer]
+      - generic [ref=f10e5766]:
+        - generic [ref=f10e5767]: Inherited low
+        - generic [ref=f10e5768]: task-012 Defaults inheritance
+        - generic [ref=f10e5769]: Open
+        - generic [ref=f10e5770]: Low
+        - button "Open project" [ref=f10e5771] [cursor=pointer]
+      - generic [ref=f10e5772]:
+        - generic [ref=f10e5773]: Inherited normal
+        - generic [ref=f10e5774]: task-012 Defaults inheritance
+        - generic [ref=f10e5775]: Open
+        - generic [ref=f10e5776]: Normal
+        - button "Open project" [ref=f10e5777] [cursor=pointer]
+      - generic [ref=f10e5778]:
+        - generic [ref=f10e5779]: Lifecycle task
+        - generic [ref=f10e5780]: task-012 Defaults renamed
+        - generic [ref=f10e5781]: Open
+        - generic [ref=f10e5782]: Low
+        - button "Open project" [ref=f10e5783] [cursor=pointer]
+      - generic [ref=f10e5784]:
+        - generic [ref=f10e5785]: Restored inherits
+        - generic [ref=f10e5786]: task-012 Defaults renamed
+        - generic [ref=f10e5787]: Open
+        - generic [ref=f10e5788]: Low
+        - button "Open project" [ref=f10e5789] [cursor=pointer]
+      - generic [ref=f10e5790]:
+        - generic [ref=f10e5791]: Calendar renamed
+        - generic [ref=f10e5792]: task-012 Calendar persistence
+        - generic [ref=f10e5793]: Open
+        - generic [ref=f10e5794]: Normal
+        - button "Open project" [ref=f10e5795] [cursor=pointer]
+      - generic [ref=f10e5796]:
+        - generic [ref=f10e5797]: Calendar valid
+        - generic [ref=f10e5798]: task-012 Calendar validation
+        - generic [ref=f10e5799]: Open
+        - generic [ref=f10e5800]: Normal
+        - generic [ref=f10e5801]: 2028-04-30
+        - button "Open project" [ref=f10e5802] [cursor=pointer]
+      - generic [ref=f10e5803]:
+        - generic [ref=f10e5804]: Dated first
+        - generic [ref=f10e5805]: task-012 Calendar independence
+        - generic [ref=f10e5806]: Completed
+        - generic [ref=f10e5807]: High
+        - generic [ref=f10e5808]: 2029-01-01
+        - button "Open project" [ref=f10e5809] [cursor=pointer]
+      - generic [ref=f10e5810]:
+        - generic [ref=f10e5811]: Undated second
+        - generic [ref=f10e5812]: task-012 Calendar independence
+        - generic [ref=f10e5813]: Open
+        - generic [ref=f10e5814]: Normal
+        - button "Open project" [ref=f10e5815] [cursor=pointer]
+      - generic [ref=f10e5816]:
+        - generic [ref=f10e5817]: Completed normal guard
+        - generic [ref=f10e5818]: task-012 Calendar independence
+        - generic [ref=f10e5819]: Completed
+        - generic [ref=f10e5820]: Normal
+        - button "Open project" [ref=f10e5821] [cursor=pointer]
+      - generic [ref=f10e5822]:
+        - generic [ref=f10e5823]: Owner task
+        - generic [ref=f10e5824]: task-012 Calendar second owner
+        - generic [ref=f10e5825]: Open
+        - generic [ref=f10e5826]: Normal
+        - button "Open project" [ref=f10e5827] [cursor=pointer]
+      - generic [ref=f10e5828]:
+        - generic [ref=f10e5829]: Archive dated
+        - generic [ref=f10e5830]: task-012 Calendar archival
+        - generic [ref=f10e5831]: Open
+        - generic [ref=f10e5832]: Normal
+        - generic [ref=f10e5833]: 2030-12-31
+        - button "Open project" [ref=f10e5834] [cursor=pointer]
+      - generic [ref=f10e5835]:
+        - generic [ref=f10e5836]: Before range
+        - generic [ref=f10e5837]: task-012 Range boundaries
+        - generic [ref=f10e5838]: Open
+        - generic [ref=f10e5839]: Normal
+        - generic [ref=f10e5840]: 2028-02-28
+        - button "Open project" [ref=f10e5841] [cursor=pointer]
+      - generic [ref=f10e5842]:
+        - generic [ref=f10e5843]: Range first
+        - generic [ref=f10e5844]: task-012 Range boundaries
+        - generic [ref=f10e5845]: Open
+        - generic [ref=f10e5846]: Normal
+        - generic [ref=f10e5847]: 2028-02-29
+        - button "Open project" [ref=f10e5848] [cursor=pointer]
+      - generic [ref=f10e5849]:
+        - generic [ref=f10e5850]: No calendar date
+        - generic [ref=f10e5851]: task-012 Range boundaries
+        - generic [ref=f10e5852]: Open
+        - generic [ref=f10e5853]: Normal
+        - button "Open project" [ref=f10e5854] [cursor=pointer]
+      - generic [ref=f10e5855]:
+        - generic [ref=f10e5856]: Range last
+        - generic [ref=f10e5857]: task-012 Range boundaries
+        - generic [ref=f10e5858]: Open
+        - generic [ref=f10e5859]: Normal
+        - generic [ref=f10e5860]: 2028-03-02
+        - button "Open project" [ref=f10e5861] [cursor=pointer]
+      - generic [ref=f10e5862]:
+        - generic [ref=f10e5863]: After range
+        - generic [ref=f10e5864]: task-012 Range boundaries
+        - generic [ref=f10e5865]: Open
+        - generic [ref=f10e5866]: Normal
+        - generic [ref=f10e5867]: 2028-03-03
+        - button "Open project" [ref=f10e5868] [cursor=pointer]
+      - generic [ref=f10e5869]:
+        - generic [ref=f10e5870]: Range matching
+        - generic [ref=f10e5871]: task-012 Range intersections
+        - generic [ref=f10e5872]: Open
+        - generic [ref=f10e5873]: High
+        - generic [ref=f10e5874]: 2029-02-01
+        - button "Open project" [ref=f10e5875] [cursor=pointer]
+      - generic [ref=f10e5876]:
+        - generic [ref=f10e5877]: Range low
+        - generic [ref=f10e5878]: task-012 Range intersections
+        - generic [ref=f10e5879]: Open
+        - generic [ref=f10e5880]: Normal
+        - generic [ref=f10e5881]: 2029-01-15
+        - button "Open project" [ref=f10e5882] [cursor=pointer]
+      - generic [ref=f10e5883]:
+        - generic [ref=f10e5884]: Range completed
+        - generic [ref=f10e5885]: task-012 Range intersections
+        - generic [ref=f10e5886]: Open
+        - generic [ref=f10e5887]: Low
+        - generic [ref=f10e5888]: 2029-01-15
+        - button "Open project" [ref=f10e5889] [cursor=pointer]
+      - generic [ref=f10e5890]:
+        - generic [ref=f10e5891]: Range undated
+        - generic [ref=f10e5892]: task-012 Range intersections
+        - generic [ref=f10e5893]: Open
+        - generic [ref=f10e5894]: High
+        - button "Open project" [ref=f10e5895] [cursor=pointer]
+      - generic [ref=f10e5896]:
+        - generic [ref=f10e5897]: Valid member
+        - generic [ref=f10e5898]: task-012 Range validation
+        - generic [ref=f10e5899]: Open
+        - generic [ref=f10e5900]: Normal
+        - generic [ref=f10e5901]: 2028-06-15
+        - button "Open project" [ref=f10e5902] [cursor=pointer]
+      - generic [ref=f10e5903]:
+        - generic [ref=f10e5904]: Undated outsider
+        - generic [ref=f10e5905]: task-012 Range validation
+        - generic [ref=f10e5906]: Open
+        - generic [ref=f10e5907]: Normal
+        - button "Open project" [ref=f10e5908] [cursor=pointer]
+      - generic [ref=f10e5909]:
+        - generic [ref=f10e5910]: Archived date renamed
+        - generic [ref=f10e5911]: task-012 Range archival
+        - generic [ref=f10e5912]: Open
+        - generic [ref=f10e5913]: Normal
+        - generic [ref=f10e5914]: 2030-01-01
+        - button "Open project" [ref=f10e5915] [cursor=pointer]
+      - generic [ref=f10e5916]:
+        - generic [ref=f10e5917]: Archived undated outsider
+        - generic [ref=f10e5918]: task-012 Range archival
+        - generic [ref=f10e5919]: Open
+        - generic [ref=f10e5920]: Normal
+        - button "Open project" [ref=f10e5921] [cursor=pointer]
+      - generic [ref=f10e5922]:
+        - generic [ref=f10e5923]: Retained range member
+        - generic [ref=f10e5924]: task-012 Range owner renamed
+        - generic [ref=f10e5925]: Open
+        - generic [ref=f10e5926]: High
+        - generic [ref=f10e5927]: 2031-03-01
+        - button "Open project" [ref=f10e5928] [cursor=pointer]
+      - generic [ref=f10e5929]:
+        - generic [ref=f10e5930]: Retained undated outsider
+        - generic [ref=f10e5931]: task-012 Range owner renamed
+        - generic [ref=f10e5932]: Open
+        - generic [ref=f10e5933]: Normal
+        - button "Open project" [ref=f10e5934] [cursor=pointer]
+      - generic [ref=f10e5935]:
+        - generic [ref=f10e5936]: Created outside range
+        - generic [ref=f10e5937]: task-012 Range owner renamed
+        - generic [ref=f10e5938]: Open
+        - generic [ref=f10e5939]: Low
+        - button "Open project" [ref=f10e5940] [cursor=pointer]
+      - generic [ref=f10e5941]:
+        - generic [ref=f10e5942]: Target first
+        - generic [ref=f10e5943]: task-012 Transfer target
+        - generic [ref=f10e5944]: Open
+        - generic [ref=f10e5945]: Normal
+        - button "Open project" [ref=f10e5946] [cursor=pointer]
+      - generic [ref=f10e5947]:
+        - generic [ref=f10e5948]: Target second
+        - generic [ref=f10e5949]: task-012 Transfer target
+        - generic [ref=f10e5950]: Open
+        - generic [ref=f10e5951]: Normal
+        - button "Open project" [ref=f10e5952] [cursor=pointer]
+      - generic [ref=f10e5953]:
+        - generic [ref=f10e5954]: Transferred complete
+        - generic [ref=f10e5955]: task-012 Transfer target
+        - generic [ref=f10e5956]: Completed
+        - generic [ref=f10e5957]: High
+        - generic [ref=f10e5958]: 2032-02-29
+        - button "Open project" [ref=f10e5959] [cursor=pointer]
+      - generic [ref=f10e5960]:
+        - generic [ref=f10e5961]: Source remaining
+        - generic [ref=f10e5962]: task-012 Transfer source
+        - generic [ref=f10e5963]: Open
+        - generic [ref=f10e5964]: Normal
+        - button "Open project" [ref=f10e5965] [cursor=pointer]
+      - generic [ref=f10e5966]:
+        - generic [ref=f10e5967]: Filtered target sentinel
+        - generic [ref=f10e5968]: task-012 Filtered transfer target
+        - generic [ref=f10e5969]: Open
+        - generic [ref=f10e5970]: Normal
+        - button "Open project" [ref=f10e5971] [cursor=pointer]
+      - generic [ref=f10e5972]:
+        - generic [ref=f10e5973]: Filtered moving
+        - generic [ref=f10e5974]: task-012 Filtered transfer target
+        - generic [ref=f10e5975]: Open
+        - generic [ref=f10e5976]: High
+        - generic [ref=f10e5977]: 2033-01-01
+        - button "Open project" [ref=f10e5978] [cursor=pointer]
+      - generic [ref=f10e5979]:
+        - generic [ref=f10e5980]: Filtered first
+        - generic [ref=f10e5981]: task-012 Filtered transfer source
+        - generic [ref=f10e5982]: Open
+        - generic [ref=f10e5983]: High
+        - generic [ref=f10e5984]: 2033-01-01
+        - button "Open project" [ref=f10e5985] [cursor=pointer]
+      - generic [ref=f10e5986]:
+        - generic [ref=f10e5987]: Filtered last
+        - generic [ref=f10e5988]: task-012 Filtered transfer source
+        - generic [ref=f10e5989]: Open
+        - generic [ref=f10e5990]: High
+        - generic [ref=f10e5991]: 2033-01-01
+        - button "Open project" [ref=f10e5992] [cursor=pointer]
+      - generic [ref=f10e5993]:
+        - generic [ref=f10e5994]: Filtered outside range
+        - generic [ref=f10e5995]: task-012 Filtered transfer source
+        - generic [ref=f10e5996]: Open
+        - generic [ref=f10e5997]: High
+        - generic [ref=f10e5998]: 2034-01-01
+        - button "Open project" [ref=f10e5999] [cursor=pointer]
+      - generic [ref=f10e6000]:
+        - generic [ref=f10e6001]: Filtered completed guard
+        - generic [ref=f10e6002]: task-012 Filtered transfer source
+        - generic [ref=f10e6003]: Completed
+        - generic [ref=f10e6004]: High
+        - button "Open project" [ref=f10e6005] [cursor=pointer]
+      - generic [ref=f10e6006]:
+        - generic [ref=f10e6007]: Filtered normal guard
+        - generic [ref=f10e6008]: task-012 Filtered transfer source
+        - generic [ref=f10e6009]: Open
+        - generic [ref=f10e6010]: Normal
+        - button "Open project" [ref=f10e6011] [cursor=pointer]
+      - generic [ref=f10e6012]:
+        - generic [ref=f10e6013]: Options task
+        - generic [ref=f10e6014]: task-012 Options owner
+        - generic [ref=f10e6015]: Open
+        - generic [ref=f10e6016]: Normal
+        - button "Open project" [ref=f10e6017] [cursor=pointer]
+      - generic [ref=f10e6018]:
+        - generic [ref=f10e6019]: Undated target sentinel
+        - generic [ref=f10e6020]: task-012 Read-only transfer target
+        - generic [ref=f10e6021]: Open
+        - generic [ref=f10e6022]: Normal
+        - button "Open project" [ref=f10e6023] [cursor=pointer]
+      - generic [ref=f10e6024]:
+        - generic [ref=f10e6025]: Undated transfer
+        - generic [ref=f10e6026]: task-012 Read-only transfer owner
+        - generic [ref=f10e6027]: Open
+        - generic [ref=f10e6028]: Normal
+        - button "Open project" [ref=f10e6029] [cursor=pointer]
+      - generic [ref=f10e6030]:
+        - generic [ref=f10e6031]: Undated owner sentinel
+        - generic [ref=f10e6032]: task-012 Read-only transfer owner
+        - generic [ref=f10e6033]: Open
+        - generic [ref=f10e6034]: Normal
+        - button "Open project" [ref=f10e6035] [cursor=pointer]
+      - generic [ref=f10e6036]:
+        - generic [ref=f10e6037]: High open first
+        - generic [ref=f10e6038]: task-012 Priority intersection
+        - generic [ref=f10e6039]: Open
+        - generic [ref=f10e6040]: High
+        - button "Open project" [ref=f10e6041] [cursor=pointer]
+      - generic [ref=f10e6042]:
+        - generic [ref=f10e6043]: Low open
+        - generic [ref=f10e6044]: task-012 Priority intersection
+        - generic [ref=f10e6045]: Open
+        - generic [ref=f10e6046]: Low
+        - button "Open project" [ref=f10e6047] [cursor=pointer]
+      - generic [ref=f10e6048]:
+        - generic [ref=f10e6049]: High completed
+        - generic [ref=f10e6050]: task-012 Priority intersection
+        - generic [ref=f10e6051]: Completed
+        - generic [ref=f10e6052]: High
+        - button "Open project" [ref=f10e6053] [cursor=pointer]
+      - generic [ref=f10e6054]:
+        - generic [ref=f10e6055]: High open last
+        - generic [ref=f10e6056]: task-012 Priority intersection
+        - generic [ref=f10e6057]: Open
+        - generic [ref=f10e6058]: High
+        - button "Open project" [ref=f10e6059] [cursor=pointer]
+      - generic [ref=f10e6060]:
+        - generic [ref=f10e6061]: Leaving priority
+        - generic [ref=f10e6062]: task-012 Priority live filters
+        - generic [ref=f10e6063]: Open
+        - generic [ref=f10e6064]: Low
+        - button "Open project" [ref=f10e6065] [cursor=pointer]
+      - generic [ref=f10e6066]:
+        - generic [ref=f10e6067]: Leaving completion
+        - generic [ref=f10e6068]: task-012 Priority live filters
+        - generic [ref=f10e6069]: Open
+        - generic [ref=f10e6070]: High
+        - button "Open project" [ref=f10e6071] [cursor=pointer]
+      - generic [ref=f10e6072]:
+        - generic [ref=f10e6073]: Completed high guard
+        - generic [ref=f10e6074]: task-012 Priority live filters
+        - generic [ref=f10e6075]: Completed
+        - generic [ref=f10e6076]: High
+        - button "Open project" [ref=f10e6077] [cursor=pointer]
+      - generic [ref=f10e6078]:
+        - generic [ref=f10e6079]: Open normal guard
+        - generic [ref=f10e6080]: task-012 Priority live filters
+        - generic [ref=f10e6081]: Open
+        - generic [ref=f10e6082]: Normal
+        - button "Open project" [ref=f10e6083] [cursor=pointer]
+      - generic [ref=f10e6084]:
+        - generic [ref=f10e6085]: Filtered new title
+        - generic [ref=f10e6086]: task-012 Priority rename filters
+        - generic [ref=f10e6087]: Open
+        - generic [ref=f10e6088]: Low
+        - button "Open project" [ref=f10e6089] [cursor=pointer]
+      - generic [ref=f10e6090]:
+        - generic [ref=f10e6091]: Unmatched normal task
+        - generic [ref=f10e6092]: task-012 Priority rename filters
+        - generic [ref=f10e6093]: Open
+        - generic [ref=f10e6094]: Normal
+        - button "Open project" [ref=f10e6095] [cursor=pointer]
+      - generic [ref=f10e6096]:
+        - generic [ref=f10e6097]: Completed low guard
+        - generic [ref=f10e6098]: task-012 Priority rename filters
+        - generic [ref=f10e6099]: Completed
+        - generic [ref=f10e6100]: Low
+        - button "Open project" [ref=f10e6101] [cursor=pointer]
+      - generic [ref=f10e6102]:
+        - generic [ref=f10e6103]: Archived high open
+        - generic [ref=f10e6104]: task-012 Archived combined filters
+        - generic [ref=f10e6105]: Open
+        - generic [ref=f10e6106]: High
+        - button "Open project" [ref=f10e6107] [cursor=pointer]
+      - generic [ref=f10e6108]:
+        - generic [ref=f10e6109]: Archived normal completed
+        - generic [ref=f10e6110]: task-012 Archived combined filters
+        - generic [ref=f10e6111]: Completed
+        - generic [ref=f10e6112]: Normal
+        - button "Open project" [ref=f10e6113] [cursor=pointer]
+      - generic [ref=f10e6114]:
+        - generic [ref=f10e6115]: Priority renamed
+        - generic [ref=f10e6116]: task-012 Priority ownership
+        - generic [ref=f10e6117]: Open
+        - generic [ref=f10e6118]: High
+        - button "Open project" [ref=f10e6119] [cursor=pointer]
+      - generic [ref=f10e6120]:
+        - generic [ref=f10e6121]: Priority second
+        - generic [ref=f10e6122]: task-012 Priority ownership
+        - generic [ref=f10e6123]: Open
+        - generic [ref=f10e6124]: Low
+        - button "Open project" [ref=f10e6125] [cursor=pointer]
+      - generic [ref=f10e6126]:
+        - generic [ref=f10e6127]: Priority other task
+        - generic [ref=f10e6128]: task-012 Priority other owner
+        - generic [ref=f10e6129]: Open
+        - generic [ref=f10e6130]: Normal
+        - button "Open project" [ref=f10e6131] [cursor=pointer]
+      - generic [ref=f10e6132]:
+        - generic [ref=f10e6133]: Priority completed
+        - generic [ref=f10e6134]: task-012 Priority completion
+        - generic [ref=f10e6135]: Completed
+        - generic [ref=f10e6136]: Low
+        - button "Open project" [ref=f10e6137] [cursor=pointer]
+      - generic [ref=f10e6138]:
+        - generic [ref=f10e6139]: Priority open
+        - generic [ref=f10e6140]: task-012 Priority completion
+        - generic [ref=f10e6141]: Open
+        - generic [ref=f10e6142]: High
+        - button "Open project" [ref=f10e6143] [cursor=pointer]
+      - generic [ref=f10e6144]:
+        - generic [ref=f10e6145]: Priority retained
+        - generic [ref=f10e6146]: task-012 Priority archive
+        - generic [ref=f10e6147]: Open
+        - generic [ref=f10e6148]: Normal
+        - button "Open project" [ref=f10e6149] [cursor=pointer]
+      - generic [ref=f10e6150]:
+        - generic [ref=f10e6151]: Return first
+        - generic [ref=f10e6152]: task-012 Return owner
+        - generic [ref=f10e6153]: Open
+        - generic [ref=f10e6154]: Normal
+        - button "Open project" [ref=f10e6155] [cursor=pointer]
+      - generic [ref=f10e6156]:
+        - generic [ref=f10e6157]: Return second
+        - generic [ref=f10e6158]: task-012 Return owner
+        - generic [ref=f10e6159]: Completed
+        - generic [ref=f10e6160]: High
+        - button "Open project" [ref=f10e6161] [cursor=pointer]
+      - generic [ref=f10e6162]:
+        - generic [ref=f10e6163]: Return third
+        - generic [ref=f10e6164]: task-012 Return owner
+        - generic [ref=f10e6165]: Open
+        - generic [ref=f10e6166]: Normal
+        - button "Open project" [ref=f10e6167] [cursor=pointer]
+      - generic [ref=f10e6168]:
+        - generic [ref=f10e6169]: Return fourth
+        - generic [ref=f10e6170]: task-012 Return owner
+        - generic [ref=f10e6171]: Open
+        - generic [ref=f10e6172]: Normal
+        - button "Open project" [ref=f10e6173] [cursor=pointer]
+      - generic [ref=f10e6174]:
+        - generic [ref=f10e6175]: Identity before
+        - generic [ref=f10e6176]: task-012 Returned owner renamed
+        - generic [ref=f10e6177]: Open
+        - generic [ref=f10e6178]: Normal
+        - button "Open project" [ref=f10e6179] [cursor=pointer]
+      - generic [ref=f10e6180]:
+        - generic [ref=f10e6181]: Identity returning
+        - generic [ref=f10e6182]: task-012 Returned owner renamed
+        - generic [ref=f10e6183]: Open
+        - generic [ref=f10e6184]: Normal
+        - button "Open project" [ref=f10e6185] [cursor=pointer]
+      - generic [ref=f10e6186]:
+        - generic [ref=f10e6187]: Identity after
+        - generic [ref=f10e6188]: task-012 Returned owner renamed
+        - generic [ref=f10e6189]: Open
+        - generic [ref=f10e6190]: Normal
+        - button "Open project" [ref=f10e6191] [cursor=pointer]
+      - generic [ref=f10e6192]:
+        - generic [ref=f10e6193]: Second existing
+        - generic [ref=f10e6194]: task-012 Position second owner
+        - generic [ref=f10e6195]: Open
+        - generic [ref=f10e6196]: Normal
+        - button "Open project" [ref=f10e6197] [cursor=pointer]
+      - generic [ref=f10e6198]:
+        - generic [ref=f10e6199]: Second newly created
+        - generic [ref=f10e6200]: task-012 Position second owner
+        - generic [ref=f10e6201]: Open
+        - generic [ref=f10e6202]: Normal
+        - button "Open project" [ref=f10e6203] [cursor=pointer]
+      - generic [ref=f10e6204]:
+        - generic [ref=f10e6205]: First existing
+        - generic [ref=f10e6206]: task-012 Position first owner
+        - generic [ref=f10e6207]: Open
+        - generic [ref=f10e6208]: Normal
+        - button "Open project" [ref=f10e6209] [cursor=pointer]
+      - generic [ref=f10e6210]:
+        - generic [ref=f10e6211]: Position travelling
+        - generic [ref=f10e6212]: task-012 Position first owner
+        - generic [ref=f10e6213]: Open
+        - generic [ref=f10e6214]: Normal
+        - button "Open project" [ref=f10e6215] [cursor=pointer]
+      - generic [ref=f10e6216]:
+        - generic [ref=f10e6217]: First later
+        - generic [ref=f10e6218]: task-012 Position first owner
+        - generic [ref=f10e6219]: Open
+        - generic [ref=f10e6220]: Normal
+        - button "Open project" [ref=f10e6221] [cursor=pointer]
+      - generic [ref=f10e6222]:
+        - generic [ref=f10e6223]: First newly created
+        - generic [ref=f10e6224]: task-012 Position first owner
+        - generic [ref=f10e6225]: Open
+        - generic [ref=f10e6226]: Normal
+        - button "Open project" [ref=f10e6227] [cursor=pointer]
+      - generic [ref=f10e6228]:
+        - generic [ref=f10e6229]: Task preserved
+        - generic [ref=f10e6230]: task-012 Task reload
+        - generic [ref=f10e6231]: Open
+        - generic [ref=f10e6232]: Normal
+        - button "Open project" [ref=f10e6233] [cursor=pointer]
+      - generic [ref=f10e6234]:
+        - generic [ref=f10e6235]: Private to owner
+        - generic [ref=f10e6236]: task-012 Task owner
+        - generic [ref=f10e6237]: Open
+        - generic [ref=f10e6238]: Normal
+        - button "Open project" [ref=f10e6239] [cursor=pointer]
+      - generic [ref=f10e6240]:
+        - generic [ref=f10e6241]: Done task
+        - generic [ref=f10e6242]: task-012 Task filters
+        - generic [ref=f10e6243]: Open
+        - generic [ref=f10e6244]: Normal
+        - button "Open project" [ref=f10e6245] [cursor=pointer]
+      - generic [ref=f10e6246]:
+        - generic [ref=f10e6247]: Open task
+        - generic [ref=f10e6248]: task-012 Task filters
+        - generic [ref=f10e6249]: Open
+        - generic [ref=f10e6250]: Normal
+        - button "Open project" [ref=f10e6251] [cursor=pointer]
+      - generic [ref=f10e6252]:
+        - generic [ref=f10e6253]: Retained task
+        - generic [ref=f10e6254]: task-012 Archive tasks
+        - generic [ref=f10e6255]: Completed
+        - generic [ref=f10e6256]: Normal
+        - button "Open project" [ref=f10e6257] [cursor=pointer]
+      - generic [ref=f10e6258]:
+        - generic [ref=f10e6259]: Summary one
+        - generic [ref=f10e6260]: task-012 Summary project
+        - generic [ref=f10e6261]: Completed
+        - generic [ref=f10e6262]: Normal
+        - button "Open project" [ref=f10e6263] [cursor=pointer]
+      - generic [ref=f10e6264]:
+        - generic [ref=f10e6265]: Summary two
+        - generic [ref=f10e6266]: task-012 Summary project
+        - generic [ref=f10e6267]: Open
+        - generic [ref=f10e6268]: Normal
+        - button "Open project" [ref=f10e6269] [cursor=pointer]
+      - generic [ref=f10e6270]:
+        - generic [ref=f10e6271]: Identity task
+        - generic [ref=f10e6272]: task-012 Identity updated
+        - generic [ref=f10e6273]: Completed
+        - generic [ref=f10e6274]: Normal
+        - button "Open project" [ref=f10e6275] [cursor=pointer]
+      - generic [ref=f10e6276]:
+        - generic [ref=f10e6277]: Name updated
+        - generic [ref=f10e6278]: task-012 Task rename identity
+        - generic [ref=f10e6279]: Completed
+        - generic [ref=f10e6280]: Normal
+        - button "Open project" [ref=f10e6281] [cursor=pointer]
+      - generic [ref=f10e6282]:
+        - generic [ref=f10e6283]: Name second
+        - generic [ref=f10e6284]: task-012 Task rename identity
+        - generic [ref=f10e6285]: Open
+        - generic [ref=f10e6286]: Normal
+        - button "Open project" [ref=f10e6287] [cursor=pointer]
+      - generic [ref=f10e6288]:
+        - generic [ref=f10e6289]: Kept title
+        - generic [ref=f10e6290]: task-012 Task rename invalid
+        - generic [ref=f10e6291]: Open
+        - generic [ref=f10e6292]: Normal
+        - button "Open project" [ref=f10e6293] [cursor=pointer]
+      - generic [ref=f10e6294]:
+        - generic [ref=f10e6295]: Archived title
+        - generic [ref=f10e6296]: task-012 Task rename archive
+        - generic [ref=f10e6297]: Open
+        - generic [ref=f10e6298]: Normal
+        - button "Open project" [ref=f10e6299] [cursor=pointer]
+      - generic [ref=f10e6300]:
+        - generic [ref=f10e6301]: Independent normal
+        - generic [ref=f10e6302]: task-013 Defaults independent
+        - generic [ref=f10e6303]: Open
+        - generic [ref=f10e6304]: Normal
+        - button "Open project" [ref=f10e6305] [cursor=pointer]
+      - generic [ref=f10e6306]:
+        - generic [ref=f10e6307]: Before default change
+        - generic [ref=f10e6308]: task-013 Defaults inheritance
+        - generic [ref=f10e6309]: Completed
+        - generic [ref=f10e6310]: Normal
+        - button "Open project" [ref=f10e6311] [cursor=pointer]
+      - generic [ref=f10e6312]:
+        - generic [ref=f10e6313]: Inherited high
+        - generic [ref=f10e6314]: task-013 Defaults inheritance
+        - generic [ref=f10e6315]: Open
+        - generic [ref=f10e6316]: High
+        - button "Open project" [ref=f10e6317] [cursor=pointer]
+      - generic [ref=f10e6318]:
+        - generic [ref=f10e6319]: Inherited low
+        - generic [ref=f10e6320]: task-013 Defaults inheritance
+        - generic [ref=f10e6321]: Open
+        - generic [ref=f10e6322]: Low
+        - button "Open project" [ref=f10e6323] [cursor=pointer]
+      - generic [ref=f10e6324]:
+        - generic [ref=f10e6325]: Inherited normal
+        - generic [ref=f10e6326]: task-013 Defaults inheritance
+        - generic [ref=f10e6327]: Open
+        - generic [ref=f10e6328]: Normal
+        - button "Open project" [ref=f10e6329] [cursor=pointer]
+      - generic [ref=f10e6330]:
+        - generic [ref=f10e6331]: Lifecycle task
+        - generic [ref=f10e6332]: task-013 Defaults renamed
+        - generic [ref=f10e6333]: Open
+        - generic [ref=f10e6334]: Low
+        - button "Open project" [ref=f10e6335] [cursor=pointer]
+      - generic [ref=f10e6336]:
+        - generic [ref=f10e6337]: Restored inherits
+        - generic [ref=f10e6338]: task-013 Defaults renamed
+        - generic [ref=f10e6339]: Open
+        - generic [ref=f10e6340]: Low
+        - button "Open project" [ref=f10e6341] [cursor=pointer]
+      - generic [ref=f10e6342]:
+        - generic [ref=f10e6343]: Calendar renamed
+        - generic [ref=f10e6344]: task-013 Calendar persistence
+        - generic [ref=f10e6345]: Open
+        - generic [ref=f10e6346]: Normal
+        - button "Open project" [ref=f10e6347] [cursor=pointer]
+      - generic [ref=f10e6348]:
+        - generic [ref=f10e6349]: Calendar valid
+        - generic [ref=f10e6350]: task-013 Calendar validation
+        - generic [ref=f10e6351]: Open
+        - generic [ref=f10e6352]: Normal
+        - generic [ref=f10e6353]: 2028-04-30
+        - button "Open project" [ref=f10e6354] [cursor=pointer]
+      - generic [ref=f10e6355]:
+        - generic [ref=f10e6356]: Dated first
+        - generic [ref=f10e6357]: task-013 Calendar independence
+        - generic [ref=f10e6358]: Completed
+        - generic [ref=f10e6359]: High
+        - generic [ref=f10e6360]: 2029-01-01
+        - button "Open project" [ref=f10e6361] [cursor=pointer]
+      - generic [ref=f10e6362]:
+        - generic [ref=f10e6363]: Undated second
+        - generic [ref=f10e6364]: task-013 Calendar independence
+        - generic [ref=f10e6365]: Open
+        - generic [ref=f10e6366]: Normal
+        - button "Open project" [ref=f10e6367] [cursor=pointer]
+      - generic [ref=f10e6368]:
+        - generic [ref=f10e6369]: Completed normal guard
+        - generic [ref=f10e6370]: task-013 Calendar independence
+        - generic [ref=f10e6371]: Completed
+        - generic [ref=f10e6372]: Normal
+        - button "Open project" [ref=f10e6373] [cursor=pointer]
+      - generic [ref=f10e6374]:
+        - generic [ref=f10e6375]: Owner task
+        - generic [ref=f10e6376]: task-013 Calendar second owner
+        - generic [ref=f10e6377]: Open
+        - generic [ref=f10e6378]: Normal
+        - button "Open project" [ref=f10e6379] [cursor=pointer]
+      - generic [ref=f10e6380]:
+        - generic [ref=f10e6381]: Archive dated
+        - generic [ref=f10e6382]: task-013 Calendar archival
+        - generic [ref=f10e6383]: Open
+        - generic [ref=f10e6384]: Normal
+        - generic [ref=f10e6385]: 2030-12-31
+        - button "Open project" [ref=f10e6386] [cursor=pointer]
+      - generic [ref=f10e6387]:
+        - generic [ref=f10e6388]: Before range
+        - generic [ref=f10e6389]: task-013 Range boundaries
+        - generic [ref=f10e6390]: Open
+        - generic [ref=f10e6391]: Normal
+        - generic [ref=f10e6392]: 2028-02-28
+        - button "Open project" [ref=f10e6393] [cursor=pointer]
+      - generic [ref=f10e6394]:
+        - generic [ref=f10e6395]: Range first
+        - generic [ref=f10e6396]: task-013 Range boundaries
+        - generic [ref=f10e6397]: Open
+        - generic [ref=f10e6398]: Normal
+        - generic [ref=f10e6399]: 2028-02-29
+        - button "Open project" [ref=f10e6400] [cursor=pointer]
+      - generic [ref=f10e6401]:
+        - generic [ref=f10e6402]: No calendar date
+        - generic [ref=f10e6403]: task-013 Range boundaries
+        - generic [ref=f10e6404]: Open
+        - generic [ref=f10e6405]: Normal
+        - button "Open project" [ref=f10e6406] [cursor=pointer]
+      - generic [ref=f10e6407]:
+        - generic [ref=f10e6408]: Range last
+        - generic [ref=f10e6409]: task-013 Range boundaries
+        - generic [ref=f10e6410]: Open
+        - generic [ref=f10e6411]: Normal
+        - generic [ref=f10e6412]: 2028-03-02
+        - button "Open project" [ref=f10e6413] [cursor=pointer]
+      - generic [ref=f10e6414]:
+        - generic [ref=f10e6415]: After range
+        - generic [ref=f10e6416]: task-013 Range boundaries
+        - generic [ref=f10e6417]: Open
+        - generic [ref=f10e6418]: Normal
+        - generic [ref=f10e6419]: 2028-03-03
+        - button "Open project" [ref=f10e6420] [cursor=pointer]
+      - generic [ref=f10e6421]:
+        - generic [ref=f10e6422]: Range matching
+        - generic [ref=f10e6423]: task-013 Range intersections
+        - generic [ref=f10e6424]: Open
+        - generic [ref=f10e6425]: High
+        - generic [ref=f10e6426]: 2029-02-01
+        - button "Open project" [ref=f10e6427] [cursor=pointer]
+      - generic [ref=f10e6428]:
+        - generic [ref=f10e6429]: Range low
+        - generic [ref=f10e6430]: task-013 Range intersections
+        - generic [ref=f10e6431]: Open
+        - generic [ref=f10e6432]: Normal
+        - generic [ref=f10e6433]: 2029-01-15
+        - button "Open project" [ref=f10e6434] [cursor=pointer]
+      - generic [ref=f10e6435]:
+        - generic [ref=f10e6436]: Range completed
+        - generic [ref=f10e6437]: task-013 Range intersections
+        - generic [ref=f10e6438]: Open
+        - generic [ref=f10e6439]: Low
+        - generic [ref=f10e6440]: 2029-01-15
+        - button "Open project" [ref=f10e6441] [cursor=pointer]
+      - generic [ref=f10e6442]:
+        - generic [ref=f10e6443]: Range undated
+        - generic [ref=f10e6444]: task-013 Range intersections
+        - generic [ref=f10e6445]: Open
+        - generic [ref=f10e6446]: High
+        - button "Open project" [ref=f10e6447] [cursor=pointer]
+      - generic [ref=f10e6448]:
+        - generic [ref=f10e6449]: Valid member
+        - generic [ref=f10e6450]: task-013 Range validation
+        - generic [ref=f10e6451]: Open
+        - generic [ref=f10e6452]: Normal
+        - generic [ref=f10e6453]: 2028-06-15
+        - button "Open project" [ref=f10e6454] [cursor=pointer]
+      - generic [ref=f10e6455]:
+        - generic [ref=f10e6456]: Undated outsider
+        - generic [ref=f10e6457]: task-013 Range validation
+        - generic [ref=f10e6458]: Open
+        - generic [ref=f10e6459]: Normal
+        - button "Open project" [ref=f10e6460] [cursor=pointer]
+      - generic [ref=f10e6461]:
+        - generic [ref=f10e6462]: Archived date renamed
+        - generic [ref=f10e6463]: task-013 Range archival
+        - generic [ref=f10e6464]: Open
+        - generic [ref=f10e6465]: Normal
+        - generic [ref=f10e6466]: 2030-01-01
+        - button "Open project" [ref=f10e6467] [cursor=pointer]
+      - generic [ref=f10e6468]:
+        - generic [ref=f10e6469]: Archived undated outsider
+        - generic [ref=f10e6470]: task-013 Range archival
+        - generic [ref=f10e6471]: Open
+        - generic [ref=f10e6472]: Normal
+        - button "Open project" [ref=f10e6473] [cursor=pointer]
+      - generic [ref=f10e6474]:
+        - generic [ref=f10e6475]: Retained range member
+        - generic [ref=f10e6476]: task-013 Range owner renamed
+        - generic [ref=f10e6477]: Open
+        - generic [ref=f10e6478]: High
+        - generic [ref=f10e6479]: 2031-03-01
+        - button "Open project" [ref=f10e6480] [cursor=pointer]
+      - generic [ref=f10e6481]:
+        - generic [ref=f10e6482]: Retained undated outsider
+        - generic [ref=f10e6483]: task-013 Range owner renamed
+        - generic [ref=f10e6484]: Open
+        - generic [ref=f10e6485]: Normal
+        - button "Open project" [ref=f10e6486] [cursor=pointer]
+      - generic [ref=f10e6487]:
+        - generic [ref=f10e6488]: Created outside range
+        - generic [ref=f10e6489]: task-013 Range owner renamed
+        - generic [ref=f10e6490]: Open
+        - generic [ref=f10e6491]: Low
+        - button "Open project" [ref=f10e6492] [cursor=pointer]
+      - generic [ref=f10e6493]:
+        - generic [ref=f10e6494]: Target first
+        - generic [ref=f10e6495]: task-013 Transfer target
+        - generic [ref=f10e6496]: Open
+        - generic [ref=f10e6497]: Normal
+        - button "Open project" [ref=f10e6498] [cursor=pointer]
+      - generic [ref=f10e6499]:
+        - generic [ref=f10e6500]: Target second
+        - generic [ref=f10e6501]: task-013 Transfer target
+        - generic [ref=f10e6502]: Open
+        - generic [ref=f10e6503]: Normal
+        - button "Open project" [ref=f10e6504] [cursor=pointer]
+      - generic [ref=f10e6505]:
+        - generic [ref=f10e6506]: Transferred complete
+        - generic [ref=f10e6507]: task-013 Transfer target
+        - generic [ref=f10e6508]: Completed
+        - generic [ref=f10e6509]: High
+        - generic [ref=f10e6510]: 2032-02-29
+        - button "Open project" [ref=f10e6511] [cursor=pointer]
+      - generic [ref=f10e6512]:
+        - generic [ref=f10e6513]: Source remaining
+        - generic [ref=f10e6514]: task-013 Transfer source
+        - generic [ref=f10e6515]: Open
+        - generic [ref=f10e6516]: Normal
+        - button "Open project" [ref=f10e6517] [cursor=pointer]
+      - generic [ref=f10e6518]:
+        - generic [ref=f10e6519]: Filtered target sentinel
+        - generic [ref=f10e6520]: task-013 Filtered transfer target
+        - generic [ref=f10e6521]: Open
+        - generic [ref=f10e6522]: Normal
+        - button "Open project" [ref=f10e6523] [cursor=pointer]
+      - generic [ref=f10e6524]:
+        - generic [ref=f10e6525]: Filtered moving
+        - generic [ref=f10e6526]: task-013 Filtered transfer target
+        - generic [ref=f10e6527]: Open
+        - generic [ref=f10e6528]: High
+        - generic [ref=f10e6529]: 2033-01-01
+        - button "Open project" [ref=f10e6530] [cursor=pointer]
+      - generic [ref=f10e6531]:
+        - generic [ref=f10e6532]: Filtered first
+        - generic [ref=f10e6533]: task-013 Filtered transfer source
+        - generic [ref=f10e6534]: Open
+        - generic [ref=f10e6535]: High
+        - generic [ref=f10e6536]: 2033-01-01
+        - button "Open project" [ref=f10e6537] [cursor=pointer]
+      - generic [ref=f10e6538]:
+        - generic [ref=f10e6539]: Filtered last
+        - generic [ref=f10e6540]: task-013 Filtered transfer source
+        - generic [ref=f10e6541]: Open
+        - generic [ref=f10e6542]: High
+        - generic [ref=f10e6543]: 2033-01-01
+        - button "Open project" [ref=f10e6544] [cursor=pointer]
+      - generic [ref=f10e6545]:
+        - generic [ref=f10e6546]: Filtered outside range
+        - generic [ref=f10e6547]: task-013 Filtered transfer source
+        - generic [ref=f10e6548]: Open
+        - generic [ref=f10e6549]: High
+        - generic [ref=f10e6550]: 2034-01-01
+        - button "Open project" [ref=f10e6551] [cursor=pointer]
+      - generic [ref=f10e6552]:
+        - generic [ref=f10e6553]: Filtered completed guard
+        - generic [ref=f10e6554]: task-013 Filtered transfer source
+        - generic [ref=f10e6555]: Completed
+        - generic [ref=f10e6556]: High
+        - button "Open project" [ref=f10e6557] [cursor=pointer]
+      - generic [ref=f10e6558]:
+        - generic [ref=f10e6559]: Filtered normal guard
+        - generic [ref=f10e6560]: task-013 Filtered transfer source
+        - generic [ref=f10e6561]: Open
+        - generic [ref=f10e6562]: Normal
+        - button "Open project" [ref=f10e6563] [cursor=pointer]
+      - generic [ref=f10e6564]:
+        - generic [ref=f10e6565]: Options task
+        - generic [ref=f10e6566]: task-013 Options owner
+        - generic [ref=f10e6567]: Open
+        - generic [ref=f10e6568]: Normal
+        - button "Open project" [ref=f10e6569] [cursor=pointer]
+      - generic [ref=f10e6570]:
+        - generic [ref=f10e6571]: Undated target sentinel
+        - generic [ref=f10e6572]: task-013 Read-only transfer target
+        - generic [ref=f10e6573]: Open
+        - generic [ref=f10e6574]: Normal
+        - button "Open project" [ref=f10e6575] [cursor=pointer]
+      - generic [ref=f10e6576]:
+        - generic [ref=f10e6577]: Undated transfer
+        - generic [ref=f10e6578]: task-013 Read-only transfer owner
+        - generic [ref=f10e6579]: Open
+        - generic [ref=f10e6580]: Normal
+        - button "Open project" [ref=f10e6581] [cursor=pointer]
+      - generic [ref=f10e6582]:
+        - generic [ref=f10e6583]: Undated owner sentinel
+        - generic [ref=f10e6584]: task-013 Read-only transfer owner
+        - generic [ref=f10e6585]: Open
+        - generic [ref=f10e6586]: Normal
+        - button "Open project" [ref=f10e6587] [cursor=pointer]
+      - generic [ref=f10e6588]:
+        - generic [ref=f10e6589]: High open first
+        - generic [ref=f10e6590]: task-013 Priority intersection
+        - generic [ref=f10e6591]: Open
+        - generic [ref=f10e6592]: High
+        - button "Open project" [ref=f10e6593] [cursor=pointer]
+      - generic [ref=f10e6594]:
+        - generic [ref=f10e6595]: Low open
+        - generic [ref=f10e6596]: task-013 Priority intersection
+        - generic [ref=f10e6597]: Open
+        - generic [ref=f10e6598]: Low
+        - button "Open project" [ref=f10e6599] [cursor=pointer]
+      - generic [ref=f10e6600]:
+        - generic [ref=f10e6601]: High completed
+        - generic [ref=f10e6602]: task-013 Priority intersection
+        - generic [ref=f10e6603]: Completed
+        - generic [ref=f10e6604]: High
+        - button "Open project" [ref=f10e6605] [cursor=pointer]
+      - generic [ref=f10e6606]:
+        - generic [ref=f10e6607]: High open last
+        - generic [ref=f10e6608]: task-013 Priority intersection
+        - generic [ref=f10e6609]: Open
+        - generic [ref=f10e6610]: High
+        - button "Open project" [ref=f10e6611] [cursor=pointer]
+      - generic [ref=f10e6612]:
+        - generic [ref=f10e6613]: Leaving priority
+        - generic [ref=f10e6614]: task-013 Priority live filters
+        - generic [ref=f10e6615]: Open
+        - generic [ref=f10e6616]: Low
+        - button "Open project" [ref=f10e6617] [cursor=pointer]
+      - generic [ref=f10e6618]:
+        - generic [ref=f10e6619]: Leaving completion
+        - generic [ref=f10e6620]: task-013 Priority live filters
+        - generic [ref=f10e6621]: Open
+        - generic [ref=f10e6622]: High
+        - button "Open project" [ref=f10e6623] [cursor=pointer]
+      - generic [ref=f10e6624]:
+        - generic [ref=f10e6625]: Completed high guard
+        - generic [ref=f10e6626]: task-013 Priority live filters
+        - generic [ref=f10e6627]: Completed
+        - generic [ref=f10e6628]: High
+        - button "Open project" [ref=f10e6629] [cursor=pointer]
+      - generic [ref=f10e6630]:
+        - generic [ref=f10e6631]: Open normal guard
+        - generic [ref=f10e6632]: task-013 Priority live filters
+        - generic [ref=f10e6633]: Open
+        - generic [ref=f10e6634]: Normal
+        - button "Open project" [ref=f10e6635] [cursor=pointer]
+      - generic [ref=f10e6636]:
+        - generic [ref=f10e6637]: Filtered new title
+        - generic [ref=f10e6638]: task-013 Priority rename filters
+        - generic [ref=f10e6639]: Open
+        - generic [ref=f10e6640]: Low
+        - button "Open project" [ref=f10e6641] [cursor=pointer]
+      - generic [ref=f10e6642]:
+        - generic [ref=f10e6643]: Unmatched normal task
+        - generic [ref=f10e6644]: task-013 Priority rename filters
+        - generic [ref=f10e6645]: Open
+        - generic [ref=f10e6646]: Normal
+        - button "Open project" [ref=f10e6647] [cursor=pointer]
+      - generic [ref=f10e6648]:
+        - generic [ref=f10e6649]: Completed low guard
+        - generic [ref=f10e6650]: task-013 Priority rename filters
+        - generic [ref=f10e6651]: Completed
+        - generic [ref=f10e6652]: Low
+        - button "Open project" [ref=f10e6653] [cursor=pointer]
+      - generic [ref=f10e6654]:
+        - generic [ref=f10e6655]: Archived high open
+        - generic [ref=f10e6656]: task-013 Archived combined filters
+        - generic [ref=f10e6657]: Open
+        - generic [ref=f10e6658]: High
+        - button "Open project" [ref=f10e6659] [cursor=pointer]
+      - generic [ref=f10e6660]:
+        - generic [ref=f10e6661]: Archived normal completed
+        - generic [ref=f10e6662]: task-013 Archived combined filters
+        - generic [ref=f10e6663]: Completed
+        - generic [ref=f10e6664]: Normal
+        - button "Open project" [ref=f10e6665] [cursor=pointer]
+      - generic [ref=f10e6666]:
+        - generic [ref=f10e6667]: Priority renamed
+        - generic [ref=f10e6668]: task-013 Priority ownership
+        - generic [ref=f10e6669]: Open
+        - generic [ref=f10e6670]: High
+        - button "Open project" [ref=f10e6671] [cursor=pointer]
+      - generic [ref=f10e6672]:
+        - generic [ref=f10e6673]: Priority second
+        - generic [ref=f10e6674]: task-013 Priority ownership
+        - generic [ref=f10e6675]: Open
+        - generic [ref=f10e6676]: Low
+        - button "Open project" [ref=f10e6677] [cursor=pointer]
+      - generic [ref=f10e6678]:
+        - generic [ref=f10e6679]: Priority other task
+        - generic [ref=f10e6680]: task-013 Priority other owner
+        - generic [ref=f10e6681]: Open
+        - generic [ref=f10e6682]: Normal
+        - button "Open project" [ref=f10e6683] [cursor=pointer]
+      - generic [ref=f10e6684]:
+        - generic [ref=f10e6685]: Priority completed
+        - generic [ref=f10e6686]: task-013 Priority completion
+        - generic [ref=f10e6687]: Completed
+        - generic [ref=f10e6688]: Low
+        - button "Open project" [ref=f10e6689] [cursor=pointer]
+      - generic [ref=f10e6690]:
+        - generic [ref=f10e6691]: Priority open
+        - generic [ref=f10e6692]: task-013 Priority completion
+        - generic [ref=f10e6693]: Open
+        - generic [ref=f10e6694]: High
+        - button "Open project" [ref=f10e6695] [cursor=pointer]
+      - generic [ref=f10e6696]:
+        - generic [ref=f10e6697]: Priority retained
+        - generic [ref=f10e6698]: task-013 Priority archive
+        - generic [ref=f10e6699]: Open
+        - generic [ref=f10e6700]: Normal
+        - button "Open project" [ref=f10e6701] [cursor=pointer]
+      - generic [ref=f10e6702]:
+        - generic [ref=f10e6703]: Return first
+        - generic [ref=f10e6704]: task-013 Return owner
+        - generic [ref=f10e6705]: Open
+        - generic [ref=f10e6706]: Normal
+        - button "Open project" [ref=f10e6707] [cursor=pointer]
+      - generic [ref=f10e6708]:
+        - generic [ref=f10e6709]: Return second
+        - generic [ref=f10e6710]: task-013 Return owner
+        - generic [ref=f10e6711]: Completed
+        - generic [ref=f10e6712]: High
+        - button "Open project" [ref=f10e6713] [cursor=pointer]
+      - generic [ref=f10e6714]:
+        - generic [ref=f10e6715]: Return third
+        - generic [ref=f10e6716]: task-013 Return owner
+        - generic [ref=f10e6717]: Open
+        - generic [ref=f10e6718]: Normal
+        - button "Open project" [ref=f10e6719] [cursor=pointer]
+      - generic [ref=f10e6720]:
+        - generic [ref=f10e6721]: Return fourth
+        - generic [ref=f10e6722]: task-013 Return owner
+        - generic [ref=f10e6723]: Open
+        - generic [ref=f10e6724]: Normal
+        - button "Open project" [ref=f10e6725] [cursor=pointer]
+      - generic [ref=f10e6726]:
+        - generic [ref=f10e6727]: Identity before
+        - generic [ref=f10e6728]: task-013 Returned owner renamed
+        - generic [ref=f10e6729]: Open
+        - generic [ref=f10e6730]: Normal
+        - button "Open project" [ref=f10e6731] [cursor=pointer]
+      - generic [ref=f10e6732]:
+        - generic [ref=f10e6733]: Identity returning
+        - generic [ref=f10e6734]: task-013 Returned owner renamed
+        - generic [ref=f10e6735]: Open
+        - generic [ref=f10e6736]: Normal
+        - button "Open project" [ref=f10e6737] [cursor=pointer]
+      - generic [ref=f10e6738]:
+        - generic [ref=f10e6739]: Identity after
+        - generic [ref=f10e6740]: task-013 Returned owner renamed
+        - generic [ref=f10e6741]: Open
+        - generic [ref=f10e6742]: Normal
+        - button "Open project" [ref=f10e6743] [cursor=pointer]
+      - generic [ref=f10e6744]:
+        - generic [ref=f10e6745]: Second existing
+        - generic [ref=f10e6746]: task-013 Position second owner
+        - generic [ref=f10e6747]: Open
+        - generic [ref=f10e6748]: Normal
+        - button "Open project" [ref=f10e6749] [cursor=pointer]
+      - generic [ref=f10e6750]:
+        - generic [ref=f10e6751]: Second newly created
+        - generic [ref=f10e6752]: task-013 Position second owner
+        - generic [ref=f10e6753]: Open
+        - generic [ref=f10e6754]: Normal
+        - button "Open project" [ref=f10e6755] [cursor=pointer]
+      - generic [ref=f10e6756]:
+        - generic [ref=f10e6757]: First existing
+        - generic [ref=f10e6758]: task-013 Position first owner
+        - generic [ref=f10e6759]: Open
+        - generic [ref=f10e6760]: Normal
+        - button "Open project" [ref=f10e6761] [cursor=pointer]
+      - generic [ref=f10e6762]:
+        - generic [ref=f10e6763]: Position travelling
+        - generic [ref=f10e6764]: task-013 Position first owner
+        - generic [ref=f10e6765]: Open
+        - generic [ref=f10e6766]: Normal
+        - button "Open project" [ref=f10e6767] [cursor=pointer]
+      - generic [ref=f10e6768]:
+        - generic [ref=f10e6769]: First later
+        - generic [ref=f10e6770]: task-013 Position first owner
+        - generic [ref=f10e6771]: Open
+        - generic [ref=f10e6772]: Normal
+        - button "Open project" [ref=f10e6773] [cursor=pointer]
+      - generic [ref=f10e6774]:
+        - generic [ref=f10e6775]: First newly created
+        - generic [ref=f10e6776]: task-013 Position first owner
+        - generic [ref=f10e6777]: Open
+        - generic [ref=f10e6778]: Normal
+        - button "Open project" [ref=f10e6779] [cursor=pointer]
+      - generic [ref=f10e6780]:
+        - generic [ref=f10e6781]: Mixed first
+        - generic [ref=f10e6782]: task-013 Search task intersections
+        - generic [ref=f10e6783]: Open
+        - generic [ref=f10e6784]: High
+        - generic [ref=f10e6785]: 2034-01-01
+        - button "Open project" [ref=f10e6786] [cursor=pointer]
+      - generic [ref=f10e6787]:
+        - generic [ref=f10e6788]: Other high
+        - generic [ref=f10e6789]: task-013 Search task intersections
+        - generic [ref=f10e6790]: Open
+        - generic [ref=f10e6791]: High
+        - generic [ref=f10e6792]: 2034-01-01
+        - button "Open project" [ref=f10e6793] [cursor=pointer]
+      - generic [ref=f10e6794]:
+        - generic [ref=f10e6795]: MIXED completed
+        - generic [ref=f10e6796]: task-013 Search task intersections
+        - generic [ref=f10e6797]: Completed
+        - generic [ref=f10e6798]: High
+        - generic [ref=f10e6799]: 2034-01-01
+        - button "Open project" [ref=f10e6800] [cursor=pointer]
+      - generic [ref=f10e6801]:
+        - generic [ref=f10e6802]: Mixed undated
+        - generic [ref=f10e6803]: task-013 Search task intersections
+        - generic [ref=f10e6804]: Open
+        - generic [ref=f10e6805]: High
+        - button "Open project" [ref=f10e6806] [cursor=pointer]
+      - generic [ref=f10e6807]:
+        - generic [ref=f10e6808]: mixed last
+        - generic [ref=f10e6809]: task-013 Search task intersections
+        - generic [ref=f10e6810]: Open
+        - generic [ref=f10e6811]: High
+        - generic [ref=f10e6812]: 2034-01-01
+        - button "Open project" [ref=f10e6813] [cursor=pointer]
+      - generic [ref=f10e6814]:
+        - generic [ref=f10e6815]: Other normal guard
+        - generic [ref=f10e6816]: task-013 Search task intersections
+        - generic [ref=f10e6817]: Open
+        - generic [ref=f10e6818]: Normal
+        - button "Open project" [ref=f10e6819] [cursor=pointer]
+      - generic [ref=f10e6820]:
+        - generic [ref=f10e6821]: Two spaces
+        - generic [ref=f10e6822]: task-013 Search internal spacing
+        - generic [ref=f10e6823]: Open
+        - generic [ref=f10e6824]: Normal
+        - button "Open project" [ref=f10e6825] [cursor=pointer]
+      - generic [ref=f10e6826]:
+        - generic [ref=f10e6827]: Two spaces sentinel
+        - generic [ref=f10e6828]: task-013 Search internal spacing
+        - generic [ref=f10e6829]: Open
+        - generic [ref=f10e6830]: Normal
+        - button "Open project" [ref=f10e6831] [cursor=pointer]
+      - generic [ref=f10e6832]:
+        - generic [ref=f10e6833]: Task preserved
+        - generic [ref=f10e6834]: task-013 Task reload
+        - generic [ref=f10e6835]: Open
+        - generic [ref=f10e6836]: Normal
+        - button "Open project" [ref=f10e6837] [cursor=pointer]
+      - generic [ref=f10e6838]:
+        - generic [ref=f10e6839]: Private to owner
+        - generic [ref=f10e6840]: task-013 Task owner
+        - generic [ref=f10e6841]: Open
+        - generic [ref=f10e6842]: Normal
+        - button "Open project" [ref=f10e6843] [cursor=pointer]
+      - generic [ref=f10e6844]:
+        - generic [ref=f10e6845]: Done task
+        - generic [ref=f10e6846]: task-013 Task filters
+        - generic [ref=f10e6847]: Open
+        - generic [ref=f10e6848]: Normal
+        - button "Open project" [ref=f10e6849] [cursor=pointer]
+      - generic [ref=f10e6850]:
+        - generic [ref=f10e6851]: Open task
+        - generic [ref=f10e6852]: task-013 Task filters
+        - generic [ref=f10e6853]: Open
+        - generic [ref=f10e6854]: Normal
+        - button "Open project" [ref=f10e6855] [cursor=pointer]
+      - generic [ref=f10e6856]:
+        - generic [ref=f10e6857]: Retained task
+        - generic [ref=f10e6858]: task-013 Archive tasks
+        - generic [ref=f10e6859]: Completed
+        - generic [ref=f10e6860]: Normal
+        - button "Open project" [ref=f10e6861] [cursor=pointer]
+      - generic [ref=f10e6862]:
+        - generic [ref=f10e6863]: Summary one
+        - generic [ref=f10e6864]: task-013 Summary project
+        - generic [ref=f10e6865]: Completed
+        - generic [ref=f10e6866]: Normal
+        - button "Open project" [ref=f10e6867] [cursor=pointer]
+      - generic [ref=f10e6868]:
+        - generic [ref=f10e6869]: Summary two
+        - generic [ref=f10e6870]: task-013 Summary project
+        - generic [ref=f10e6871]: Open
+        - generic [ref=f10e6872]: Normal
+        - button "Open project" [ref=f10e6873] [cursor=pointer]
+      - generic [ref=f10e6874]:
+        - generic [ref=f10e6875]: Identity task
+        - generic [ref=f10e6876]: task-013 Identity updated
+        - generic [ref=f10e6877]: Completed
+        - generic [ref=f10e6878]: Normal
+        - button "Open project" [ref=f10e6879] [cursor=pointer]
+      - generic [ref=f10e6880]:
+        - generic [ref=f10e6881]: Name updated
+        - generic [ref=f10e6882]: task-013 Task rename identity
+        - generic [ref=f10e6883]: Completed
+        - generic [ref=f10e6884]: Normal
+        - button "Open project" [ref=f10e6885] [cursor=pointer]
+      - generic [ref=f10e6886]:
+        - generic [ref=f10e6887]: Name second
+        - generic [ref=f10e6888]: task-013 Task rename identity
+        - generic [ref=f10e6889]: Open
+        - generic [ref=f10e6890]: Normal
+        - button "Open project" [ref=f10e6891] [cursor=pointer]
+      - generic [ref=f10e6892]:
+        - generic [ref=f10e6893]: Kept title
+        - generic [ref=f10e6894]: task-013 Task rename invalid
+        - generic [ref=f10e6895]: Open
+        - generic [ref=f10e6896]: Normal
+        - button "Open project" [ref=f10e6897] [cursor=pointer]
+      - generic [ref=f10e6898]:
+        - generic [ref=f10e6899]: Archived title
+        - generic [ref=f10e6900]: task-013 Task rename archive
+        - generic [ref=f10e6901]: Open
+        - generic [ref=f10e6902]: Normal
+        - button "Open project" [ref=f10e6903] [cursor=pointer]
+      - generic [ref=f10e6904]:
+        - generic [ref=f10e6905]: Independent normal
+        - generic [ref=f10e6906]: task-014 Defaults independent
+        - generic [ref=f10e6907]: Open
+        - generic [ref=f10e6908]: Normal
+        - button "Open project" [ref=f10e6909] [cursor=pointer]
+      - generic [ref=f10e6910]:
+        - generic [ref=f10e6911]: Before default change
+        - generic [ref=f10e6912]: task-014 Defaults inheritance
+        - generic [ref=f10e6913]: Completed
+        - generic [ref=f10e6914]: Normal
+        - button "Open project" [ref=f10e6915] [cursor=pointer]
+      - generic [ref=f10e6916]:
+        - generic [ref=f10e6917]: Inherited high
+        - generic [ref=f10e6918]: task-014 Defaults inheritance
+        - generic [ref=f10e6919]: Open
+        - generic [ref=f10e6920]: High
+        - button "Open project" [ref=f10e6921] [cursor=pointer]
+      - generic [ref=f10e6922]:
+        - generic [ref=f10e6923]: Inherited low
+        - generic [ref=f10e6924]: task-014 Defaults inheritance
+        - generic [ref=f10e6925]: Open
+        - generic [ref=f10e6926]: Low
+        - button "Open project" [ref=f10e6927] [cursor=pointer]
+      - generic [ref=f10e6928]:
+        - generic [ref=f10e6929]: Inherited normal
+        - generic [ref=f10e6930]: task-014 Defaults inheritance
+        - generic [ref=f10e6931]: Open
+        - generic [ref=f10e6932]: Normal
+        - button "Open project" [ref=f10e6933] [cursor=pointer]
+      - generic [ref=f10e6934]:
+        - generic [ref=f10e6935]: Lifecycle task
+        - generic [ref=f10e6936]: task-014 Defaults renamed
+        - generic [ref=f10e6937]: Open
+        - generic [ref=f10e6938]: Low
+        - button "Open project" [ref=f10e6939] [cursor=pointer]
+      - generic [ref=f10e6940]:
+        - generic [ref=f10e6941]: Restored inherits
+        - generic [ref=f10e6942]: task-014 Defaults renamed
+        - generic [ref=f10e6943]: Open
+        - generic [ref=f10e6944]: Low
+        - button "Open project" [ref=f10e6945] [cursor=pointer]
+      - generic [ref=f10e6946]:
+        - generic [ref=f10e6947]: Calendar renamed
+        - generic [ref=f10e6948]: task-014 Calendar persistence
+        - generic [ref=f10e6949]: Open
+        - generic [ref=f10e6950]: Normal
+        - button "Open project" [ref=f10e6951] [cursor=pointer]
+      - generic [ref=f10e6952]:
+        - generic [ref=f10e6953]: Calendar valid
+        - generic [ref=f10e6954]: task-014 Calendar validation
+        - generic [ref=f10e6955]: Open
+        - generic [ref=f10e6956]: Normal
+        - generic [ref=f10e6957]: 2028-04-30
+        - button "Open project" [ref=f10e6958] [cursor=pointer]
+      - generic [ref=f10e6959]:
+        - generic [ref=f10e6960]: Dated first
+        - generic [ref=f10e6961]: task-014 Calendar independence
+        - generic [ref=f10e6962]: Completed
+        - generic [ref=f10e6963]: High
+        - generic [ref=f10e6964]: 2029-01-01
+        - button "Open project" [ref=f10e6965] [cursor=pointer]
+      - generic [ref=f10e6966]:
+        - generic [ref=f10e6967]: Undated second
+        - generic [ref=f10e6968]: task-014 Calendar independence
+        - generic [ref=f10e6969]: Open
+        - generic [ref=f10e6970]: Normal
+        - button "Open project" [ref=f10e6971] [cursor=pointer]
+      - generic [ref=f10e6972]:
+        - generic [ref=f10e6973]: Completed normal guard
+        - generic [ref=f10e6974]: task-014 Calendar independence
+        - generic [ref=f10e6975]: Completed
+        - generic [ref=f10e6976]: Normal
+        - button "Open project" [ref=f10e6977] [cursor=pointer]
+      - generic [ref=f10e6978]:
+        - generic [ref=f10e6979]: Owner task
+        - generic [ref=f10e6980]: task-014 Calendar second owner
+        - generic [ref=f10e6981]: Open
+        - generic [ref=f10e6982]: Normal
+        - button "Open project" [ref=f10e6983] [cursor=pointer]
+      - generic [ref=f10e6984]:
+        - generic [ref=f10e6985]: Archive dated
+        - generic [ref=f10e6986]: task-014 Calendar archival
+        - generic [ref=f10e6987]: Open
+        - generic [ref=f10e6988]: Normal
+        - generic [ref=f10e6989]: 2030-12-31
+        - button "Open project" [ref=f10e6990] [cursor=pointer]
+      - generic [ref=f10e6991]:
+        - generic [ref=f10e6992]: Before range
+        - generic [ref=f10e6993]: task-014 Range boundaries
+        - generic [ref=f10e6994]: Open
+        - generic [ref=f10e6995]: Normal
+        - generic [ref=f10e6996]: 2028-02-28
+        - button "Open project" [ref=f10e6997] [cursor=pointer]
+      - generic [ref=f10e6998]:
+        - generic [ref=f10e6999]: Range first
+        - generic [ref=f10e7000]: task-014 Range boundaries
+        - generic [ref=f10e7001]: Open
+        - generic [ref=f10e7002]: Normal
+        - generic [ref=f10e7003]: 2028-02-29
+        - button "Open project" [ref=f10e7004] [cursor=pointer]
+      - generic [ref=f10e7005]:
+        - generic [ref=f10e7006]: No calendar date
+        - generic [ref=f10e7007]: task-014 Range boundaries
+        - generic [ref=f10e7008]: Open
+        - generic [ref=f10e7009]: Normal
+        - button "Open project" [ref=f10e7010] [cursor=pointer]
+      - generic [ref=f10e7011]:
+        - generic [ref=f10e7012]: Range last
+        - generic [ref=f10e7013]: task-014 Range boundaries
+        - generic [ref=f10e7014]: Open
+        - generic [ref=f10e7015]: Normal
+        - generic [ref=f10e7016]: 2028-03-02
+        - button "Open project" [ref=f10e7017] [cursor=pointer]
+      - generic [ref=f10e7018]:
+        - generic [ref=f10e7019]: After range
+        - generic [ref=f10e7020]: task-014 Range boundaries
+        - generic [ref=f10e7021]: Open
+        - generic [ref=f10e7022]: Normal
+        - generic [ref=f10e7023]: 2028-03-03
+        - button "Open project" [ref=f10e7024] [cursor=pointer]
+      - generic [ref=f10e7025]:
+        - generic [ref=f10e7026]: Range matching
+        - generic [ref=f10e7027]: task-014 Range intersections
+        - generic [ref=f10e7028]: Open
+        - generic [ref=f10e7029]: High
+        - generic [ref=f10e7030]: 2029-02-01
+        - button "Open project" [ref=f10e7031] [cursor=pointer]
+      - generic [ref=f10e7032]:
+        - generic [ref=f10e7033]: Range low
+        - generic [ref=f10e7034]: task-014 Range intersections
+        - generic [ref=f10e7035]: Open
+        - generic [ref=f10e7036]: Normal
+        - generic [ref=f10e7037]: 2029-01-15
+        - button "Open project" [ref=f10e7038] [cursor=pointer]
+      - generic [ref=f10e7039]:
+        - generic [ref=f10e7040]: Range completed
+        - generic [ref=f10e7041]: task-014 Range intersections
+        - generic [ref=f10e7042]: Open
+        - generic [ref=f10e7043]: Low
+        - generic [ref=f10e7044]: 2029-01-15
+        - button "Open project" [ref=f10e7045] [cursor=pointer]
+      - generic [ref=f10e7046]:
+        - generic [ref=f10e7047]: Range undated
+        - generic [ref=f10e7048]: task-014 Range intersections
+        - generic [ref=f10e7049]: Open
+        - generic [ref=f10e7050]: High
+        - button "Open project" [ref=f10e7051] [cursor=pointer]
+      - generic [ref=f10e7052]:
+        - generic [ref=f10e7053]: Valid member
+        - generic [ref=f10e7054]: task-014 Range validation
+        - generic [ref=f10e7055]: Open
+        - generic [ref=f10e7056]: Normal
+        - generic [ref=f10e7057]: 2028-06-15
+        - button "Open project" [ref=f10e7058] [cursor=pointer]
+      - generic [ref=f10e7059]:
+        - generic [ref=f10e7060]: Undated outsider
+        - generic [ref=f10e7061]: task-014 Range validation
+        - generic [ref=f10e7062]: Open
+        - generic [ref=f10e7063]: Normal
+        - button "Open project" [ref=f10e7064] [cursor=pointer]
+      - generic [ref=f10e7065]:
+        - generic [ref=f10e7066]: Archived date renamed
+        - generic [ref=f10e7067]: task-014 Range archival
+        - generic [ref=f10e7068]: Open
+        - generic [ref=f10e7069]: Normal
+        - generic [ref=f10e7070]: 2030-01-01
+        - button "Open project" [ref=f10e7071] [cursor=pointer]
+      - generic [ref=f10e7072]:
+        - generic [ref=f10e7073]: Archived undated outsider
+        - generic [ref=f10e7074]: task-014 Range archival
+        - generic [ref=f10e7075]: Open
+        - generic [ref=f10e7076]: Normal
+        - button "Open project" [ref=f10e7077] [cursor=pointer]
+      - generic [ref=f10e7078]:
+        - generic [ref=f10e7079]: Retained range member
+        - generic [ref=f10e7080]: task-014 Range owner renamed
+        - generic [ref=f10e7081]: Open
+        - generic [ref=f10e7082]: High
+        - generic [ref=f10e7083]: 2031-03-01
+        - button "Open project" [ref=f10e7084] [cursor=pointer]
+      - generic [ref=f10e7085]:
+        - generic [ref=f10e7086]: Retained undated outsider
+        - generic [ref=f10e7087]: task-014 Range owner renamed
+        - generic [ref=f10e7088]: Open
+        - generic [ref=f10e7089]: Normal
+        - button "Open project" [ref=f10e7090] [cursor=pointer]
+      - generic [ref=f10e7091]:
+        - generic [ref=f10e7092]: Created outside range
+        - generic [ref=f10e7093]: task-014 Range owner renamed
+        - generic [ref=f10e7094]: Open
+        - generic [ref=f10e7095]: Low
+        - button "Open project" [ref=f10e7096] [cursor=pointer]
+      - generic [ref=f10e7097]:
+        - generic [ref=f10e7098]: Target first
+        - generic [ref=f10e7099]: task-014 Transfer target
+        - generic [ref=f10e7100]: Open
+        - generic [ref=f10e7101]: Normal
+        - button "Open project" [ref=f10e7102] [cursor=pointer]
+      - generic [ref=f10e7103]:
+        - generic [ref=f10e7104]: Target second
+        - generic [ref=f10e7105]: task-014 Transfer target
+        - generic [ref=f10e7106]: Open
+        - generic [ref=f10e7107]: Normal
+        - button "Open project" [ref=f10e7108] [cursor=pointer]
+      - generic [ref=f10e7109]:
+        - generic [ref=f10e7110]: Transferred complete
+        - generic [ref=f10e7111]: task-014 Transfer target
+        - generic [ref=f10e7112]: Completed
+        - generic [ref=f10e7113]: High
+        - generic [ref=f10e7114]: 2032-02-29
+        - button "Open project" [ref=f10e7115] [cursor=pointer]
+      - generic [ref=f10e7116]:
+        - generic [ref=f10e7117]: Source remaining
+        - generic [ref=f10e7118]: task-014 Transfer source
+        - generic [ref=f10e7119]: Open
+        - generic [ref=f10e7120]: Normal
+        - button "Open project" [ref=f10e7121] [cursor=pointer]
+      - generic [ref=f10e7122]:
+        - generic [ref=f10e7123]: Filtered target sentinel
+        - generic [ref=f10e7124]: task-014 Filtered transfer target
+        - generic [ref=f10e7125]: Open
+        - generic [ref=f10e7126]: Normal
+        - button "Open project" [ref=f10e7127] [cursor=pointer]
+      - generic [ref=f10e7128]:
+        - generic [ref=f10e7129]: Filtered moving
+        - generic [ref=f10e7130]: task-014 Filtered transfer target
+        - generic [ref=f10e7131]: Open
+        - generic [ref=f10e7132]: High
+        - generic [ref=f10e7133]: 2033-01-01
+        - button "Open project" [ref=f10e7134] [cursor=pointer]
+      - generic [ref=f10e7135]:
+        - generic [ref=f10e7136]: Filtered first
+        - generic [ref=f10e7137]: task-014 Filtered transfer source
+        - generic [ref=f10e7138]: Open
+        - generic [ref=f10e7139]: High
+        - generic [ref=f10e7140]: 2033-01-01
+        - button "Open project" [ref=f10e7141] [cursor=pointer]
+      - generic [ref=f10e7142]:
+        - generic [ref=f10e7143]: Filtered last
+        - generic [ref=f10e7144]: task-014 Filtered transfer source
+        - generic [ref=f10e7145]: Open
+        - generic [ref=f10e7146]: High
+        - generic [ref=f10e7147]: 2033-01-01
+        - button "Open project" [ref=f10e7148] [cursor=pointer]
+      - generic [ref=f10e7149]:
+        - generic [ref=f10e7150]: Filtered outside range
+        - generic [ref=f10e7151]: task-014 Filtered transfer source
+        - generic [ref=f10e7152]: Open
+        - generic [ref=f10e7153]: High
+        - generic [ref=f10e7154]: 2034-01-01
+        - button "Open project" [ref=f10e7155] [cursor=pointer]
+      - generic [ref=f10e7156]:
+        - generic [ref=f10e7157]: Filtered completed guard
+        - generic [ref=f10e7158]: task-014 Filtered transfer source
+        - generic [ref=f10e7159]: Completed
+        - generic [ref=f10e7160]: High
+        - button "Open project" [ref=f10e7161] [cursor=pointer]
+      - generic [ref=f10e7162]:
+        - generic [ref=f10e7163]: Filtered normal guard
+        - generic [ref=f10e7164]: task-014 Filtered transfer source
+        - generic [ref=f10e7165]: Open
+        - generic [ref=f10e7166]: Normal
+        - button "Open project" [ref=f10e7167] [cursor=pointer]
+      - generic [ref=f10e7168]:
+        - generic [ref=f10e7169]: Options task
+        - generic [ref=f10e7170]: task-014 Options owner
+        - generic [ref=f10e7171]: Open
+        - generic [ref=f10e7172]: Normal
+        - button "Open project" [ref=f10e7173] [cursor=pointer]
+      - generic [ref=f10e7174]:
+        - generic [ref=f10e7175]: Undated target sentinel
+        - generic [ref=f10e7176]: task-014 Read-only transfer target
+        - generic [ref=f10e7177]: Open
+        - generic [ref=f10e7178]: Normal
+        - button "Open project" [ref=f10e7179] [cursor=pointer]
+      - generic [ref=f10e7180]:
+        - generic [ref=f10e7181]: Undated transfer
+        - generic [ref=f10e7182]: task-014 Read-only transfer owner
+        - generic [ref=f10e7183]: Open
+        - generic [ref=f10e7184]: Normal
+        - button "Open project" [ref=f10e7185] [cursor=pointer]
+      - generic [ref=f10e7186]:
+        - generic [ref=f10e7187]: Undated owner sentinel
+        - generic [ref=f10e7188]: task-014 Read-only transfer owner
+        - generic [ref=f10e7189]: Open
+        - generic [ref=f10e7190]: Normal
+        - button "Open project" [ref=f10e7191] [cursor=pointer]
+      - generic [ref=f10e7192]:
+        - generic [ref=f10e7193]: High open first
+        - generic [ref=f10e7194]: task-014 Priority intersection
+        - generic [ref=f10e7195]: Open
+        - generic [ref=f10e7196]: High
+        - button "Open project" [ref=f10e7197] [cursor=pointer]
+      - generic [ref=f10e7198]:
+        - generic [ref=f10e7199]: Low open
+        - generic [ref=f10e7200]: task-014 Priority intersection
+        - generic [ref=f10e7201]: Open
+        - generic [ref=f10e7202]: Low
+        - button "Open project" [ref=f10e7203] [cursor=pointer]
+      - generic [ref=f10e7204]:
+        - generic [ref=f10e7205]: High completed
+        - generic [ref=f10e7206]: task-014 Priority intersection
+        - generic [ref=f10e7207]: Completed
+        - generic [ref=f10e7208]: High
+        - button "Open project" [ref=f10e7209] [cursor=pointer]
+      - generic [ref=f10e7210]:
+        - generic [ref=f10e7211]: High open last
+        - generic [ref=f10e7212]: task-014 Priority intersection
+        - generic [ref=f10e7213]: Open
+        - generic [ref=f10e7214]: High
+        - button "Open project" [ref=f10e7215] [cursor=pointer]
+      - generic [ref=f10e7216]:
+        - generic [ref=f10e7217]: Leaving priority
+        - generic [ref=f10e7218]: task-014 Priority live filters
+        - generic [ref=f10e7219]: Open
+        - generic [ref=f10e7220]: Low
+        - button "Open project" [ref=f10e7221] [cursor=pointer]
+      - generic [ref=f10e7222]:
+        - generic [ref=f10e7223]: Leaving completion
+        - generic [ref=f10e7224]: task-014 Priority live filters
+        - generic [ref=f10e7225]: Open
+        - generic [ref=f10e7226]: High
+        - button "Open project" [ref=f10e7227] [cursor=pointer]
+      - generic [ref=f10e7228]:
+        - generic [ref=f10e7229]: Completed high guard
+        - generic [ref=f10e7230]: task-014 Priority live filters
+        - generic [ref=f10e7231]: Completed
+        - generic [ref=f10e7232]: High
+        - button "Open project" [ref=f10e7233] [cursor=pointer]
+      - generic [ref=f10e7234]:
+        - generic [ref=f10e7235]: Open normal guard
+        - generic [ref=f10e7236]: task-014 Priority live filters
+        - generic [ref=f10e7237]: Open
+        - generic [ref=f10e7238]: Normal
+        - button "Open project" [ref=f10e7239] [cursor=pointer]
+      - generic [ref=f10e7240]:
+        - generic [ref=f10e7241]: Filtered new title
+        - generic [ref=f10e7242]: task-014 Priority rename filters
+        - generic [ref=f10e7243]: Open
+        - generic [ref=f10e7244]: Low
+        - button "Open project" [ref=f10e7245] [cursor=pointer]
+      - generic [ref=f10e7246]:
+        - generic [ref=f10e7247]: Unmatched normal task
+        - generic [ref=f10e7248]: task-014 Priority rename filters
+        - generic [ref=f10e7249]: Open
+        - generic [ref=f10e7250]: Normal
+        - button "Open project" [ref=f10e7251] [cursor=pointer]
+      - generic [ref=f10e7252]:
+        - generic [ref=f10e7253]: Completed low guard
+        - generic [ref=f10e7254]: task-014 Priority rename filters
+        - generic [ref=f10e7255]: Completed
+        - generic [ref=f10e7256]: Low
+        - button "Open project" [ref=f10e7257] [cursor=pointer]
+      - generic [ref=f10e7258]:
+        - generic [ref=f10e7259]: Archived high open
+        - generic [ref=f10e7260]: task-014 Archived combined filters
+        - generic [ref=f10e7261]: Open
+        - generic [ref=f10e7262]: High
+        - button "Open project" [ref=f10e7263] [cursor=pointer]
+      - generic [ref=f10e7264]:
+        - generic [ref=f10e7265]: Archived normal completed
+        - generic [ref=f10e7266]: task-014 Archived combined filters
+        - generic [ref=f10e7267]: Completed
+        - generic [ref=f10e7268]: Normal
+        - button "Open project" [ref=f10e7269] [cursor=pointer]
+      - generic [ref=f10e7270]:
+        - generic [ref=f10e7271]: Priority renamed
+        - generic [ref=f10e7272]: task-014 Priority ownership
+        - generic [ref=f10e7273]: Open
+        - generic [ref=f10e7274]: High
+        - button "Open project" [ref=f10e7275] [cursor=pointer]
+      - generic [ref=f10e7276]:
+        - generic [ref=f10e7277]: Priority second
+        - generic [ref=f10e7278]: task-014 Priority ownership
+        - generic [ref=f10e7279]: Open
+        - generic [ref=f10e7280]: Low
+        - button "Open project" [ref=f10e7281] [cursor=pointer]
+      - generic [ref=f10e7282]:
+        - generic [ref=f10e7283]: Priority other task
+        - generic [ref=f10e7284]: task-014 Priority other owner
+        - generic [ref=f10e7285]: Open
+        - generic [ref=f10e7286]: Normal
+        - button "Open project" [ref=f10e7287] [cursor=pointer]
+      - generic [ref=f10e7288]:
+        - generic [ref=f10e7289]: Priority completed
+        - generic [ref=f10e7290]: task-014 Priority completion
+        - generic [ref=f10e7291]: Completed
+        - generic [ref=f10e7292]: Low
+        - button "Open project" [ref=f10e7293] [cursor=pointer]
+      - generic [ref=f10e7294]:
+        - generic [ref=f10e7295]: Priority open
+        - generic [ref=f10e7296]: task-014 Priority completion
+        - generic [ref=f10e7297]: Open
+        - generic [ref=f10e7298]: High
+        - button "Open project" [ref=f10e7299] [cursor=pointer]
+      - generic [ref=f10e7300]:
+        - generic [ref=f10e7301]: Priority retained
+        - generic [ref=f10e7302]: task-014 Priority archive
+        - generic [ref=f10e7303]: Open
+        - generic [ref=f10e7304]: Normal
+        - button "Open project" [ref=f10e7305] [cursor=pointer]
+      - generic [ref=f10e7306]:
+        - generic [ref=f10e7307]: Return first
+        - generic [ref=f10e7308]: task-014 Return owner
+        - generic [ref=f10e7309]: Open
+        - generic [ref=f10e7310]: Normal
+        - button "Open project" [ref=f10e7311] [cursor=pointer]
+      - generic [ref=f10e7312]:
+        - generic [ref=f10e7313]: Return second
+        - generic [ref=f10e7314]: task-014 Return owner
+        - generic [ref=f10e7315]: Completed
+        - generic [ref=f10e7316]: High
+        - button "Open project" [ref=f10e7317] [cursor=pointer]
+      - generic [ref=f10e7318]:
+        - generic [ref=f10e7319]: Return third
+        - generic [ref=f10e7320]: task-014 Return owner
+        - generic [ref=f10e7321]: Open
+        - generic [ref=f10e7322]: Normal
+        - button "Open project" [ref=f10e7323] [cursor=pointer]
+      - generic [ref=f10e7324]:
+        - generic [ref=f10e7325]: Return fourth
+        - generic [ref=f10e7326]: task-014 Return owner
+        - generic [ref=f10e7327]: Open
+        - generic [ref=f10e7328]: Normal
+        - button "Open project" [ref=f10e7329] [cursor=pointer]
+      - generic [ref=f10e7330]:
+        - generic [ref=f10e7331]: Identity before
+        - generic [ref=f10e7332]: task-014 Returned owner renamed
+        - generic [ref=f10e7333]: Open
+        - generic [ref=f10e7334]: Normal
+        - button "Open project" [ref=f10e7335] [cursor=pointer]
+      - generic [ref=f10e7336]:
+        - generic [ref=f10e7337]: Identity returning
+        - generic [ref=f10e7338]: task-014 Returned owner renamed
+        - generic [ref=f10e7339]: Open
+        - generic [ref=f10e7340]: Normal
+        - button "Open project" [ref=f10e7341] [cursor=pointer]
+      - generic [ref=f10e7342]:
+        - generic [ref=f10e7343]: Identity after
+        - generic [ref=f10e7344]: task-014 Returned owner renamed
+        - generic [ref=f10e7345]: Open
+        - generic [ref=f10e7346]: Normal
+        - button "Open project" [ref=f10e7347] [cursor=pointer]
+      - generic [ref=f10e7348]:
+        - generic [ref=f10e7349]: Second existing
+        - generic [ref=f10e7350]: task-014 Position second owner
+        - generic [ref=f10e7351]: Open
+        - generic [ref=f10e7352]: Normal
+        - button "Open project" [ref=f10e7353] [cursor=pointer]
+      - generic [ref=f10e7354]:
+        - generic [ref=f10e7355]: Second newly created
+        - generic [ref=f10e7356]: task-014 Position second owner
+        - generic [ref=f10e7357]: Open
+        - generic [ref=f10e7358]: Normal
+        - button "Open project" [ref=f10e7359] [cursor=pointer]
+      - generic [ref=f10e7360]:
+        - generic [ref=f10e7361]: First existing
+        - generic [ref=f10e7362]: task-014 Position first owner
+        - generic [ref=f10e7363]: Open
+        - generic [ref=f10e7364]: Normal
+        - button "Open project" [ref=f10e7365] [cursor=pointer]
+      - generic [ref=f10e7366]:
+        - generic [ref=f10e7367]: Position travelling
+        - generic [ref=f10e7368]: task-014 Position first owner
+        - generic [ref=f10e7369]: Open
+        - generic [ref=f10e7370]: Normal
+        - button "Open project" [ref=f10e7371] [cursor=pointer]
+      - generic [ref=f10e7372]:
+        - generic [ref=f10e7373]: First later
+        - generic [ref=f10e7374]: task-014 Position first owner
+        - generic [ref=f10e7375]: Open
+        - generic [ref=f10e7376]: Normal
+        - button "Open project" [ref=f10e7377] [cursor=pointer]
+      - generic [ref=f10e7378]:
+        - generic [ref=f10e7379]: First newly created
+        - generic [ref=f10e7380]: task-014 Position first owner
+        - generic [ref=f10e7381]: Open
+        - generic [ref=f10e7382]: Normal
+        - button "Open project" [ref=f10e7383] [cursor=pointer]
+      - generic [ref=f10e7384]:
+        - generic [ref=f10e7385]: Original task gap
+        - generic [ref=f10e7386]: task-014 Whitespace retained owner
+        - generic [ref=f10e7387]: Open
+        - generic [ref=f10e7388]: High
+        - button "Open project" [ref=f10e7389] [cursor=pointer]
+      - generic [ref=f10e7390]:
+        - generic [ref=f10e7391]: Other task gap
+        - generic [ref=f10e7392]: task-014 Whitespace retained owner
+        - generic [ref=f10e7393]: Open
+        - generic [ref=f10e7394]: High
+        - button "Open project" [ref=f10e7395] [cursor=pointer]
+      - generic [ref=f10e7396]:
+        - generic [ref=f10e7397]: Mixed first
+        - generic [ref=f10e7398]: task-014 Search task intersections
+        - generic [ref=f10e7399]: Open
+        - generic [ref=f10e7400]: High
+        - generic [ref=f10e7401]: 2034-01-01
+        - button "Open project" [ref=f10e7402] [cursor=pointer]
+      - generic [ref=f10e7403]:
+        - generic [ref=f10e7404]: Other high
+        - generic [ref=f10e7405]: task-014 Search task intersections
+        - generic [ref=f10e7406]: Open
+        - generic [ref=f10e7407]: High
+        - generic [ref=f10e7408]: 2034-01-01
+        - button "Open project" [ref=f10e7409] [cursor=pointer]
+      - generic [ref=f10e7410]:
+        - generic [ref=f10e7411]: MIXED completed
+        - generic [ref=f10e7412]: task-014 Search task intersections
+        - generic [ref=f10e7413]: Completed
+        - generic [ref=f10e7414]: High
+        - generic [ref=f10e7415]: 2034-01-01
+        - button "Open project" [ref=f10e7416] [cursor=pointer]
+      - generic [ref=f10e7417]:
+        - generic [ref=f10e7418]: Mixed undated
+        - generic [ref=f10e7419]: task-014 Search task intersections
+        - generic [ref=f10e7420]: Open
+        - generic [ref=f10e7421]: High
+        - button "Open project" [ref=f10e7422] [cursor=pointer]
+      - generic [ref=f10e7423]:
+        - generic [ref=f10e7424]: mixed last
+        - generic [ref=f10e7425]: task-014 Search task intersections
+        - generic [ref=f10e7426]: Open
+        - generic [ref=f10e7427]: High
+        - generic [ref=f10e7428]: 2034-01-01
+        - button "Open project" [ref=f10e7429] [cursor=pointer]
+      - generic [ref=f10e7430]:
+        - generic [ref=f10e7431]: Other normal guard
+        - generic [ref=f10e7432]: task-014 Search task intersections
+        - generic [ref=f10e7433]: Open
+        - generic [ref=f10e7434]: Normal
+        - button "Open project" [ref=f10e7435] [cursor=pointer]
+      - generic [ref=f10e7436]:
+        - generic [ref=f10e7437]: Two spaces
+        - generic [ref=f10e7438]: task-014 Search internal spacing
+        - generic [ref=f10e7439]: Open
+        - generic [ref=f10e7440]: Normal
+        - button "Open project" [ref=f10e7441] [cursor=pointer]
+      - generic [ref=f10e7442]:
+        - generic [ref=f10e7443]: Two spaces sentinel
+        - generic [ref=f10e7444]: task-014 Search internal spacing
+        - generic [ref=f10e7445]: Open
+        - generic [ref=f10e7446]: Normal
+        - button "Open project" [ref=f10e7447] [cursor=pointer]
+      - generic [ref=f10e7448]:
+        - generic [ref=f10e7449]: Task preserved
+        - generic [ref=f10e7450]: task-014 Task reload
+        - generic [ref=f10e7451]: Open
+        - generic [ref=f10e7452]: Normal
+        - button "Open project" [ref=f10e7453] [cursor=pointer]
+      - generic [ref=f10e7454]:
+        - generic [ref=f10e7455]: Private to owner
+        - generic [ref=f10e7456]: task-014 Task owner
+        - generic [ref=f10e7457]: Open
+        - generic [ref=f10e7458]: Normal
+        - button "Open project" [ref=f10e7459] [cursor=pointer]
+      - generic [ref=f10e7460]:
+        - generic [ref=f10e7461]: Done task
+        - generic [ref=f10e7462]: task-014 Task filters
+        - generic [ref=f10e7463]: Open
+        - generic [ref=f10e7464]: Normal
+        - button "Open project" [ref=f10e7465] [cursor=pointer]
+      - generic [ref=f10e7466]:
+        - generic [ref=f10e7467]: Open task
+        - generic [ref=f10e7468]: task-014 Task filters
+        - generic [ref=f10e7469]: Open
+        - generic [ref=f10e7470]: Normal
+        - button "Open project" [ref=f10e7471] [cursor=pointer]
+      - generic [ref=f10e7472]:
+        - generic [ref=f10e7473]: Retained task
+        - generic [ref=f10e7474]: task-014 Archive tasks
+        - generic [ref=f10e7475]: Completed
+        - generic [ref=f10e7476]: Normal
+        - button "Open project" [ref=f10e7477] [cursor=pointer]
+      - generic [ref=f10e7478]:
+        - generic [ref=f10e7479]: Summary one
+        - generic [ref=f10e7480]: task-014 Summary project
+        - generic [ref=f10e7481]: Completed
+        - generic [ref=f10e7482]: Normal
+        - button "Open project" [ref=f10e7483] [cursor=pointer]
+      - generic [ref=f10e7484]:
+        - generic [ref=f10e7485]: Summary two
+        - generic [ref=f10e7486]: task-014 Summary project
+        - generic [ref=f10e7487]: Open
+        - generic [ref=f10e7488]: Normal
+        - button "Open project" [ref=f10e7489] [cursor=pointer]
+      - generic [ref=f10e7490]:
+        - generic [ref=f10e7491]: Identity task
+        - generic [ref=f10e7492]: task-014 Identity updated
+        - generic [ref=f10e7493]: Completed
+        - generic [ref=f10e7494]: Normal
+        - button "Open project" [ref=f10e7495] [cursor=pointer]
+      - generic [ref=f10e7496]:
+        - generic [ref=f10e7497]: Name updated
+        - generic [ref=f10e7498]: task-014 Task rename identity
+        - generic [ref=f10e7499]: Completed
+        - generic [ref=f10e7500]: Normal
+        - button "Open project" [ref=f10e7501] [cursor=pointer]
+      - generic [ref=f10e7502]:
+        - generic [ref=f10e7503]: Name second
+        - generic [ref=f10e7504]: task-014 Task rename identity
+        - generic [ref=f10e7505]: Open
+        - generic [ref=f10e7506]: Normal
+        - button "Open project" [ref=f10e7507] [cursor=pointer]
+      - generic [ref=f10e7508]:
+        - generic [ref=f10e7509]: Kept title
+        - generic [ref=f10e7510]: task-014 Task rename invalid
+        - generic [ref=f10e7511]: Open
+        - generic [ref=f10e7512]: Normal
+        - button "Open project" [ref=f10e7513] [cursor=pointer]
+      - generic [ref=f10e7514]:
+        - generic [ref=f10e7515]: Archived title
+        - generic [ref=f10e7516]: task-014 Task rename archive
+        - generic [ref=f10e7517]: Open
+        - generic [ref=f10e7518]: Normal
+        - button "Open project" [ref=f10e7519] [cursor=pointer]
+      - generic [ref=f10e7520]:
+        - generic [ref=f10e7521]: Independent normal
+        - generic [ref=f10e7522]: task-015 Defaults independent
+        - generic [ref=f10e7523]: Open
+        - generic [ref=f10e7524]: Normal
+        - button "Open project" [ref=f10e7525] [cursor=pointer]
+      - generic [ref=f10e7526]:
+        - generic [ref=f10e7527]: Before default change
+        - generic [ref=f10e7528]: task-015 Defaults inheritance
+        - generic [ref=f10e7529]: Completed
+        - generic [ref=f10e7530]: Normal
+        - button "Open project" [ref=f10e7531] [cursor=pointer]
+      - generic [ref=f10e7532]:
+        - generic [ref=f10e7533]: Inherited high
+        - generic [ref=f10e7534]: task-015 Defaults inheritance
+        - generic [ref=f10e7535]: Open
+        - generic [ref=f10e7536]: High
+        - button "Open project" [ref=f10e7537] [cursor=pointer]
+      - generic [ref=f10e7538]:
+        - generic [ref=f10e7539]: Inherited low
+        - generic [ref=f10e7540]: task-015 Defaults inheritance
+        - generic [ref=f10e7541]: Open
+        - generic [ref=f10e7542]: Low
+        - button "Open project" [ref=f10e7543] [cursor=pointer]
+      - generic [ref=f10e7544]:
+        - generic [ref=f10e7545]: Inherited normal
+        - generic [ref=f10e7546]: task-015 Defaults inheritance
+        - generic [ref=f10e7547]: Open
+        - generic [ref=f10e7548]: Normal
+        - button "Open project" [ref=f10e7549] [cursor=pointer]
+      - generic [ref=f10e7550]:
+        - generic [ref=f10e7551]: Lifecycle task
+        - generic [ref=f10e7552]: task-015 Defaults renamed
+        - generic [ref=f10e7553]: Open
+        - generic [ref=f10e7554]: Low
+        - button "Open project" [ref=f10e7555] [cursor=pointer]
+      - generic [ref=f10e7556]:
+        - generic [ref=f10e7557]: Restored inherits
+        - generic [ref=f10e7558]: task-015 Defaults renamed
+        - generic [ref=f10e7559]: Open
+        - generic [ref=f10e7560]: Low
+        - button "Open project" [ref=f10e7561] [cursor=pointer]
+      - generic [ref=f10e7562]:
+        - generic [ref=f10e7563]: Calendar renamed
+        - generic [ref=f10e7564]: task-015 Calendar persistence
+        - generic [ref=f10e7565]: Open
+        - generic [ref=f10e7566]: Normal
+        - button "Open project" [ref=f10e7567] [cursor=pointer]
+      - generic [ref=f10e7568]:
+        - generic [ref=f10e7569]: Calendar valid
+        - generic [ref=f10e7570]: task-015 Calendar validation
+        - generic [ref=f10e7571]: Open
+        - generic [ref=f10e7572]: Normal
+        - generic [ref=f10e7573]: 2028-04-30
+        - button "Open project" [ref=f10e7574] [cursor=pointer]
+      - generic [ref=f10e7575]:
+        - generic [ref=f10e7576]: Dated first
+        - generic [ref=f10e7577]: task-015 Calendar independence
+        - generic [ref=f10e7578]: Completed
+        - generic [ref=f10e7579]: High
+        - generic [ref=f10e7580]: 2029-01-01
+        - button "Open project" [ref=f10e7581] [cursor=pointer]
+      - generic [ref=f10e7582]:
+        - generic [ref=f10e7583]: Undated second
+        - generic [ref=f10e7584]: task-015 Calendar independence
+        - generic [ref=f10e7585]: Open
+        - generic [ref=f10e7586]: Normal
+        - button "Open project" [ref=f10e7587] [cursor=pointer]
+      - generic [ref=f10e7588]:
+        - generic [ref=f10e7589]: Completed normal guard
+        - generic [ref=f10e7590]: task-015 Calendar independence
+        - generic [ref=f10e7591]: Completed
+        - generic [ref=f10e7592]: Normal
+        - button "Open project" [ref=f10e7593] [cursor=pointer]
+      - generic [ref=f10e7594]:
+        - generic [ref=f10e7595]: Owner task
+        - generic [ref=f10e7596]: task-015 Calendar second owner
+        - generic [ref=f10e7597]: Open
+        - generic [ref=f10e7598]: Normal
+        - button "Open project" [ref=f10e7599] [cursor=pointer]
+      - generic [ref=f10e7600]:
+        - generic [ref=f10e7601]: Archive dated
+        - generic [ref=f10e7602]: task-015 Calendar archival
+        - generic [ref=f10e7603]: Open
+        - generic [ref=f10e7604]: Normal
+        - generic [ref=f10e7605]: 2030-12-31
+        - button "Open project" [ref=f10e7606] [cursor=pointer]
+      - generic [ref=f10e7607]:
+        - generic [ref=f10e7608]: Before range
+        - generic [ref=f10e7609]: task-015 Range boundaries
+        - generic [ref=f10e7610]: Open
+        - generic [ref=f10e7611]: Normal
+        - generic [ref=f10e7612]: 2028-02-28
+        - button "Open project" [ref=f10e7613] [cursor=pointer]
+      - generic [ref=f10e7614]:
+        - generic [ref=f10e7615]: Range first
+        - generic [ref=f10e7616]: task-015 Range boundaries
+        - generic [ref=f10e7617]: Open
+        - generic [ref=f10e7618]: Normal
+        - generic [ref=f10e7619]: 2028-02-29
+        - button "Open project" [ref=f10e7620] [cursor=pointer]
+      - generic [ref=f10e7621]:
+        - generic [ref=f10e7622]: No calendar date
+        - generic [ref=f10e7623]: task-015 Range boundaries
+        - generic [ref=f10e7624]: Open
+        - generic [ref=f10e7625]: Normal
+        - button "Open project" [ref=f10e7626] [cursor=pointer]
+      - generic [ref=f10e7627]:
+        - generic [ref=f10e7628]: Range last
+        - generic [ref=f10e7629]: task-015 Range boundaries
+        - generic [ref=f10e7630]: Open
+        - generic [ref=f10e7631]: Normal
+        - generic [ref=f10e7632]: 2028-03-02
+        - button "Open project" [ref=f10e7633] [cursor=pointer]
+      - generic [ref=f10e7634]:
+        - generic [ref=f10e7635]: After range
+        - generic [ref=f10e7636]: task-015 Range boundaries
+        - generic [ref=f10e7637]: Open
+        - generic [ref=f10e7638]: Normal
+        - generic [ref=f10e7639]: 2028-03-03
+        - button "Open project" [ref=f10e7640] [cursor=pointer]
+      - generic [ref=f10e7641]:
+        - generic [ref=f10e7642]: Range matching
+        - generic [ref=f10e7643]: task-015 Range intersections
+        - generic [ref=f10e7644]: Open
+        - generic [ref=f10e7645]: High
+        - generic [ref=f10e7646]: 2029-02-01
+        - button "Open project" [ref=f10e7647] [cursor=pointer]
+      - generic [ref=f10e7648]:
+        - generic [ref=f10e7649]: Range low
+        - generic [ref=f10e7650]: task-015 Range intersections
+        - generic [ref=f10e7651]: Open
+        - generic [ref=f10e7652]: Normal
+        - generic [ref=f10e7653]: 2029-01-15
+        - button "Open project" [ref=f10e7654] [cursor=pointer]
+      - generic [ref=f10e7655]:
+        - generic [ref=f10e7656]: Range completed
+        - generic [ref=f10e7657]: task-015 Range intersections
+        - generic [ref=f10e7658]: Open
+        - generic [ref=f10e7659]: Low
+        - generic [ref=f10e7660]: 2029-01-15
+        - button "Open project" [ref=f10e7661] [cursor=pointer]
+      - generic [ref=f10e7662]:
+        - generic [ref=f10e7663]: Range undated
+        - generic [ref=f10e7664]: task-015 Range intersections
+        - generic [ref=f10e7665]: Open
+        - generic [ref=f10e7666]: High
+        - button "Open project" [ref=f10e7667] [cursor=pointer]
+      - generic [ref=f10e7668]:
+        - generic [ref=f10e7669]: Valid member
+        - generic [ref=f10e7670]: task-015 Range validation
+        - generic [ref=f10e7671]: Open
+        - generic [ref=f10e7672]: Normal
+        - generic [ref=f10e7673]: 2028-06-15
+        - button "Open project" [ref=f10e7674] [cursor=pointer]
+      - generic [ref=f10e7675]:
+        - generic [ref=f10e7676]: Undated outsider
+        - generic [ref=f10e7677]: task-015 Range validation
+        - generic [ref=f10e7678]: Open
+        - generic [ref=f10e7679]: Normal
+        - button "Open project" [ref=f10e7680] [cursor=pointer]
+      - generic [ref=f10e7681]:
+        - generic [ref=f10e7682]: Archived date renamed
+        - generic [ref=f10e7683]: task-015 Range archival
+        - generic [ref=f10e7684]: Open
+        - generic [ref=f10e7685]: Normal
+        - generic [ref=f10e7686]: 2030-01-01
+        - button "Open project" [ref=f10e7687] [cursor=pointer]
+      - generic [ref=f10e7688]:
+        - generic [ref=f10e7689]: Archived undated outsider
+        - generic [ref=f10e7690]: task-015 Range archival
+        - generic [ref=f10e7691]: Open
+        - generic [ref=f10e7692]: Normal
+        - button "Open project" [ref=f10e7693] [cursor=pointer]
+      - generic [ref=f10e7694]:
+        - generic [ref=f10e7695]: Retained range member
+        - generic [ref=f10e7696]: task-015 Range owner renamed
+        - generic [ref=f10e7697]: Open
+        - generic [ref=f10e7698]: High
+        - generic [ref=f10e7699]: 2031-03-01
+        - button "Open project" [ref=f10e7700] [cursor=pointer]
+      - generic [ref=f10e7701]:
+        - generic [ref=f10e7702]: Retained undated outsider
+        - generic [ref=f10e7703]: task-015 Range owner renamed
+        - generic [ref=f10e7704]: Open
+        - generic [ref=f10e7705]: Normal
+        - button "Open project" [ref=f10e7706] [cursor=pointer]
+      - generic [ref=f10e7707]:
+        - generic [ref=f10e7708]: Created outside range
+        - generic [ref=f10e7709]: task-015 Range owner renamed
+        - generic [ref=f10e7710]: Open
+        - generic [ref=f10e7711]: Low
+        - button "Open project" [ref=f10e7712] [cursor=pointer]
+      - generic [ref=f10e7713]:
+        - generic [ref=f10e7714]: Target first
+        - generic [ref=f10e7715]: task-015 Transfer target
+        - generic [ref=f10e7716]: Open
+        - generic [ref=f10e7717]: Normal
+        - button "Open project" [ref=f10e7718] [cursor=pointer]
+      - generic [ref=f10e7719]:
+        - generic [ref=f10e7720]: Target second
+        - generic [ref=f10e7721]: task-015 Transfer target
+        - generic [ref=f10e7722]: Open
+        - generic [ref=f10e7723]: Normal
+        - button "Open project" [ref=f10e7724] [cursor=pointer]
+      - generic [ref=f10e7725]:
+        - generic [ref=f10e7726]: Transferred complete
+        - generic [ref=f10e7727]: task-015 Transfer target
+        - generic [ref=f10e7728]: Completed
+        - generic [ref=f10e7729]: High
+        - generic [ref=f10e7730]: 2032-02-29
+        - button "Open project" [ref=f10e7731] [cursor=pointer]
+      - generic [ref=f10e7732]:
+        - generic [ref=f10e7733]: Source remaining
+        - generic [ref=f10e7734]: task-015 Transfer source
+        - generic [ref=f10e7735]: Open
+        - generic [ref=f10e7736]: Normal
+        - button "Open project" [ref=f10e7737] [cursor=pointer]
+      - generic [ref=f10e7738]:
+        - generic [ref=f10e7739]: Filtered target sentinel
+        - generic [ref=f10e7740]: task-015 Filtered transfer target
+        - generic [ref=f10e7741]: Open
+        - generic [ref=f10e7742]: Normal
+        - button "Open project" [ref=f10e7743] [cursor=pointer]
+      - generic [ref=f10e7744]:
+        - generic [ref=f10e7745]: Filtered moving
+        - generic [ref=f10e7746]: task-015 Filtered transfer target
+        - generic [ref=f10e7747]: Open
+        - generic [ref=f10e7748]: High
+        - generic [ref=f10e7749]: 2033-01-01
+        - button "Open project" [ref=f10e7750] [cursor=pointer]
+      - generic [ref=f10e7751]:
+        - generic [ref=f10e7752]: Filtered first
+        - generic [ref=f10e7753]: task-015 Filtered transfer source
+        - generic [ref=f10e7754]: Open
+        - generic [ref=f10e7755]: High
+        - generic [ref=f10e7756]: 2033-01-01
+        - button "Open project" [ref=f10e7757] [cursor=pointer]
+      - generic [ref=f10e7758]:
+        - generic [ref=f10e7759]: Filtered last
+        - generic [ref=f10e7760]: task-015 Filtered transfer source
+        - generic [ref=f10e7761]: Open
+        - generic [ref=f10e7762]: High
+        - generic [ref=f10e7763]: 2033-01-01
+        - button "Open project" [ref=f10e7764] [cursor=pointer]
+      - generic [ref=f10e7765]:
+        - generic [ref=f10e7766]: Filtered outside range
+        - generic [ref=f10e7767]: task-015 Filtered transfer source
+        - generic [ref=f10e7768]: Open
+        - generic [ref=f10e7769]: High
+        - generic [ref=f10e7770]: 2034-01-01
+        - button "Open project" [ref=f10e7771] [cursor=pointer]
+      - generic [ref=f10e7772]:
+        - generic [ref=f10e7773]: Filtered completed guard
+        - generic [ref=f10e7774]: task-015 Filtered transfer source
+        - generic [ref=f10e7775]: Completed
+        - generic [ref=f10e7776]: High
+        - button "Open project" [ref=f10e7777] [cursor=pointer]
+      - generic [ref=f10e7778]:
+        - generic [ref=f10e7779]: Filtered normal guard
+        - generic [ref=f10e7780]: task-015 Filtered transfer source
+        - generic [ref=f10e7781]: Open
+        - generic [ref=f10e7782]: Normal
+        - button "Open project" [ref=f10e7783] [cursor=pointer]
+      - generic [ref=f10e7784]:
+        - generic [ref=f10e7785]: Options task
+        - generic [ref=f10e7786]: task-015 Options owner
+        - generic [ref=f10e7787]: Open
+        - generic [ref=f10e7788]: Normal
+        - button "Open project" [ref=f10e7789] [cursor=pointer]
+      - generic [ref=f10e7790]:
+        - generic [ref=f10e7791]: Undated target sentinel
+        - generic [ref=f10e7792]: task-015 Read-only transfer target
+        - generic [ref=f10e7793]: Open
+        - generic [ref=f10e7794]: Normal
+        - button "Open project" [ref=f10e7795] [cursor=pointer]
+      - generic [ref=f10e7796]:
+        - generic [ref=f10e7797]: Undated transfer
+        - generic [ref=f10e7798]: task-015 Read-only transfer owner
+        - generic [ref=f10e7799]: Open
+        - generic [ref=f10e7800]: Normal
+        - button "Open project" [ref=f10e7801] [cursor=pointer]
+      - generic [ref=f10e7802]:
+        - generic [ref=f10e7803]: Undated owner sentinel
+        - generic [ref=f10e7804]: task-015 Read-only transfer owner
+        - generic [ref=f10e7805]: Open
+        - generic [ref=f10e7806]: Normal
+        - button "Open project" [ref=f10e7807] [cursor=pointer]
+      - generic [ref=f10e7808]:
+        - generic [ref=f10e7809]: Notes identity
+        - generic [ref=f10e7810]: task-015 Notes values
+        - generic [ref=f10e7811]: Open
+        - generic [ref=f10e7812]: High
+        - generic [ref=f10e7813]: 2035-01-01
+        - generic [ref=f10e7814]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e7815] [cursor=pointer]
+      - generic [ref=f10e7816]:
+        - generic [ref=f10e7817]: Only in notes title sentinel
+        - generic [ref=f10e7818]: task-015 Notes values
+        - generic [ref=f10e7819]: Open
+        - generic [ref=f10e7820]: Normal
+        - button "Open project" [ref=f10e7821] [cursor=pointer]
+      - generic [ref=f10e7822]:
+        - generic [ref=f10e7823]: Notes target existing
+        - generic [ref=f10e7824]: task-015 Notes target
+        - generic [ref=f10e7825]: Open
+        - generic [ref=f10e7826]: Normal
+        - button "Open project" [ref=f10e7827] [cursor=pointer]
+      - generic [ref=f10e7828]:
+        - generic [ref=f10e7829]: Notes before
+        - generic [ref=f10e7830]: task-015 Notes owner
+        - generic [ref=f10e7831]: Open
+        - generic [ref=f10e7832]: Normal
+        - button "Open project" [ref=f10e7833] [cursor=pointer]
+      - generic [ref=f10e7834]:
+        - generic [ref=f10e7835]: Notes travelling
+        - generic [ref=f10e7836]: task-015 Notes owner
+        - generic [ref=f10e7837]: Open
+        - generic [ref=f10e7838]: Normal
+        - generic [ref=f10e7839]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e7840] [cursor=pointer]
+      - generic [ref=f10e7841]:
+        - generic [ref=f10e7842]: Notes after
+        - generic [ref=f10e7843]: task-015 Notes owner
+        - generic [ref=f10e7844]: Open
+        - generic [ref=f10e7845]: Normal
+        - button "Open project" [ref=f10e7846] [cursor=pointer]
+      - generic [ref=f10e7847]:
+        - generic [ref=f10e7848]: High open first
+        - generic [ref=f10e7849]: task-015 Priority intersection
+        - generic [ref=f10e7850]: Open
+        - generic [ref=f10e7851]: High
+        - button "Open project" [ref=f10e7852] [cursor=pointer]
+      - generic [ref=f10e7853]:
+        - generic [ref=f10e7854]: Low open
+        - generic [ref=f10e7855]: task-015 Priority intersection
+        - generic [ref=f10e7856]: Open
+        - generic [ref=f10e7857]: Low
+        - button "Open project" [ref=f10e7858] [cursor=pointer]
+      - generic [ref=f10e7859]:
+        - generic [ref=f10e7860]: High completed
+        - generic [ref=f10e7861]: task-015 Priority intersection
+        - generic [ref=f10e7862]: Completed
+        - generic [ref=f10e7863]: High
+        - button "Open project" [ref=f10e7864] [cursor=pointer]
+      - generic [ref=f10e7865]:
+        - generic [ref=f10e7866]: High open last
+        - generic [ref=f10e7867]: task-015 Priority intersection
+        - generic [ref=f10e7868]: Open
+        - generic [ref=f10e7869]: High
+        - button "Open project" [ref=f10e7870] [cursor=pointer]
+      - generic [ref=f10e7871]:
+        - generic [ref=f10e7872]: Leaving priority
+        - generic [ref=f10e7873]: task-015 Priority live filters
+        - generic [ref=f10e7874]: Open
+        - generic [ref=f10e7875]: Low
+        - button "Open project" [ref=f10e7876] [cursor=pointer]
+      - generic [ref=f10e7877]:
+        - generic [ref=f10e7878]: Leaving completion
+        - generic [ref=f10e7879]: task-015 Priority live filters
+        - generic [ref=f10e7880]: Open
+        - generic [ref=f10e7881]: High
+        - button "Open project" [ref=f10e7882] [cursor=pointer]
+      - generic [ref=f10e7883]:
+        - generic [ref=f10e7884]: Completed high guard
+        - generic [ref=f10e7885]: task-015 Priority live filters
+        - generic [ref=f10e7886]: Completed
+        - generic [ref=f10e7887]: High
+        - button "Open project" [ref=f10e7888] [cursor=pointer]
+      - generic [ref=f10e7889]:
+        - generic [ref=f10e7890]: Open normal guard
+        - generic [ref=f10e7891]: task-015 Priority live filters
+        - generic [ref=f10e7892]: Open
+        - generic [ref=f10e7893]: Normal
+        - button "Open project" [ref=f10e7894] [cursor=pointer]
+      - generic [ref=f10e7895]:
+        - generic [ref=f10e7896]: Filtered new title
+        - generic [ref=f10e7897]: task-015 Priority rename filters
+        - generic [ref=f10e7898]: Open
+        - generic [ref=f10e7899]: Low
+        - button "Open project" [ref=f10e7900] [cursor=pointer]
+      - generic [ref=f10e7901]:
+        - generic [ref=f10e7902]: Unmatched normal task
+        - generic [ref=f10e7903]: task-015 Priority rename filters
+        - generic [ref=f10e7904]: Open
+        - generic [ref=f10e7905]: Normal
+        - button "Open project" [ref=f10e7906] [cursor=pointer]
+      - generic [ref=f10e7907]:
+        - generic [ref=f10e7908]: Completed low guard
+        - generic [ref=f10e7909]: task-015 Priority rename filters
+        - generic [ref=f10e7910]: Completed
+        - generic [ref=f10e7911]: Low
+        - button "Open project" [ref=f10e7912] [cursor=pointer]
+      - generic [ref=f10e7913]:
+        - generic [ref=f10e7914]: Archived high open
+        - generic [ref=f10e7915]: task-015 Archived combined filters
+        - generic [ref=f10e7916]: Open
+        - generic [ref=f10e7917]: High
+        - button "Open project" [ref=f10e7918] [cursor=pointer]
+      - generic [ref=f10e7919]:
+        - generic [ref=f10e7920]: Archived normal completed
+        - generic [ref=f10e7921]: task-015 Archived combined filters
+        - generic [ref=f10e7922]: Completed
+        - generic [ref=f10e7923]: Normal
+        - button "Open project" [ref=f10e7924] [cursor=pointer]
+      - generic [ref=f10e7925]:
+        - generic [ref=f10e7926]: Priority renamed
+        - generic [ref=f10e7927]: task-015 Priority ownership
+        - generic [ref=f10e7928]: Open
+        - generic [ref=f10e7929]: High
+        - button "Open project" [ref=f10e7930] [cursor=pointer]
+      - generic [ref=f10e7931]:
+        - generic [ref=f10e7932]: Priority second
+        - generic [ref=f10e7933]: task-015 Priority ownership
+        - generic [ref=f10e7934]: Open
+        - generic [ref=f10e7935]: Low
+        - button "Open project" [ref=f10e7936] [cursor=pointer]
+      - generic [ref=f10e7937]:
+        - generic [ref=f10e7938]: Priority other task
+        - generic [ref=f10e7939]: task-015 Priority other owner
+        - generic [ref=f10e7940]: Open
+        - generic [ref=f10e7941]: Normal
+        - button "Open project" [ref=f10e7942] [cursor=pointer]
+      - generic [ref=f10e7943]:
+        - generic [ref=f10e7944]: Priority completed
+        - generic [ref=f10e7945]: task-015 Priority completion
+        - generic [ref=f10e7946]: Completed
+        - generic [ref=f10e7947]: Low
+        - button "Open project" [ref=f10e7948] [cursor=pointer]
+      - generic [ref=f10e7949]:
+        - generic [ref=f10e7950]: Priority open
+        - generic [ref=f10e7951]: task-015 Priority completion
+        - generic [ref=f10e7952]: Open
+        - generic [ref=f10e7953]: High
+        - button "Open project" [ref=f10e7954] [cursor=pointer]
+      - generic [ref=f10e7955]:
+        - generic [ref=f10e7956]: Priority retained
+        - generic [ref=f10e7957]: task-015 Priority archive
+        - generic [ref=f10e7958]: Open
+        - generic [ref=f10e7959]: Normal
+        - button "Open project" [ref=f10e7960] [cursor=pointer]
+      - generic [ref=f10e7961]:
+        - generic [ref=f10e7962]: Return first
+        - generic [ref=f10e7963]: task-015 Return owner
+        - generic [ref=f10e7964]: Open
+        - generic [ref=f10e7965]: Normal
+        - button "Open project" [ref=f10e7966] [cursor=pointer]
+      - generic [ref=f10e7967]:
+        - generic [ref=f10e7968]: Return second
+        - generic [ref=f10e7969]: task-015 Return owner
+        - generic [ref=f10e7970]: Completed
+        - generic [ref=f10e7971]: High
+        - button "Open project" [ref=f10e7972] [cursor=pointer]
+      - generic [ref=f10e7973]:
+        - generic [ref=f10e7974]: Return third
+        - generic [ref=f10e7975]: task-015 Return owner
+        - generic [ref=f10e7976]: Open
+        - generic [ref=f10e7977]: Normal
+        - button "Open project" [ref=f10e7978] [cursor=pointer]
+      - generic [ref=f10e7979]:
+        - generic [ref=f10e7980]: Return fourth
+        - generic [ref=f10e7981]: task-015 Return owner
+        - generic [ref=f10e7982]: Open
+        - generic [ref=f10e7983]: Normal
+        - button "Open project" [ref=f10e7984] [cursor=pointer]
+      - generic [ref=f10e7985]:
+        - generic [ref=f10e7986]: Identity before
+        - generic [ref=f10e7987]: task-015 Returned owner renamed
+        - generic [ref=f10e7988]: Open
+        - generic [ref=f10e7989]: Normal
+        - button "Open project" [ref=f10e7990] [cursor=pointer]
+      - generic [ref=f10e7991]:
+        - generic [ref=f10e7992]: Identity returning
+        - generic [ref=f10e7993]: task-015 Returned owner renamed
+        - generic [ref=f10e7994]: Open
+        - generic [ref=f10e7995]: Normal
+        - button "Open project" [ref=f10e7996] [cursor=pointer]
+      - generic [ref=f10e7997]:
+        - generic [ref=f10e7998]: Identity after
+        - generic [ref=f10e7999]: task-015 Returned owner renamed
+        - generic [ref=f10e8000]: Open
+        - generic [ref=f10e8001]: Normal
+        - button "Open project" [ref=f10e8002] [cursor=pointer]
+      - generic [ref=f10e8003]:
+        - generic [ref=f10e8004]: Second existing
+        - generic [ref=f10e8005]: task-015 Position second owner
+        - generic [ref=f10e8006]: Open
+        - generic [ref=f10e8007]: Normal
+        - button "Open project" [ref=f10e8008] [cursor=pointer]
+      - generic [ref=f10e8009]:
+        - generic [ref=f10e8010]: Second newly created
+        - generic [ref=f10e8011]: task-015 Position second owner
+        - generic [ref=f10e8012]: Open
+        - generic [ref=f10e8013]: Normal
+        - button "Open project" [ref=f10e8014] [cursor=pointer]
+      - generic [ref=f10e8015]:
+        - generic [ref=f10e8016]: First existing
+        - generic [ref=f10e8017]: task-015 Position first owner
+        - generic [ref=f10e8018]: Open
+        - generic [ref=f10e8019]: Normal
+        - button "Open project" [ref=f10e8020] [cursor=pointer]
+      - generic [ref=f10e8021]:
+        - generic [ref=f10e8022]: Position travelling
+        - generic [ref=f10e8023]: task-015 Position first owner
+        - generic [ref=f10e8024]: Open
+        - generic [ref=f10e8025]: Normal
+        - button "Open project" [ref=f10e8026] [cursor=pointer]
+      - generic [ref=f10e8027]:
+        - generic [ref=f10e8028]: First later
+        - generic [ref=f10e8029]: task-015 Position first owner
+        - generic [ref=f10e8030]: Open
+        - generic [ref=f10e8031]: Normal
+        - button "Open project" [ref=f10e8032] [cursor=pointer]
+      - generic [ref=f10e8033]:
+        - generic [ref=f10e8034]: First newly created
+        - generic [ref=f10e8035]: task-015 Position first owner
+        - generic [ref=f10e8036]: Open
+        - generic [ref=f10e8037]: Normal
+        - button "Open project" [ref=f10e8038] [cursor=pointer]
+      - generic [ref=f10e8039]:
+        - generic [ref=f10e8040]: Original task gap
+        - generic [ref=f10e8041]: task-015 Whitespace retained owner
+        - generic [ref=f10e8042]: Open
+        - generic [ref=f10e8043]: High
+        - button "Open project" [ref=f10e8044] [cursor=pointer]
+      - generic [ref=f10e8045]:
+        - generic [ref=f10e8046]: Other task gap
+        - generic [ref=f10e8047]: task-015 Whitespace retained owner
+        - generic [ref=f10e8048]: Open
+        - generic [ref=f10e8049]: High
+        - button "Open project" [ref=f10e8050] [cursor=pointer]
+      - generic [ref=f10e8051]:
+        - generic [ref=f10e8052]: Mixed first
+        - generic [ref=f10e8053]: task-015 Search task intersections
+        - generic [ref=f10e8054]: Open
+        - generic [ref=f10e8055]: High
+        - generic [ref=f10e8056]: 2034-01-01
+        - button "Open project" [ref=f10e8057] [cursor=pointer]
+      - generic [ref=f10e8058]:
+        - generic [ref=f10e8059]: Other high
+        - generic [ref=f10e8060]: task-015 Search task intersections
+        - generic [ref=f10e8061]: Open
+        - generic [ref=f10e8062]: High
+        - generic [ref=f10e8063]: 2034-01-01
+        - button "Open project" [ref=f10e8064] [cursor=pointer]
+      - generic [ref=f10e8065]:
+        - generic [ref=f10e8066]: MIXED completed
+        - generic [ref=f10e8067]: task-015 Search task intersections
+        - generic [ref=f10e8068]: Completed
+        - generic [ref=f10e8069]: High
+        - generic [ref=f10e8070]: 2034-01-01
+        - button "Open project" [ref=f10e8071] [cursor=pointer]
+      - generic [ref=f10e8072]:
+        - generic [ref=f10e8073]: Mixed undated
+        - generic [ref=f10e8074]: task-015 Search task intersections
+        - generic [ref=f10e8075]: Open
+        - generic [ref=f10e8076]: High
+        - button "Open project" [ref=f10e8077] [cursor=pointer]
+      - generic [ref=f10e8078]:
+        - generic [ref=f10e8079]: mixed last
+        - generic [ref=f10e8080]: task-015 Search task intersections
+        - generic [ref=f10e8081]: Open
+        - generic [ref=f10e8082]: High
+        - generic [ref=f10e8083]: 2034-01-01
+        - button "Open project" [ref=f10e8084] [cursor=pointer]
+      - generic [ref=f10e8085]:
+        - generic [ref=f10e8086]: Other normal guard
+        - generic [ref=f10e8087]: task-015 Search task intersections
+        - generic [ref=f10e8088]: Open
+        - generic [ref=f10e8089]: Normal
+        - button "Open project" [ref=f10e8090] [cursor=pointer]
+      - generic [ref=f10e8091]:
+        - generic [ref=f10e8092]: Two spaces
+        - generic [ref=f10e8093]: task-015 Search internal spacing
+        - generic [ref=f10e8094]: Open
+        - generic [ref=f10e8095]: Normal
+        - button "Open project" [ref=f10e8096] [cursor=pointer]
+      - generic [ref=f10e8097]:
+        - generic [ref=f10e8098]: Two spaces sentinel
+        - generic [ref=f10e8099]: task-015 Search internal spacing
+        - generic [ref=f10e8100]: Open
+        - generic [ref=f10e8101]: Normal
+        - button "Open project" [ref=f10e8102] [cursor=pointer]
+      - generic [ref=f10e8103]:
+        - generic [ref=f10e8104]: Task preserved
+        - generic [ref=f10e8105]: task-015 Task reload
+        - generic [ref=f10e8106]: Open
+        - generic [ref=f10e8107]: Normal
+        - button "Open project" [ref=f10e8108] [cursor=pointer]
+      - generic [ref=f10e8109]:
+        - generic [ref=f10e8110]: Private to owner
+        - generic [ref=f10e8111]: task-015 Task owner
+        - generic [ref=f10e8112]: Open
+        - generic [ref=f10e8113]: Normal
+        - button "Open project" [ref=f10e8114] [cursor=pointer]
+      - generic [ref=f10e8115]:
+        - generic [ref=f10e8116]: Done task
+        - generic [ref=f10e8117]: task-015 Task filters
+        - generic [ref=f10e8118]: Open
+        - generic [ref=f10e8119]: Normal
+        - button "Open project" [ref=f10e8120] [cursor=pointer]
+      - generic [ref=f10e8121]:
+        - generic [ref=f10e8122]: Open task
+        - generic [ref=f10e8123]: task-015 Task filters
+        - generic [ref=f10e8124]: Open
+        - generic [ref=f10e8125]: Normal
+        - button "Open project" [ref=f10e8126] [cursor=pointer]
+      - generic [ref=f10e8127]:
+        - generic [ref=f10e8128]: Retained task
+        - generic [ref=f10e8129]: task-015 Archive tasks
+        - generic [ref=f10e8130]: Completed
+        - generic [ref=f10e8131]: Normal
+        - button "Open project" [ref=f10e8132] [cursor=pointer]
+      - generic [ref=f10e8133]:
+        - generic [ref=f10e8134]: Summary one
+        - generic [ref=f10e8135]: task-015 Summary project
+        - generic [ref=f10e8136]: Completed
+        - generic [ref=f10e8137]: Normal
+        - button "Open project" [ref=f10e8138] [cursor=pointer]
+      - generic [ref=f10e8139]:
+        - generic [ref=f10e8140]: Summary two
+        - generic [ref=f10e8141]: task-015 Summary project
+        - generic [ref=f10e8142]: Open
+        - generic [ref=f10e8143]: Normal
+        - button "Open project" [ref=f10e8144] [cursor=pointer]
+      - generic [ref=f10e8145]:
+        - generic [ref=f10e8146]: Identity task
+        - generic [ref=f10e8147]: task-015 Identity updated
+        - generic [ref=f10e8148]: Completed
+        - generic [ref=f10e8149]: Normal
+        - button "Open project" [ref=f10e8150] [cursor=pointer]
+      - generic [ref=f10e8151]:
+        - generic [ref=f10e8152]: Name updated
+        - generic [ref=f10e8153]: task-015 Task rename identity
+        - generic [ref=f10e8154]: Completed
+        - generic [ref=f10e8155]: Normal
+        - button "Open project" [ref=f10e8156] [cursor=pointer]
+      - generic [ref=f10e8157]:
+        - generic [ref=f10e8158]: Name second
+        - generic [ref=f10e8159]: task-015 Task rename identity
+        - generic [ref=f10e8160]: Open
+        - generic [ref=f10e8161]: Normal
+        - button "Open project" [ref=f10e8162] [cursor=pointer]
+      - generic [ref=f10e8163]:
+        - generic [ref=f10e8164]: Kept title
+        - generic [ref=f10e8165]: task-015 Task rename invalid
+        - generic [ref=f10e8166]: Open
+        - generic [ref=f10e8167]: Normal
+        - button "Open project" [ref=f10e8168] [cursor=pointer]
+      - generic [ref=f10e8169]:
+        - generic [ref=f10e8170]: Archived title
+        - generic [ref=f10e8171]: task-015 Task rename archive
+        - generic [ref=f10e8172]: Open
+        - generic [ref=f10e8173]: Normal
+        - button "Open project" [ref=f10e8174] [cursor=pointer]
+      - generic [ref=f10e8175]:
+        - generic [ref=f10e8176]: Independent normal
+        - generic [ref=f10e8177]: task-016 Defaults independent
+        - generic [ref=f10e8178]: Open
+        - generic [ref=f10e8179]: Normal
+        - button "Open project" [ref=f10e8180] [cursor=pointer]
+      - generic [ref=f10e8181]:
+        - generic [ref=f10e8182]: Before default change
+        - generic [ref=f10e8183]: task-016 Defaults inheritance
+        - generic [ref=f10e8184]: Completed
+        - generic [ref=f10e8185]: Normal
+        - button "Open project" [ref=f10e8186] [cursor=pointer]
+      - generic [ref=f10e8187]:
+        - generic [ref=f10e8188]: Inherited high
+        - generic [ref=f10e8189]: task-016 Defaults inheritance
+        - generic [ref=f10e8190]: Open
+        - generic [ref=f10e8191]: High
+        - button "Open project" [ref=f10e8192] [cursor=pointer]
+      - generic [ref=f10e8193]:
+        - generic [ref=f10e8194]: Inherited low
+        - generic [ref=f10e8195]: task-016 Defaults inheritance
+        - generic [ref=f10e8196]: Open
+        - generic [ref=f10e8197]: Low
+        - button "Open project" [ref=f10e8198] [cursor=pointer]
+      - generic [ref=f10e8199]:
+        - generic [ref=f10e8200]: Inherited normal
+        - generic [ref=f10e8201]: task-016 Defaults inheritance
+        - generic [ref=f10e8202]: Open
+        - generic [ref=f10e8203]: Normal
+        - button "Open project" [ref=f10e8204] [cursor=pointer]
+      - generic [ref=f10e8205]:
+        - generic [ref=f10e8206]: Lifecycle task
+        - generic [ref=f10e8207]: task-016 Defaults renamed
+        - generic [ref=f10e8208]: Open
+        - generic [ref=f10e8209]: Low
+        - button "Open project" [ref=f10e8210] [cursor=pointer]
+      - generic [ref=f10e8211]:
+        - generic [ref=f10e8212]: Restored inherits
+        - generic [ref=f10e8213]: task-016 Defaults renamed
+        - generic [ref=f10e8214]: Open
+        - generic [ref=f10e8215]: Low
+        - button "Open project" [ref=f10e8216] [cursor=pointer]
+      - generic [ref=f10e8217]:
+        - generic [ref=f10e8218]: Live before
+        - generic [ref=f10e8219]: task-016 Deletion fields
+        - generic [ref=f10e8220]: Open
+        - generic [ref=f10e8221]: Normal
+        - button "Open project" [ref=f10e8222] [cursor=pointer]
+      - generic [ref=f10e8223]:
+        - generic [ref=f10e8224]: Live after
+        - generic [ref=f10e8225]: task-016 Deletion fields
+        - generic [ref=f10e8226]: Open
+        - generic [ref=f10e8227]: Normal
+        - button "Open project" [ref=f10e8228] [cursor=pointer]
+      - generic [ref=f10e8229]:
+        - generic [ref=f10e8230]: Completed remove sentinel
+        - generic [ref=f10e8231]: task-016 Deletion fields
+        - generic [ref=f10e8232]: Completed
+        - generic [ref=f10e8233]: High
+        - generic [ref=f10e8234]: 2036-02-29
+        - button "Open project" [ref=f10e8235] [cursor=pointer]
+      - generic [ref=f10e8236]:
+        - generic [ref=f10e8237]: Completed remove outside
+        - generic [ref=f10e8238]: task-016 Deletion fields
+        - generic [ref=f10e8239]: Completed
+        - generic [ref=f10e8240]: High
+        - generic [ref=f10e8241]: 2037-01-01
+        - button "Open project" [ref=f10e8242] [cursor=pointer]
+      - generic [ref=f10e8243]:
+        - generic [ref=f10e8244]: Completed normal exclusion
+        - generic [ref=f10e8245]: task-016 Deletion fields
+        - generic [ref=f10e8246]: Completed
+        - generic [ref=f10e8247]: Normal
+        - button "Open project" [ref=f10e8248] [cursor=pointer]
+      - generic [ref=f10e8249]:
+        - generic [ref=f10e8250]: Completed unrelated high
+        - generic [ref=f10e8251]: task-016 Deletion fields
+        - generic [ref=f10e8252]: Completed
+        - generic [ref=f10e8253]: High
+        - button "Open project" [ref=f10e8254] [cursor=pointer]
+      - generic [ref=f10e8255]:
+        - generic [ref=f10e8256]: Target first
+        - generic [ref=f10e8257]: task-016 Deletion target
+        - generic [ref=f10e8258]: Open
+        - generic [ref=f10e8259]: Normal
+        - button "Open project" [ref=f10e8260] [cursor=pointer]
+      - generic [ref=f10e8261]:
+        - generic [ref=f10e8262]: Reserved
+        - generic [ref=f10e8263]: task-016 Deletion target
+        - generic [ref=f10e8264]: Completed
+        - generic [ref=f10e8265]: High
+        - generic [ref=f10e8266]: 2037-01-01
+        - generic [ref=f10e8267]: Restore original note
+        - button "Open project" [ref=f10e8268] [cursor=pointer]
+      - generic [ref=f10e8269]:
+        - generic [ref=f10e8270]: Target later
+        - generic [ref=f10e8271]: task-016 Deletion target
+        - generic [ref=f10e8272]: Open
+        - generic [ref=f10e8273]: Normal
+        - button "Open project" [ref=f10e8274] [cursor=pointer]
+      - generic [ref=f10e8275]:
+        - generic [ref=f10e8276]: Before
+        - generic [ref=f10e8277]: task-016 Deletion order
+        - generic [ref=f10e8278]: Open
+        - generic [ref=f10e8279]: Normal
+        - button "Open project" [ref=f10e8280] [cursor=pointer]
+      - generic [ref=f10e8281]:
+        - generic [ref=f10e8282]: After
+        - generic [ref=f10e8283]: task-016 Deletion order
+        - generic [ref=f10e8284]: Open
+        - generic [ref=f10e8285]: Normal
+        - button "Open project" [ref=f10e8286] [cursor=pointer]
+      - generic [ref=f10e8287]:
+        - generic [ref=f10e8288]: New arrival
+        - generic [ref=f10e8289]: task-016 Deletion order
+        - generic [ref=f10e8290]: Open
+        - generic [ref=f10e8291]: Normal
+        - button "Open project" [ref=f10e8292] [cursor=pointer]
+      - generic [ref=f10e8293]:
+        - generic [ref=f10e8294]: Calendar renamed
+        - generic [ref=f10e8295]: task-016 Calendar persistence
+        - generic [ref=f10e8296]: Open
+        - generic [ref=f10e8297]: Normal
+        - button "Open project" [ref=f10e8298] [cursor=pointer]
+      - generic [ref=f10e8299]:
+        - generic [ref=f10e8300]: Calendar valid
+        - generic [ref=f10e8301]: task-016 Calendar validation
+        - generic [ref=f10e8302]: Open
+        - generic [ref=f10e8303]: Normal
+        - generic [ref=f10e8304]: 2028-04-30
+        - button "Open project" [ref=f10e8305] [cursor=pointer]
+      - generic [ref=f10e8306]:
+        - generic [ref=f10e8307]: Dated first
+        - generic [ref=f10e8308]: task-016 Calendar independence
+        - generic [ref=f10e8309]: Completed
+        - generic [ref=f10e8310]: High
+        - generic [ref=f10e8311]: 2029-01-01
+        - button "Open project" [ref=f10e8312] [cursor=pointer]
+      - generic [ref=f10e8313]:
+        - generic [ref=f10e8314]: Undated second
+        - generic [ref=f10e8315]: task-016 Calendar independence
+        - generic [ref=f10e8316]: Open
+        - generic [ref=f10e8317]: Normal
+        - button "Open project" [ref=f10e8318] [cursor=pointer]
+      - generic [ref=f10e8319]:
+        - generic [ref=f10e8320]: Completed normal guard
+        - generic [ref=f10e8321]: task-016 Calendar independence
+        - generic [ref=f10e8322]: Completed
+        - generic [ref=f10e8323]: Normal
+        - button "Open project" [ref=f10e8324] [cursor=pointer]
+      - generic [ref=f10e8325]:
+        - generic [ref=f10e8326]: Owner task
+        - generic [ref=f10e8327]: task-016 Calendar second owner
+        - generic [ref=f10e8328]: Open
+        - generic [ref=f10e8329]: Normal
+        - button "Open project" [ref=f10e8330] [cursor=pointer]
+      - generic [ref=f10e8331]:
+        - generic [ref=f10e8332]: Archive dated
+        - generic [ref=f10e8333]: task-016 Calendar archival
+        - generic [ref=f10e8334]: Open
+        - generic [ref=f10e8335]: Normal
+        - generic [ref=f10e8336]: 2030-12-31
+        - button "Open project" [ref=f10e8337] [cursor=pointer]
+      - generic [ref=f10e8338]:
+        - generic [ref=f10e8339]: Before range
+        - generic [ref=f10e8340]: task-016 Range boundaries
+        - generic [ref=f10e8341]: Open
+        - generic [ref=f10e8342]: Normal
+        - generic [ref=f10e8343]: 2028-02-28
+        - button "Open project" [ref=f10e8344] [cursor=pointer]
+      - generic [ref=f10e8345]:
+        - generic [ref=f10e8346]: Range first
+        - generic [ref=f10e8347]: task-016 Range boundaries
+        - generic [ref=f10e8348]: Open
+        - generic [ref=f10e8349]: Normal
+        - generic [ref=f10e8350]: 2028-02-29
+        - button "Open project" [ref=f10e8351] [cursor=pointer]
+      - generic [ref=f10e8352]:
+        - generic [ref=f10e8353]: No calendar date
+        - generic [ref=f10e8354]: task-016 Range boundaries
+        - generic [ref=f10e8355]: Open
+        - generic [ref=f10e8356]: Normal
+        - button "Open project" [ref=f10e8357] [cursor=pointer]
+      - generic [ref=f10e8358]:
+        - generic [ref=f10e8359]: Range last
+        - generic [ref=f10e8360]: task-016 Range boundaries
+        - generic [ref=f10e8361]: Open
+        - generic [ref=f10e8362]: Normal
+        - generic [ref=f10e8363]: 2028-03-02
+        - button "Open project" [ref=f10e8364] [cursor=pointer]
+      - generic [ref=f10e8365]:
+        - generic [ref=f10e8366]: After range
+        - generic [ref=f10e8367]: task-016 Range boundaries
+        - generic [ref=f10e8368]: Open
+        - generic [ref=f10e8369]: Normal
+        - generic [ref=f10e8370]: 2028-03-03
+        - button "Open project" [ref=f10e8371] [cursor=pointer]
+      - generic [ref=f10e8372]:
+        - generic [ref=f10e8373]: Range matching
+        - generic [ref=f10e8374]: task-016 Range intersections
+        - generic [ref=f10e8375]: Open
+        - generic [ref=f10e8376]: High
+        - generic [ref=f10e8377]: 2029-02-01
+        - button "Open project" [ref=f10e8378] [cursor=pointer]
+      - generic [ref=f10e8379]:
+        - generic [ref=f10e8380]: Range low
+        - generic [ref=f10e8381]: task-016 Range intersections
+        - generic [ref=f10e8382]: Open
+        - generic [ref=f10e8383]: Normal
+        - generic [ref=f10e8384]: 2029-01-15
+        - button "Open project" [ref=f10e8385] [cursor=pointer]
+      - generic [ref=f10e8386]:
+        - generic [ref=f10e8387]: Range completed
+        - generic [ref=f10e8388]: task-016 Range intersections
+        - generic [ref=f10e8389]: Open
+        - generic [ref=f10e8390]: Low
+        - generic [ref=f10e8391]: 2029-01-15
+        - button "Open project" [ref=f10e8392] [cursor=pointer]
+      - generic [ref=f10e8393]:
+        - generic [ref=f10e8394]: Range undated
+        - generic [ref=f10e8395]: task-016 Range intersections
+        - generic [ref=f10e8396]: Open
+        - generic [ref=f10e8397]: High
+        - button "Open project" [ref=f10e8398] [cursor=pointer]
+      - generic [ref=f10e8399]:
+        - generic [ref=f10e8400]: Valid member
+        - generic [ref=f10e8401]: task-016 Range validation
+        - generic [ref=f10e8402]: Open
+        - generic [ref=f10e8403]: Normal
+        - generic [ref=f10e8404]: 2028-06-15
+        - button "Open project" [ref=f10e8405] [cursor=pointer]
+      - generic [ref=f10e8406]:
+        - generic [ref=f10e8407]: Undated outsider
+        - generic [ref=f10e8408]: task-016 Range validation
+        - generic [ref=f10e8409]: Open
+        - generic [ref=f10e8410]: Normal
+        - button "Open project" [ref=f10e8411] [cursor=pointer]
+      - generic [ref=f10e8412]:
+        - generic [ref=f10e8413]: Archived date renamed
+        - generic [ref=f10e8414]: task-016 Range archival
+        - generic [ref=f10e8415]: Open
+        - generic [ref=f10e8416]: Normal
+        - generic [ref=f10e8417]: 2030-01-01
+        - button "Open project" [ref=f10e8418] [cursor=pointer]
+      - generic [ref=f10e8419]:
+        - generic [ref=f10e8420]: Archived undated outsider
+        - generic [ref=f10e8421]: task-016 Range archival
+        - generic [ref=f10e8422]: Open
+        - generic [ref=f10e8423]: Normal
+        - button "Open project" [ref=f10e8424] [cursor=pointer]
+      - generic [ref=f10e8425]:
+        - generic [ref=f10e8426]: Retained range member
+        - generic [ref=f10e8427]: task-016 Range owner renamed
+        - generic [ref=f10e8428]: Open
+        - generic [ref=f10e8429]: High
+        - generic [ref=f10e8430]: 2031-03-01
+        - button "Open project" [ref=f10e8431] [cursor=pointer]
+      - generic [ref=f10e8432]:
+        - generic [ref=f10e8433]: Retained undated outsider
+        - generic [ref=f10e8434]: task-016 Range owner renamed
+        - generic [ref=f10e8435]: Open
+        - generic [ref=f10e8436]: Normal
+        - button "Open project" [ref=f10e8437] [cursor=pointer]
+      - generic [ref=f10e8438]:
+        - generic [ref=f10e8439]: Created outside range
+        - generic [ref=f10e8440]: task-016 Range owner renamed
+        - generic [ref=f10e8441]: Open
+        - generic [ref=f10e8442]: Low
+        - button "Open project" [ref=f10e8443] [cursor=pointer]
+      - generic [ref=f10e8444]:
+        - generic [ref=f10e8445]: Target first
+        - generic [ref=f10e8446]: task-016 Transfer target
+        - generic [ref=f10e8447]: Open
+        - generic [ref=f10e8448]: Normal
+        - button "Open project" [ref=f10e8449] [cursor=pointer]
+      - generic [ref=f10e8450]:
+        - generic [ref=f10e8451]: Target second
+        - generic [ref=f10e8452]: task-016 Transfer target
+        - generic [ref=f10e8453]: Open
+        - generic [ref=f10e8454]: Normal
+        - button "Open project" [ref=f10e8455] [cursor=pointer]
+      - generic [ref=f10e8456]:
+        - generic [ref=f10e8457]: Transferred complete
+        - generic [ref=f10e8458]: task-016 Transfer target
+        - generic [ref=f10e8459]: Completed
+        - generic [ref=f10e8460]: High
+        - generic [ref=f10e8461]: 2032-02-29
+        - button "Open project" [ref=f10e8462] [cursor=pointer]
+      - generic [ref=f10e8463]:
+        - generic [ref=f10e8464]: Source remaining
+        - generic [ref=f10e8465]: task-016 Transfer source
+        - generic [ref=f10e8466]: Open
+        - generic [ref=f10e8467]: Normal
+        - button "Open project" [ref=f10e8468] [cursor=pointer]
+      - generic [ref=f10e8469]:
+        - generic [ref=f10e8470]: Filtered target sentinel
+        - generic [ref=f10e8471]: task-016 Filtered transfer target
+        - generic [ref=f10e8472]: Open
+        - generic [ref=f10e8473]: Normal
+        - button "Open project" [ref=f10e8474] [cursor=pointer]
+      - generic [ref=f10e8475]:
+        - generic [ref=f10e8476]: Filtered moving
+        - generic [ref=f10e8477]: task-016 Filtered transfer target
+        - generic [ref=f10e8478]: Open
+        - generic [ref=f10e8479]: High
+        - generic [ref=f10e8480]: 2033-01-01
+        - button "Open project" [ref=f10e8481] [cursor=pointer]
+      - generic [ref=f10e8482]:
+        - generic [ref=f10e8483]: Filtered first
+        - generic [ref=f10e8484]: task-016 Filtered transfer source
+        - generic [ref=f10e8485]: Open
+        - generic [ref=f10e8486]: High
+        - generic [ref=f10e8487]: 2033-01-01
+        - button "Open project" [ref=f10e8488] [cursor=pointer]
+      - generic [ref=f10e8489]:
+        - generic [ref=f10e8490]: Filtered last
+        - generic [ref=f10e8491]: task-016 Filtered transfer source
+        - generic [ref=f10e8492]: Open
+        - generic [ref=f10e8493]: High
+        - generic [ref=f10e8494]: 2033-01-01
+        - button "Open project" [ref=f10e8495] [cursor=pointer]
+      - generic [ref=f10e8496]:
+        - generic [ref=f10e8497]: Filtered outside range
+        - generic [ref=f10e8498]: task-016 Filtered transfer source
+        - generic [ref=f10e8499]: Open
+        - generic [ref=f10e8500]: High
+        - generic [ref=f10e8501]: 2034-01-01
+        - button "Open project" [ref=f10e8502] [cursor=pointer]
+      - generic [ref=f10e8503]:
+        - generic [ref=f10e8504]: Filtered completed guard
+        - generic [ref=f10e8505]: task-016 Filtered transfer source
+        - generic [ref=f10e8506]: Completed
+        - generic [ref=f10e8507]: High
+        - button "Open project" [ref=f10e8508] [cursor=pointer]
+      - generic [ref=f10e8509]:
+        - generic [ref=f10e8510]: Filtered normal guard
+        - generic [ref=f10e8511]: task-016 Filtered transfer source
+        - generic [ref=f10e8512]: Open
+        - generic [ref=f10e8513]: Normal
+        - button "Open project" [ref=f10e8514] [cursor=pointer]
+      - generic [ref=f10e8515]:
+        - generic [ref=f10e8516]: Options task
+        - generic [ref=f10e8517]: task-016 Options owner
+        - generic [ref=f10e8518]: Open
+        - generic [ref=f10e8519]: Normal
+        - button "Open project" [ref=f10e8520] [cursor=pointer]
+      - generic [ref=f10e8521]:
+        - generic [ref=f10e8522]: Undated target sentinel
+        - generic [ref=f10e8523]: task-016 Read-only transfer target
+        - generic [ref=f10e8524]: Open
+        - generic [ref=f10e8525]: Normal
+        - button "Open project" [ref=f10e8526] [cursor=pointer]
+      - generic [ref=f10e8527]:
+        - generic [ref=f10e8528]: Undated transfer
+        - generic [ref=f10e8529]: task-016 Read-only transfer owner
+        - generic [ref=f10e8530]: Open
+        - generic [ref=f10e8531]: Normal
+        - button "Open project" [ref=f10e8532] [cursor=pointer]
+      - generic [ref=f10e8533]:
+        - generic [ref=f10e8534]: Undated owner sentinel
+        - generic [ref=f10e8535]: task-016 Read-only transfer owner
+        - generic [ref=f10e8536]: Open
+        - generic [ref=f10e8537]: Normal
+        - button "Open project" [ref=f10e8538] [cursor=pointer]
+      - generic [ref=f10e8539]:
+        - generic [ref=f10e8540]: Notes identity
+        - generic [ref=f10e8541]: task-016 Notes values
+        - generic [ref=f10e8542]: Open
+        - generic [ref=f10e8543]: High
+        - generic [ref=f10e8544]: 2035-01-01
+        - generic [ref=f10e8545]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e8546] [cursor=pointer]
+      - generic [ref=f10e8547]:
+        - generic [ref=f10e8548]: Only in notes title sentinel
+        - generic [ref=f10e8549]: task-016 Notes values
+        - generic [ref=f10e8550]: Open
+        - generic [ref=f10e8551]: Normal
+        - button "Open project" [ref=f10e8552] [cursor=pointer]
+      - generic [ref=f10e8553]:
+        - generic [ref=f10e8554]: Notes target existing
+        - generic [ref=f10e8555]: task-016 Notes target
+        - generic [ref=f10e8556]: Open
+        - generic [ref=f10e8557]: Normal
+        - button "Open project" [ref=f10e8558] [cursor=pointer]
+      - generic [ref=f10e8559]:
+        - generic [ref=f10e8560]: Notes before
+        - generic [ref=f10e8561]: task-016 Notes owner
+        - generic [ref=f10e8562]: Open
+        - generic [ref=f10e8563]: Normal
+        - button "Open project" [ref=f10e8564] [cursor=pointer]
+      - generic [ref=f10e8565]:
+        - generic [ref=f10e8566]: Notes travelling
+        - generic [ref=f10e8567]: task-016 Notes owner
+        - generic [ref=f10e8568]: Open
+        - generic [ref=f10e8569]: Normal
+        - generic [ref=f10e8570]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e8571] [cursor=pointer]
+      - generic [ref=f10e8572]:
+        - generic [ref=f10e8573]: Notes after
+        - generic [ref=f10e8574]: task-016 Notes owner
+        - generic [ref=f10e8575]: Open
+        - generic [ref=f10e8576]: Normal
+        - button "Open project" [ref=f10e8577] [cursor=pointer]
+      - generic [ref=f10e8578]:
+        - generic [ref=f10e8579]: High open first
+        - generic [ref=f10e8580]: task-016 Priority intersection
+        - generic [ref=f10e8581]: Open
+        - generic [ref=f10e8582]: High
+        - button "Open project" [ref=f10e8583] [cursor=pointer]
+      - generic [ref=f10e8584]:
+        - generic [ref=f10e8585]: Low open
+        - generic [ref=f10e8586]: task-016 Priority intersection
+        - generic [ref=f10e8587]: Open
+        - generic [ref=f10e8588]: Low
+        - button "Open project" [ref=f10e8589] [cursor=pointer]
+      - generic [ref=f10e8590]:
+        - generic [ref=f10e8591]: High completed
+        - generic [ref=f10e8592]: task-016 Priority intersection
+        - generic [ref=f10e8593]: Completed
+        - generic [ref=f10e8594]: High
+        - button "Open project" [ref=f10e8595] [cursor=pointer]
+      - generic [ref=f10e8596]:
+        - generic [ref=f10e8597]: High open last
+        - generic [ref=f10e8598]: task-016 Priority intersection
+        - generic [ref=f10e8599]: Open
+        - generic [ref=f10e8600]: High
+        - button "Open project" [ref=f10e8601] [cursor=pointer]
+      - generic [ref=f10e8602]:
+        - generic [ref=f10e8603]: Leaving priority
+        - generic [ref=f10e8604]: task-016 Priority live filters
+        - generic [ref=f10e8605]: Open
+        - generic [ref=f10e8606]: Low
+        - button "Open project" [ref=f10e8607] [cursor=pointer]
+      - generic [ref=f10e8608]:
+        - generic [ref=f10e8609]: Leaving completion
+        - generic [ref=f10e8610]: task-016 Priority live filters
+        - generic [ref=f10e8611]: Open
+        - generic [ref=f10e8612]: High
+        - button "Open project" [ref=f10e8613] [cursor=pointer]
+      - generic [ref=f10e8614]:
+        - generic [ref=f10e8615]: Completed high guard
+        - generic [ref=f10e8616]: task-016 Priority live filters
+        - generic [ref=f10e8617]: Completed
+        - generic [ref=f10e8618]: High
+        - button "Open project" [ref=f10e8619] [cursor=pointer]
+      - generic [ref=f10e8620]:
+        - generic [ref=f10e8621]: Open normal guard
+        - generic [ref=f10e8622]: task-016 Priority live filters
+        - generic [ref=f10e8623]: Open
+        - generic [ref=f10e8624]: Normal
+        - button "Open project" [ref=f10e8625] [cursor=pointer]
+      - generic [ref=f10e8626]:
+        - generic [ref=f10e8627]: Filtered new title
+        - generic [ref=f10e8628]: task-016 Priority rename filters
+        - generic [ref=f10e8629]: Open
+        - generic [ref=f10e8630]: Low
+        - button "Open project" [ref=f10e8631] [cursor=pointer]
+      - generic [ref=f10e8632]:
+        - generic [ref=f10e8633]: Unmatched normal task
+        - generic [ref=f10e8634]: task-016 Priority rename filters
+        - generic [ref=f10e8635]: Open
+        - generic [ref=f10e8636]: Normal
+        - button "Open project" [ref=f10e8637] [cursor=pointer]
+      - generic [ref=f10e8638]:
+        - generic [ref=f10e8639]: Completed low guard
+        - generic [ref=f10e8640]: task-016 Priority rename filters
+        - generic [ref=f10e8641]: Completed
+        - generic [ref=f10e8642]: Low
+        - button "Open project" [ref=f10e8643] [cursor=pointer]
+      - generic [ref=f10e8644]:
+        - generic [ref=f10e8645]: Archived high open
+        - generic [ref=f10e8646]: task-016 Archived combined filters
+        - generic [ref=f10e8647]: Open
+        - generic [ref=f10e8648]: High
+        - button "Open project" [ref=f10e8649] [cursor=pointer]
+      - generic [ref=f10e8650]:
+        - generic [ref=f10e8651]: Archived normal completed
+        - generic [ref=f10e8652]: task-016 Archived combined filters
+        - generic [ref=f10e8653]: Completed
+        - generic [ref=f10e8654]: Normal
+        - button "Open project" [ref=f10e8655] [cursor=pointer]
+      - generic [ref=f10e8656]:
+        - generic [ref=f10e8657]: Priority renamed
+        - generic [ref=f10e8658]: task-016 Priority ownership
+        - generic [ref=f10e8659]: Open
+        - generic [ref=f10e8660]: High
+        - button "Open project" [ref=f10e8661] [cursor=pointer]
+      - generic [ref=f10e8662]:
+        - generic [ref=f10e8663]: Priority second
+        - generic [ref=f10e8664]: task-016 Priority ownership
+        - generic [ref=f10e8665]: Open
+        - generic [ref=f10e8666]: Low
+        - button "Open project" [ref=f10e8667] [cursor=pointer]
+      - generic [ref=f10e8668]:
+        - generic [ref=f10e8669]: Priority other task
+        - generic [ref=f10e8670]: task-016 Priority other owner
+        - generic [ref=f10e8671]: Open
+        - generic [ref=f10e8672]: Normal
+        - button "Open project" [ref=f10e8673] [cursor=pointer]
+      - generic [ref=f10e8674]:
+        - generic [ref=f10e8675]: Priority completed
+        - generic [ref=f10e8676]: task-016 Priority completion
+        - generic [ref=f10e8677]: Completed
+        - generic [ref=f10e8678]: Low
+        - button "Open project" [ref=f10e8679] [cursor=pointer]
+      - generic [ref=f10e8680]:
+        - generic [ref=f10e8681]: Priority open
+        - generic [ref=f10e8682]: task-016 Priority completion
+        - generic [ref=f10e8683]: Open
+        - generic [ref=f10e8684]: High
+        - button "Open project" [ref=f10e8685] [cursor=pointer]
+      - generic [ref=f10e8686]:
+        - generic [ref=f10e8687]: Priority retained
+        - generic [ref=f10e8688]: task-016 Priority archive
+        - generic [ref=f10e8689]: Open
+        - generic [ref=f10e8690]: Normal
+        - button "Open project" [ref=f10e8691] [cursor=pointer]
+      - generic [ref=f10e8692]:
+        - generic [ref=f10e8693]: Return first
+        - generic [ref=f10e8694]: task-016 Return owner
+        - generic [ref=f10e8695]: Open
+        - generic [ref=f10e8696]: Normal
+        - button "Open project" [ref=f10e8697] [cursor=pointer]
+      - generic [ref=f10e8698]:
+        - generic [ref=f10e8699]: Return second
+        - generic [ref=f10e8700]: task-016 Return owner
+        - generic [ref=f10e8701]: Completed
+        - generic [ref=f10e8702]: High
+        - button "Open project" [ref=f10e8703] [cursor=pointer]
+      - generic [ref=f10e8704]:
+        - generic [ref=f10e8705]: Return third
+        - generic [ref=f10e8706]: task-016 Return owner
+        - generic [ref=f10e8707]: Open
+        - generic [ref=f10e8708]: Normal
+        - button "Open project" [ref=f10e8709] [cursor=pointer]
+      - generic [ref=f10e8710]:
+        - generic [ref=f10e8711]: Return fourth
+        - generic [ref=f10e8712]: task-016 Return owner
+        - generic [ref=f10e8713]: Open
+        - generic [ref=f10e8714]: Normal
+        - button "Open project" [ref=f10e8715] [cursor=pointer]
+      - generic [ref=f10e8716]:
+        - generic [ref=f10e8717]: Identity before
+        - generic [ref=f10e8718]: task-016 Returned owner renamed
+        - generic [ref=f10e8719]: Open
+        - generic [ref=f10e8720]: Normal
+        - button "Open project" [ref=f10e8721] [cursor=pointer]
+      - generic [ref=f10e8722]:
+        - generic [ref=f10e8723]: Identity returning
+        - generic [ref=f10e8724]: task-016 Returned owner renamed
+        - generic [ref=f10e8725]: Open
+        - generic [ref=f10e8726]: Normal
+        - button "Open project" [ref=f10e8727] [cursor=pointer]
+      - generic [ref=f10e8728]:
+        - generic [ref=f10e8729]: Identity after
+        - generic [ref=f10e8730]: task-016 Returned owner renamed
+        - generic [ref=f10e8731]: Open
+        - generic [ref=f10e8732]: Normal
+        - button "Open project" [ref=f10e8733] [cursor=pointer]
+      - generic [ref=f10e8734]:
+        - generic [ref=f10e8735]: Second existing
+        - generic [ref=f10e8736]: task-016 Position second owner
+        - generic [ref=f10e8737]: Open
+        - generic [ref=f10e8738]: Normal
+        - button "Open project" [ref=f10e8739] [cursor=pointer]
+      - generic [ref=f10e8740]:
+        - generic [ref=f10e8741]: Second newly created
+        - generic [ref=f10e8742]: task-016 Position second owner
+        - generic [ref=f10e8743]: Open
+        - generic [ref=f10e8744]: Normal
+        - button "Open project" [ref=f10e8745] [cursor=pointer]
+      - generic [ref=f10e8746]:
+        - generic [ref=f10e8747]: First existing
+        - generic [ref=f10e8748]: task-016 Position first owner
+        - generic [ref=f10e8749]: Open
+        - generic [ref=f10e8750]: Normal
+        - button "Open project" [ref=f10e8751] [cursor=pointer]
+      - generic [ref=f10e8752]:
+        - generic [ref=f10e8753]: Position travelling
+        - generic [ref=f10e8754]: task-016 Position first owner
+        - generic [ref=f10e8755]: Open
+        - generic [ref=f10e8756]: Normal
+        - button "Open project" [ref=f10e8757] [cursor=pointer]
+      - generic [ref=f10e8758]:
+        - generic [ref=f10e8759]: First later
+        - generic [ref=f10e8760]: task-016 Position first owner
+        - generic [ref=f10e8761]: Open
+        - generic [ref=f10e8762]: Normal
+        - button "Open project" [ref=f10e8763] [cursor=pointer]
+      - generic [ref=f10e8764]:
+        - generic [ref=f10e8765]: First newly created
+        - generic [ref=f10e8766]: task-016 Position first owner
+        - generic [ref=f10e8767]: Open
+        - generic [ref=f10e8768]: Normal
+        - button "Open project" [ref=f10e8769] [cursor=pointer]
+      - generic [ref=f10e8770]:
+        - generic [ref=f10e8771]: Original task gap
+        - generic [ref=f10e8772]: task-016 Whitespace retained owner
+        - generic [ref=f10e8773]: Open
+        - generic [ref=f10e8774]: High
+        - button "Open project" [ref=f10e8775] [cursor=pointer]
+      - generic [ref=f10e8776]:
+        - generic [ref=f10e8777]: Other task gap
+        - generic [ref=f10e8778]: task-016 Whitespace retained owner
+        - generic [ref=f10e8779]: Open
+        - generic [ref=f10e8780]: High
+        - button "Open project" [ref=f10e8781] [cursor=pointer]
+      - generic [ref=f10e8782]:
+        - generic [ref=f10e8783]: Mixed first
+        - generic [ref=f10e8784]: task-016 Search task intersections
+        - generic [ref=f10e8785]: Open
+        - generic [ref=f10e8786]: High
+        - generic [ref=f10e8787]: 2034-01-01
+        - button "Open project" [ref=f10e8788] [cursor=pointer]
+      - generic [ref=f10e8789]:
+        - generic [ref=f10e8790]: Other high
+        - generic [ref=f10e8791]: task-016 Search task intersections
+        - generic [ref=f10e8792]: Open
+        - generic [ref=f10e8793]: High
+        - generic [ref=f10e8794]: 2034-01-01
+        - button "Open project" [ref=f10e8795] [cursor=pointer]
+      - generic [ref=f10e8796]:
+        - generic [ref=f10e8797]: MIXED completed
+        - generic [ref=f10e8798]: task-016 Search task intersections
+        - generic [ref=f10e8799]: Completed
+        - generic [ref=f10e8800]: High
+        - generic [ref=f10e8801]: 2034-01-01
+        - button "Open project" [ref=f10e8802] [cursor=pointer]
+      - generic [ref=f10e8803]:
+        - generic [ref=f10e8804]: Mixed undated
+        - generic [ref=f10e8805]: task-016 Search task intersections
+        - generic [ref=f10e8806]: Open
+        - generic [ref=f10e8807]: High
+        - button "Open project" [ref=f10e8808] [cursor=pointer]
+      - generic [ref=f10e8809]:
+        - generic [ref=f10e8810]: mixed last
+        - generic [ref=f10e8811]: task-016 Search task intersections
+        - generic [ref=f10e8812]: Open
+        - generic [ref=f10e8813]: High
+        - generic [ref=f10e8814]: 2034-01-01
+        - button "Open project" [ref=f10e8815] [cursor=pointer]
+      - generic [ref=f10e8816]:
+        - generic [ref=f10e8817]: Other normal guard
+        - generic [ref=f10e8818]: task-016 Search task intersections
+        - generic [ref=f10e8819]: Open
+        - generic [ref=f10e8820]: Normal
+        - button "Open project" [ref=f10e8821] [cursor=pointer]
+      - generic [ref=f10e8822]:
+        - generic [ref=f10e8823]: Two spaces
+        - generic [ref=f10e8824]: task-016 Search internal spacing
+        - generic [ref=f10e8825]: Open
+        - generic [ref=f10e8826]: Normal
+        - button "Open project" [ref=f10e8827] [cursor=pointer]
+      - generic [ref=f10e8828]:
+        - generic [ref=f10e8829]: Two spaces sentinel
+        - generic [ref=f10e8830]: task-016 Search internal spacing
+        - generic [ref=f10e8831]: Open
+        - generic [ref=f10e8832]: Normal
+        - button "Open project" [ref=f10e8833] [cursor=pointer]
+      - generic [ref=f10e8834]:
+        - generic [ref=f10e8835]: Task preserved
+        - generic [ref=f10e8836]: task-016 Task reload
+        - generic [ref=f10e8837]: Open
+        - generic [ref=f10e8838]: Normal
+        - button "Open project" [ref=f10e8839] [cursor=pointer]
+      - generic [ref=f10e8840]:
+        - generic [ref=f10e8841]: Private to owner
+        - generic [ref=f10e8842]: task-016 Task owner
+        - generic [ref=f10e8843]: Open
+        - generic [ref=f10e8844]: Normal
+        - button "Open project" [ref=f10e8845] [cursor=pointer]
+      - generic [ref=f10e8846]:
+        - generic [ref=f10e8847]: Done task
+        - generic [ref=f10e8848]: task-016 Task filters
+        - generic [ref=f10e8849]: Open
+        - generic [ref=f10e8850]: Normal
+        - button "Open project" [ref=f10e8851] [cursor=pointer]
+      - generic [ref=f10e8852]:
+        - generic [ref=f10e8853]: Open task
+        - generic [ref=f10e8854]: task-016 Task filters
+        - generic [ref=f10e8855]: Open
+        - generic [ref=f10e8856]: Normal
+        - button "Open project" [ref=f10e8857] [cursor=pointer]
+      - generic [ref=f10e8858]:
+        - generic [ref=f10e8859]: Retained task
+        - generic [ref=f10e8860]: task-016 Archive tasks
+        - generic [ref=f10e8861]: Completed
+        - generic [ref=f10e8862]: Normal
+        - button "Open project" [ref=f10e8863] [cursor=pointer]
+      - generic [ref=f10e8864]:
+        - generic [ref=f10e8865]: Summary one
+        - generic [ref=f10e8866]: task-016 Summary project
+        - generic [ref=f10e8867]: Completed
+        - generic [ref=f10e8868]: Normal
+        - button "Open project" [ref=f10e8869] [cursor=pointer]
+      - generic [ref=f10e8870]:
+        - generic [ref=f10e8871]: Summary two
+        - generic [ref=f10e8872]: task-016 Summary project
+        - generic [ref=f10e8873]: Open
+        - generic [ref=f10e8874]: Normal
+        - button "Open project" [ref=f10e8875] [cursor=pointer]
+      - generic [ref=f10e8876]:
+        - generic [ref=f10e8877]: Identity task
+        - generic [ref=f10e8878]: task-016 Identity updated
+        - generic [ref=f10e8879]: Completed
+        - generic [ref=f10e8880]: Normal
+        - button "Open project" [ref=f10e8881] [cursor=pointer]
+      - generic [ref=f10e8882]:
+        - generic [ref=f10e8883]: Name updated
+        - generic [ref=f10e8884]: task-016 Task rename identity
+        - generic [ref=f10e8885]: Completed
+        - generic [ref=f10e8886]: Normal
+        - button "Open project" [ref=f10e8887] [cursor=pointer]
+      - generic [ref=f10e8888]:
+        - generic [ref=f10e8889]: Name second
+        - generic [ref=f10e8890]: task-016 Task rename identity
+        - generic [ref=f10e8891]: Open
+        - generic [ref=f10e8892]: Normal
+        - button "Open project" [ref=f10e8893] [cursor=pointer]
+      - generic [ref=f10e8894]:
+        - generic [ref=f10e8895]: Kept title
+        - generic [ref=f10e8896]: task-016 Task rename invalid
+        - generic [ref=f10e8897]: Open
+        - generic [ref=f10e8898]: Normal
+        - button "Open project" [ref=f10e8899] [cursor=pointer]
+      - generic [ref=f10e8900]:
+        - generic [ref=f10e8901]: Archived title
+        - generic [ref=f10e8902]: task-016 Task rename archive
+        - generic [ref=f10e8903]: Open
+        - generic [ref=f10e8904]: Normal
+        - button "Open project" [ref=f10e8905] [cursor=pointer]
+      - generic [ref=f10e8906]:
+        - generic [ref=f10e8907]: Independent normal
+        - generic [ref=f10e8908]: task-017 Defaults independent
+        - generic [ref=f10e8909]: Open
+        - generic [ref=f10e8910]: Normal
+        - button "Open project" [ref=f10e8911] [cursor=pointer]
+      - generic [ref=f10e8912]:
+        - generic [ref=f10e8913]: Before default change
+        - generic [ref=f10e8914]: task-017 Defaults inheritance
+        - generic [ref=f10e8915]: Completed
+        - generic [ref=f10e8916]: Normal
+        - button "Open project" [ref=f10e8917] [cursor=pointer]
+      - generic [ref=f10e8918]:
+        - generic [ref=f10e8919]: Inherited high
+        - generic [ref=f10e8920]: task-017 Defaults inheritance
+        - generic [ref=f10e8921]: Open
+        - generic [ref=f10e8922]: High
+        - button "Open project" [ref=f10e8923] [cursor=pointer]
+      - generic [ref=f10e8924]:
+        - generic [ref=f10e8925]: Inherited low
+        - generic [ref=f10e8926]: task-017 Defaults inheritance
+        - generic [ref=f10e8927]: Open
+        - generic [ref=f10e8928]: Low
+        - button "Open project" [ref=f10e8929] [cursor=pointer]
+      - generic [ref=f10e8930]:
+        - generic [ref=f10e8931]: Inherited normal
+        - generic [ref=f10e8932]: task-017 Defaults inheritance
+        - generic [ref=f10e8933]: Open
+        - generic [ref=f10e8934]: Normal
+        - button "Open project" [ref=f10e8935] [cursor=pointer]
+      - generic [ref=f10e8936]:
+        - generic [ref=f10e8937]: Lifecycle task
+        - generic [ref=f10e8938]: task-017 Defaults renamed
+        - generic [ref=f10e8939]: Open
+        - generic [ref=f10e8940]: Low
+        - button "Open project" [ref=f10e8941] [cursor=pointer]
+      - generic [ref=f10e8942]:
+        - generic [ref=f10e8943]: Restored inherits
+        - generic [ref=f10e8944]: task-017 Defaults renamed
+        - generic [ref=f10e8945]: Open
+        - generic [ref=f10e8946]: Low
+        - button "Open project" [ref=f10e8947] [cursor=pointer]
+      - generic [ref=f10e8948]:
+        - generic [ref=f10e8949]: Live before
+        - generic [ref=f10e8950]: task-017 Deletion fields
+        - generic [ref=f10e8951]: Open
+        - generic [ref=f10e8952]: Normal
+        - button "Open project" [ref=f10e8953] [cursor=pointer]
+      - generic [ref=f10e8954]:
+        - generic [ref=f10e8955]: Live after
+        - generic [ref=f10e8956]: task-017 Deletion fields
+        - generic [ref=f10e8957]: Open
+        - generic [ref=f10e8958]: Normal
+        - button "Open project" [ref=f10e8959] [cursor=pointer]
+      - generic [ref=f10e8960]:
+        - generic [ref=f10e8961]: Completed remove sentinel
+        - generic [ref=f10e8962]: task-017 Deletion fields
+        - generic [ref=f10e8963]: Completed
+        - generic [ref=f10e8964]: High
+        - generic [ref=f10e8965]: 2036-02-29
+        - button "Open project" [ref=f10e8966] [cursor=pointer]
+      - generic [ref=f10e8967]:
+        - generic [ref=f10e8968]: Completed remove outside
+        - generic [ref=f10e8969]: task-017 Deletion fields
+        - generic [ref=f10e8970]: Completed
+        - generic [ref=f10e8971]: High
+        - generic [ref=f10e8972]: 2037-01-01
+        - button "Open project" [ref=f10e8973] [cursor=pointer]
+      - generic [ref=f10e8974]:
+        - generic [ref=f10e8975]: Completed normal exclusion
+        - generic [ref=f10e8976]: task-017 Deletion fields
+        - generic [ref=f10e8977]: Completed
+        - generic [ref=f10e8978]: Normal
+        - button "Open project" [ref=f10e8979] [cursor=pointer]
+      - generic [ref=f10e8980]:
+        - generic [ref=f10e8981]: Completed unrelated high
+        - generic [ref=f10e8982]: task-017 Deletion fields
+        - generic [ref=f10e8983]: Completed
+        - generic [ref=f10e8984]: High
+        - button "Open project" [ref=f10e8985] [cursor=pointer]
+      - generic [ref=f10e8986]:
+        - generic [ref=f10e8987]: Target first
+        - generic [ref=f10e8988]: task-017 Deletion target
+        - generic [ref=f10e8989]: Open
+        - generic [ref=f10e8990]: Normal
+        - button "Open project" [ref=f10e8991] [cursor=pointer]
+      - generic [ref=f10e8992]:
+        - generic [ref=f10e8993]: Reserved
+        - generic [ref=f10e8994]: task-017 Deletion target
+        - generic [ref=f10e8995]: Completed
+        - generic [ref=f10e8996]: High
+        - generic [ref=f10e8997]: 2037-01-01
+        - generic [ref=f10e8998]: Restore original note
+        - button "Open project" [ref=f10e8999] [cursor=pointer]
+      - generic [ref=f10e9000]:
+        - generic [ref=f10e9001]: Target later
+        - generic [ref=f10e9002]: task-017 Deletion target
+        - generic [ref=f10e9003]: Open
+        - generic [ref=f10e9004]: Normal
+        - button "Open project" [ref=f10e9005] [cursor=pointer]
+      - generic [ref=f10e9006]:
+        - generic [ref=f10e9007]: Before
+        - generic [ref=f10e9008]: task-017 Deletion order
+        - generic [ref=f10e9009]: Open
+        - generic [ref=f10e9010]: Normal
+        - button "Open project" [ref=f10e9011] [cursor=pointer]
+      - generic [ref=f10e9012]:
+        - generic [ref=f10e9013]: After
+        - generic [ref=f10e9014]: task-017 Deletion order
+        - generic [ref=f10e9015]: Open
+        - generic [ref=f10e9016]: Normal
+        - button "Open project" [ref=f10e9017] [cursor=pointer]
+      - generic [ref=f10e9018]:
+        - generic [ref=f10e9019]: New arrival
+        - generic [ref=f10e9020]: task-017 Deletion order
+        - generic [ref=f10e9021]: Open
+        - generic [ref=f10e9022]: Normal
+        - button "Open project" [ref=f10e9023] [cursor=pointer]
+      - generic [ref=f10e9024]:
+        - generic [ref=f10e9025]: Calendar renamed
+        - generic [ref=f10e9026]: task-017 Calendar persistence
+        - generic [ref=f10e9027]: Open
+        - generic [ref=f10e9028]: Normal
+        - button "Open project" [ref=f10e9029] [cursor=pointer]
+      - generic [ref=f10e9030]:
+        - generic [ref=f10e9031]: Calendar valid
+        - generic [ref=f10e9032]: task-017 Calendar validation
+        - generic [ref=f10e9033]: Open
+        - generic [ref=f10e9034]: Normal
+        - generic [ref=f10e9035]: 2028-04-30
+        - button "Open project" [ref=f10e9036] [cursor=pointer]
+      - generic [ref=f10e9037]:
+        - generic [ref=f10e9038]: Dated first
+        - generic [ref=f10e9039]: task-017 Calendar independence
+        - generic [ref=f10e9040]: Completed
+        - generic [ref=f10e9041]: High
+        - generic [ref=f10e9042]: 2029-01-01
+        - button "Open project" [ref=f10e9043] [cursor=pointer]
+      - generic [ref=f10e9044]:
+        - generic [ref=f10e9045]: Undated second
+        - generic [ref=f10e9046]: task-017 Calendar independence
+        - generic [ref=f10e9047]: Open
+        - generic [ref=f10e9048]: Normal
+        - button "Open project" [ref=f10e9049] [cursor=pointer]
+      - generic [ref=f10e9050]:
+        - generic [ref=f10e9051]: Completed normal guard
+        - generic [ref=f10e9052]: task-017 Calendar independence
+        - generic [ref=f10e9053]: Completed
+        - generic [ref=f10e9054]: Normal
+        - button "Open project" [ref=f10e9055] [cursor=pointer]
+      - generic [ref=f10e9056]:
+        - generic [ref=f10e9057]: Owner task
+        - generic [ref=f10e9058]: task-017 Calendar second owner
+        - generic [ref=f10e9059]: Open
+        - generic [ref=f10e9060]: Normal
+        - button "Open project" [ref=f10e9061] [cursor=pointer]
+      - generic [ref=f10e9062]:
+        - generic [ref=f10e9063]: Archive dated
+        - generic [ref=f10e9064]: task-017 Calendar archival
+        - generic [ref=f10e9065]: Open
+        - generic [ref=f10e9066]: Normal
+        - generic [ref=f10e9067]: 2030-12-31
+        - button "Open project" [ref=f10e9068] [cursor=pointer]
+      - generic [ref=f10e9069]:
+        - generic [ref=f10e9070]: Before range
+        - generic [ref=f10e9071]: task-017 Range boundaries
+        - generic [ref=f10e9072]: Open
+        - generic [ref=f10e9073]: Normal
+        - generic [ref=f10e9074]: 2028-02-28
+        - button "Open project" [ref=f10e9075] [cursor=pointer]
+      - generic [ref=f10e9076]:
+        - generic [ref=f10e9077]: Range first
+        - generic [ref=f10e9078]: task-017 Range boundaries
+        - generic [ref=f10e9079]: Open
+        - generic [ref=f10e9080]: Normal
+        - generic [ref=f10e9081]: 2028-02-29
+        - button "Open project" [ref=f10e9082] [cursor=pointer]
+      - generic [ref=f10e9083]:
+        - generic [ref=f10e9084]: No calendar date
+        - generic [ref=f10e9085]: task-017 Range boundaries
+        - generic [ref=f10e9086]: Open
+        - generic [ref=f10e9087]: Normal
+        - button "Open project" [ref=f10e9088] [cursor=pointer]
+      - generic [ref=f10e9089]:
+        - generic [ref=f10e9090]: Range last
+        - generic [ref=f10e9091]: task-017 Range boundaries
+        - generic [ref=f10e9092]: Open
+        - generic [ref=f10e9093]: Normal
+        - generic [ref=f10e9094]: 2028-03-02
+        - button "Open project" [ref=f10e9095] [cursor=pointer]
+      - generic [ref=f10e9096]:
+        - generic [ref=f10e9097]: After range
+        - generic [ref=f10e9098]: task-017 Range boundaries
+        - generic [ref=f10e9099]: Open
+        - generic [ref=f10e9100]: Normal
+        - generic [ref=f10e9101]: 2028-03-03
+        - button "Open project" [ref=f10e9102] [cursor=pointer]
+      - generic [ref=f10e9103]:
+        - generic [ref=f10e9104]: Range matching
+        - generic [ref=f10e9105]: task-017 Range intersections
+        - generic [ref=f10e9106]: Open
+        - generic [ref=f10e9107]: High
+        - generic [ref=f10e9108]: 2029-02-01
+        - button "Open project" [ref=f10e9109] [cursor=pointer]
+      - generic [ref=f10e9110]:
+        - generic [ref=f10e9111]: Range low
+        - generic [ref=f10e9112]: task-017 Range intersections
+        - generic [ref=f10e9113]: Open
+        - generic [ref=f10e9114]: Normal
+        - generic [ref=f10e9115]: 2029-01-15
+        - button "Open project" [ref=f10e9116] [cursor=pointer]
+      - generic [ref=f10e9117]:
+        - generic [ref=f10e9118]: Range completed
+        - generic [ref=f10e9119]: task-017 Range intersections
+        - generic [ref=f10e9120]: Open
+        - generic [ref=f10e9121]: Low
+        - generic [ref=f10e9122]: 2029-01-15
+        - button "Open project" [ref=f10e9123] [cursor=pointer]
+      - generic [ref=f10e9124]:
+        - generic [ref=f10e9125]: Range undated
+        - generic [ref=f10e9126]: task-017 Range intersections
+        - generic [ref=f10e9127]: Open
+        - generic [ref=f10e9128]: High
+        - button "Open project" [ref=f10e9129] [cursor=pointer]
+      - generic [ref=f10e9130]:
+        - generic [ref=f10e9131]: Valid member
+        - generic [ref=f10e9132]: task-017 Range validation
+        - generic [ref=f10e9133]: Open
+        - generic [ref=f10e9134]: Normal
+        - generic [ref=f10e9135]: 2028-06-15
+        - button "Open project" [ref=f10e9136] [cursor=pointer]
+      - generic [ref=f10e9137]:
+        - generic [ref=f10e9138]: Undated outsider
+        - generic [ref=f10e9139]: task-017 Range validation
+        - generic [ref=f10e9140]: Open
+        - generic [ref=f10e9141]: Normal
+        - button "Open project" [ref=f10e9142] [cursor=pointer]
+      - generic [ref=f10e9143]:
+        - generic [ref=f10e9144]: Archived date renamed
+        - generic [ref=f10e9145]: task-017 Range archival
+        - generic [ref=f10e9146]: Open
+        - generic [ref=f10e9147]: Normal
+        - generic [ref=f10e9148]: 2030-01-01
+        - button "Open project" [ref=f10e9149] [cursor=pointer]
+      - generic [ref=f10e9150]:
+        - generic [ref=f10e9151]: Archived undated outsider
+        - generic [ref=f10e9152]: task-017 Range archival
+        - generic [ref=f10e9153]: Open
+        - generic [ref=f10e9154]: Normal
+        - button "Open project" [ref=f10e9155] [cursor=pointer]
+      - generic [ref=f10e9156]:
+        - generic [ref=f10e9157]: Retained range member
+        - generic [ref=f10e9158]: task-017 Range owner renamed
+        - generic [ref=f10e9159]: Open
+        - generic [ref=f10e9160]: High
+        - generic [ref=f10e9161]: 2031-03-01
+        - button "Open project" [ref=f10e9162] [cursor=pointer]
+      - generic [ref=f10e9163]:
+        - generic [ref=f10e9164]: Retained undated outsider
+        - generic [ref=f10e9165]: task-017 Range owner renamed
+        - generic [ref=f10e9166]: Open
+        - generic [ref=f10e9167]: Normal
+        - button "Open project" [ref=f10e9168] [cursor=pointer]
+      - generic [ref=f10e9169]:
+        - generic [ref=f10e9170]: Created outside range
+        - generic [ref=f10e9171]: task-017 Range owner renamed
+        - generic [ref=f10e9172]: Open
+        - generic [ref=f10e9173]: Low
+        - button "Open project" [ref=f10e9174] [cursor=pointer]
+      - generic [ref=f10e9175]:
+        - generic [ref=f10e9176]: Must not export
+        - generic [ref=f10e9177]: task-017 Export foreign
+        - generic [ref=f10e9178]: Open
+        - generic [ref=f10e9179]: Normal
+        - button "Open project" [ref=f10e9180] [cursor=pointer]
+      - generic [ref=f10e9181]:
+        - generic [ref=f10e9182]: Export before
+        - generic [ref=f10e9183]: task-017 Export full Ω
+        - generic [ref=f10e9184]: Open
+        - generic [ref=f10e9185]: Normal
+        - button "Open project" [ref=f10e9186] [cursor=pointer]
+      - generic [ref=f10e9187]:
+        - generic [ref=f10e9188]: Export after
+        - generic [ref=f10e9189]: task-017 Export full Ω
+        - generic [ref=f10e9190]: Open
+        - generic [ref=f10e9191]: Normal
+        - button "Open project" [ref=f10e9192] [cursor=pointer]
+      - generic [ref=f10e9193]:
+        - generic [ref=f10e9194]: Target first
+        - generic [ref=f10e9195]: task-017 Transfer target
+        - generic [ref=f10e9196]: Open
+        - generic [ref=f10e9197]: Normal
+        - button "Open project" [ref=f10e9198] [cursor=pointer]
+      - generic [ref=f10e9199]:
+        - generic [ref=f10e9200]: Target second
+        - generic [ref=f10e9201]: task-017 Transfer target
+        - generic [ref=f10e9202]: Open
+        - generic [ref=f10e9203]: Normal
+        - button "Open project" [ref=f10e9204] [cursor=pointer]
+      - generic [ref=f10e9205]:
+        - generic [ref=f10e9206]: Transferred complete
+        - generic [ref=f10e9207]: task-017 Transfer target
+        - generic [ref=f10e9208]: Completed
+        - generic [ref=f10e9209]: High
+        - generic [ref=f10e9210]: 2032-02-29
+        - button "Open project" [ref=f10e9211] [cursor=pointer]
+      - generic [ref=f10e9212]:
+        - generic [ref=f10e9213]: Source remaining
+        - generic [ref=f10e9214]: task-017 Transfer source
+        - generic [ref=f10e9215]: Open
+        - generic [ref=f10e9216]: Normal
+        - button "Open project" [ref=f10e9217] [cursor=pointer]
+      - generic [ref=f10e9218]:
+        - generic [ref=f10e9219]: Filtered target sentinel
+        - generic [ref=f10e9220]: task-017 Filtered transfer target
+        - generic [ref=f10e9221]: Open
+        - generic [ref=f10e9222]: Normal
+        - button "Open project" [ref=f10e9223] [cursor=pointer]
+      - generic [ref=f10e9224]:
+        - generic [ref=f10e9225]: Filtered moving
+        - generic [ref=f10e9226]: task-017 Filtered transfer target
+        - generic [ref=f10e9227]: Open
+        - generic [ref=f10e9228]: High
+        - generic [ref=f10e9229]: 2033-01-01
+        - button "Open project" [ref=f10e9230] [cursor=pointer]
+      - generic [ref=f10e9231]:
+        - generic [ref=f10e9232]: Filtered first
+        - generic [ref=f10e9233]: task-017 Filtered transfer source
+        - generic [ref=f10e9234]: Open
+        - generic [ref=f10e9235]: High
+        - generic [ref=f10e9236]: 2033-01-01
+        - button "Open project" [ref=f10e9237] [cursor=pointer]
+      - generic [ref=f10e9238]:
+        - generic [ref=f10e9239]: Filtered last
+        - generic [ref=f10e9240]: task-017 Filtered transfer source
+        - generic [ref=f10e9241]: Open
+        - generic [ref=f10e9242]: High
+        - generic [ref=f10e9243]: 2033-01-01
+        - button "Open project" [ref=f10e9244] [cursor=pointer]
+      - generic [ref=f10e9245]:
+        - generic [ref=f10e9246]: Filtered outside range
+        - generic [ref=f10e9247]: task-017 Filtered transfer source
+        - generic [ref=f10e9248]: Open
+        - generic [ref=f10e9249]: High
+        - generic [ref=f10e9250]: 2034-01-01
+        - button "Open project" [ref=f10e9251] [cursor=pointer]
+      - generic [ref=f10e9252]:
+        - generic [ref=f10e9253]: Filtered completed guard
+        - generic [ref=f10e9254]: task-017 Filtered transfer source
+        - generic [ref=f10e9255]: Completed
+        - generic [ref=f10e9256]: High
+        - button "Open project" [ref=f10e9257] [cursor=pointer]
+      - generic [ref=f10e9258]:
+        - generic [ref=f10e9259]: Filtered normal guard
+        - generic [ref=f10e9260]: task-017 Filtered transfer source
+        - generic [ref=f10e9261]: Open
+        - generic [ref=f10e9262]: Normal
+        - button "Open project" [ref=f10e9263] [cursor=pointer]
+      - generic [ref=f10e9264]:
+        - generic [ref=f10e9265]: Options task
+        - generic [ref=f10e9266]: task-017 Options owner
+        - generic [ref=f10e9267]: Open
+        - generic [ref=f10e9268]: Normal
+        - button "Open project" [ref=f10e9269] [cursor=pointer]
+      - generic [ref=f10e9270]:
+        - generic [ref=f10e9271]: Undated target sentinel
+        - generic [ref=f10e9272]: task-017 Read-only transfer target
+        - generic [ref=f10e9273]: Open
+        - generic [ref=f10e9274]: Normal
+        - button "Open project" [ref=f10e9275] [cursor=pointer]
+      - generic [ref=f10e9276]:
+        - generic [ref=f10e9277]: Undated transfer
+        - generic [ref=f10e9278]: task-017 Read-only transfer owner
+        - generic [ref=f10e9279]: Open
+        - generic [ref=f10e9280]: Normal
+        - button "Open project" [ref=f10e9281] [cursor=pointer]
+      - generic [ref=f10e9282]:
+        - generic [ref=f10e9283]: Undated owner sentinel
+        - generic [ref=f10e9284]: task-017 Read-only transfer owner
+        - generic [ref=f10e9285]: Open
+        - generic [ref=f10e9286]: Normal
+        - button "Open project" [ref=f10e9287] [cursor=pointer]
+      - generic [ref=f10e9288]:
+        - generic [ref=f10e9289]: Notes identity
+        - generic [ref=f10e9290]: task-017 Notes values
+        - generic [ref=f10e9291]: Open
+        - generic [ref=f10e9292]: High
+        - generic [ref=f10e9293]: 2035-01-01
+        - generic [ref=f10e9294]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e9295] [cursor=pointer]
+      - generic [ref=f10e9296]:
+        - generic [ref=f10e9297]: Only in notes title sentinel
+        - generic [ref=f10e9298]: task-017 Notes values
+        - generic [ref=f10e9299]: Open
+        - generic [ref=f10e9300]: Normal
+        - button "Open project" [ref=f10e9301] [cursor=pointer]
+      - generic [ref=f10e9302]:
+        - generic [ref=f10e9303]: Notes target existing
+        - generic [ref=f10e9304]: task-017 Notes target
+        - generic [ref=f10e9305]: Open
+        - generic [ref=f10e9306]: Normal
+        - button "Open project" [ref=f10e9307] [cursor=pointer]
+      - generic [ref=f10e9308]:
+        - generic [ref=f10e9309]: Notes before
+        - generic [ref=f10e9310]: task-017 Notes owner
+        - generic [ref=f10e9311]: Open
+        - generic [ref=f10e9312]: Normal
+        - button "Open project" [ref=f10e9313] [cursor=pointer]
+      - generic [ref=f10e9314]:
+        - generic [ref=f10e9315]: Notes travelling
+        - generic [ref=f10e9316]: task-017 Notes owner
+        - generic [ref=f10e9317]: Open
+        - generic [ref=f10e9318]: Normal
+        - generic [ref=f10e9319]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e9320] [cursor=pointer]
+      - generic [ref=f10e9321]:
+        - generic [ref=f10e9322]: Notes after
+        - generic [ref=f10e9323]: task-017 Notes owner
+        - generic [ref=f10e9324]: Open
+        - generic [ref=f10e9325]: Normal
+        - button "Open project" [ref=f10e9326] [cursor=pointer]
+      - generic [ref=f10e9327]:
+        - generic [ref=f10e9328]: High open first
+        - generic [ref=f10e9329]: task-017 Priority intersection
+        - generic [ref=f10e9330]: Open
+        - generic [ref=f10e9331]: High
+        - button "Open project" [ref=f10e9332] [cursor=pointer]
+      - generic [ref=f10e9333]:
+        - generic [ref=f10e9334]: Low open
+        - generic [ref=f10e9335]: task-017 Priority intersection
+        - generic [ref=f10e9336]: Open
+        - generic [ref=f10e9337]: Low
+        - button "Open project" [ref=f10e9338] [cursor=pointer]
+      - generic [ref=f10e9339]:
+        - generic [ref=f10e9340]: High completed
+        - generic [ref=f10e9341]: task-017 Priority intersection
+        - generic [ref=f10e9342]: Completed
+        - generic [ref=f10e9343]: High
+        - button "Open project" [ref=f10e9344] [cursor=pointer]
+      - generic [ref=f10e9345]:
+        - generic [ref=f10e9346]: High open last
+        - generic [ref=f10e9347]: task-017 Priority intersection
+        - generic [ref=f10e9348]: Open
+        - generic [ref=f10e9349]: High
+        - button "Open project" [ref=f10e9350] [cursor=pointer]
+      - generic [ref=f10e9351]:
+        - generic [ref=f10e9352]: Leaving priority
+        - generic [ref=f10e9353]: task-017 Priority live filters
+        - generic [ref=f10e9354]: Open
+        - generic [ref=f10e9355]: Low
+        - button "Open project" [ref=f10e9356] [cursor=pointer]
+      - generic [ref=f10e9357]:
+        - generic [ref=f10e9358]: Leaving completion
+        - generic [ref=f10e9359]: task-017 Priority live filters
+        - generic [ref=f10e9360]: Open
+        - generic [ref=f10e9361]: High
+        - button "Open project" [ref=f10e9362] [cursor=pointer]
+      - generic [ref=f10e9363]:
+        - generic [ref=f10e9364]: Completed high guard
+        - generic [ref=f10e9365]: task-017 Priority live filters
+        - generic [ref=f10e9366]: Completed
+        - generic [ref=f10e9367]: High
+        - button "Open project" [ref=f10e9368] [cursor=pointer]
+      - generic [ref=f10e9369]:
+        - generic [ref=f10e9370]: Open normal guard
+        - generic [ref=f10e9371]: task-017 Priority live filters
+        - generic [ref=f10e9372]: Open
+        - generic [ref=f10e9373]: Normal
+        - button "Open project" [ref=f10e9374] [cursor=pointer]
+      - generic [ref=f10e9375]:
+        - generic [ref=f10e9376]: Filtered new title
+        - generic [ref=f10e9377]: task-017 Priority rename filters
+        - generic [ref=f10e9378]: Open
+        - generic [ref=f10e9379]: Low
+        - button "Open project" [ref=f10e9380] [cursor=pointer]
+      - generic [ref=f10e9381]:
+        - generic [ref=f10e9382]: Unmatched normal task
+        - generic [ref=f10e9383]: task-017 Priority rename filters
+        - generic [ref=f10e9384]: Open
+        - generic [ref=f10e9385]: Normal
+        - button "Open project" [ref=f10e9386] [cursor=pointer]
+      - generic [ref=f10e9387]:
+        - generic [ref=f10e9388]: Completed low guard
+        - generic [ref=f10e9389]: task-017 Priority rename filters
+        - generic [ref=f10e9390]: Completed
+        - generic [ref=f10e9391]: Low
+        - button "Open project" [ref=f10e9392] [cursor=pointer]
+      - generic [ref=f10e9393]:
+        - generic [ref=f10e9394]: Archived high open
+        - generic [ref=f10e9395]: task-017 Archived combined filters
+        - generic [ref=f10e9396]: Open
+        - generic [ref=f10e9397]: High
+        - button "Open project" [ref=f10e9398] [cursor=pointer]
+      - generic [ref=f10e9399]:
+        - generic [ref=f10e9400]: Archived normal completed
+        - generic [ref=f10e9401]: task-017 Archived combined filters
+        - generic [ref=f10e9402]: Completed
+        - generic [ref=f10e9403]: Normal
+        - button "Open project" [ref=f10e9404] [cursor=pointer]
+      - generic [ref=f10e9405]:
+        - generic [ref=f10e9406]: Priority renamed
+        - generic [ref=f10e9407]: task-017 Priority ownership
+        - generic [ref=f10e9408]: Open
+        - generic [ref=f10e9409]: High
+        - button "Open project" [ref=f10e9410] [cursor=pointer]
+      - generic [ref=f10e9411]:
+        - generic [ref=f10e9412]: Priority second
+        - generic [ref=f10e9413]: task-017 Priority ownership
+        - generic [ref=f10e9414]: Open
+        - generic [ref=f10e9415]: Low
+        - button "Open project" [ref=f10e9416] [cursor=pointer]
+      - generic [ref=f10e9417]:
+        - generic [ref=f10e9418]: Priority other task
+        - generic [ref=f10e9419]: task-017 Priority other owner
+        - generic [ref=f10e9420]: Open
+        - generic [ref=f10e9421]: Normal
+        - button "Open project" [ref=f10e9422] [cursor=pointer]
+      - generic [ref=f10e9423]:
+        - generic [ref=f10e9424]: Priority completed
+        - generic [ref=f10e9425]: task-017 Priority completion
+        - generic [ref=f10e9426]: Completed
+        - generic [ref=f10e9427]: Low
+        - button "Open project" [ref=f10e9428] [cursor=pointer]
+      - generic [ref=f10e9429]:
+        - generic [ref=f10e9430]: Priority open
+        - generic [ref=f10e9431]: task-017 Priority completion
+        - generic [ref=f10e9432]: Open
+        - generic [ref=f10e9433]: High
+        - button "Open project" [ref=f10e9434] [cursor=pointer]
+      - generic [ref=f10e9435]:
+        - generic [ref=f10e9436]: Priority retained
+        - generic [ref=f10e9437]: task-017 Priority archive
+        - generic [ref=f10e9438]: Open
+        - generic [ref=f10e9439]: Normal
+        - button "Open project" [ref=f10e9440] [cursor=pointer]
+      - generic [ref=f10e9441]:
+        - generic [ref=f10e9442]: Return first
+        - generic [ref=f10e9443]: task-017 Return owner
+        - generic [ref=f10e9444]: Open
+        - generic [ref=f10e9445]: Normal
+        - button "Open project" [ref=f10e9446] [cursor=pointer]
+      - generic [ref=f10e9447]:
+        - generic [ref=f10e9448]: Return second
+        - generic [ref=f10e9449]: task-017 Return owner
+        - generic [ref=f10e9450]: Completed
+        - generic [ref=f10e9451]: High
+        - button "Open project" [ref=f10e9452] [cursor=pointer]
+      - generic [ref=f10e9453]:
+        - generic [ref=f10e9454]: Return third
+        - generic [ref=f10e9455]: task-017 Return owner
+        - generic [ref=f10e9456]: Open
+        - generic [ref=f10e9457]: Normal
+        - button "Open project" [ref=f10e9458] [cursor=pointer]
+      - generic [ref=f10e9459]:
+        - generic [ref=f10e9460]: Return fourth
+        - generic [ref=f10e9461]: task-017 Return owner
+        - generic [ref=f10e9462]: Open
+        - generic [ref=f10e9463]: Normal
+        - button "Open project" [ref=f10e9464] [cursor=pointer]
+      - generic [ref=f10e9465]:
+        - generic [ref=f10e9466]: Identity before
+        - generic [ref=f10e9467]: task-017 Returned owner renamed
+        - generic [ref=f10e9468]: Open
+        - generic [ref=f10e9469]: Normal
+        - button "Open project" [ref=f10e9470] [cursor=pointer]
+      - generic [ref=f10e9471]:
+        - generic [ref=f10e9472]: Identity returning
+        - generic [ref=f10e9473]: task-017 Returned owner renamed
+        - generic [ref=f10e9474]: Open
+        - generic [ref=f10e9475]: Normal
+        - button "Open project" [ref=f10e9476] [cursor=pointer]
+      - generic [ref=f10e9477]:
+        - generic [ref=f10e9478]: Identity after
+        - generic [ref=f10e9479]: task-017 Returned owner renamed
+        - generic [ref=f10e9480]: Open
+        - generic [ref=f10e9481]: Normal
+        - button "Open project" [ref=f10e9482] [cursor=pointer]
+      - generic [ref=f10e9483]:
+        - generic [ref=f10e9484]: Second existing
+        - generic [ref=f10e9485]: task-017 Position second owner
+        - generic [ref=f10e9486]: Open
+        - generic [ref=f10e9487]: Normal
+        - button "Open project" [ref=f10e9488] [cursor=pointer]
+      - generic [ref=f10e9489]:
+        - generic [ref=f10e9490]: Second newly created
+        - generic [ref=f10e9491]: task-017 Position second owner
+        - generic [ref=f10e9492]: Open
+        - generic [ref=f10e9493]: Normal
+        - button "Open project" [ref=f10e9494] [cursor=pointer]
+      - generic [ref=f10e9495]:
+        - generic [ref=f10e9496]: First existing
+        - generic [ref=f10e9497]: task-017 Position first owner
+        - generic [ref=f10e9498]: Open
+        - generic [ref=f10e9499]: Normal
+        - button "Open project" [ref=f10e9500] [cursor=pointer]
+      - generic [ref=f10e9501]:
+        - generic [ref=f10e9502]: Position travelling
+        - generic [ref=f10e9503]: task-017 Position first owner
+        - generic [ref=f10e9504]: Open
+        - generic [ref=f10e9505]: Normal
+        - button "Open project" [ref=f10e9506] [cursor=pointer]
+      - generic [ref=f10e9507]:
+        - generic [ref=f10e9508]: First later
+        - generic [ref=f10e9509]: task-017 Position first owner
+        - generic [ref=f10e9510]: Open
+        - generic [ref=f10e9511]: Normal
+        - button "Open project" [ref=f10e9512] [cursor=pointer]
+      - generic [ref=f10e9513]:
+        - generic [ref=f10e9514]: First newly created
+        - generic [ref=f10e9515]: task-017 Position first owner
+        - generic [ref=f10e9516]: Open
+        - generic [ref=f10e9517]: Normal
+        - button "Open project" [ref=f10e9518] [cursor=pointer]
+      - generic [ref=f10e9519]:
+        - generic [ref=f10e9520]: Original task gap
+        - generic [ref=f10e9521]: task-017 Whitespace retained owner
+        - generic [ref=f10e9522]: Open
+        - generic [ref=f10e9523]: High
+        - button "Open project" [ref=f10e9524] [cursor=pointer]
+      - generic [ref=f10e9525]:
+        - generic [ref=f10e9526]: Other task gap
+        - generic [ref=f10e9527]: task-017 Whitespace retained owner
+        - generic [ref=f10e9528]: Open
+        - generic [ref=f10e9529]: High
+        - button "Open project" [ref=f10e9530] [cursor=pointer]
+      - generic [ref=f10e9531]:
+        - generic [ref=f10e9532]: Mixed first
+        - generic [ref=f10e9533]: task-017 Search task intersections
+        - generic [ref=f10e9534]: Open
+        - generic [ref=f10e9535]: High
+        - generic [ref=f10e9536]: 2034-01-01
+        - button "Open project" [ref=f10e9537] [cursor=pointer]
+      - generic [ref=f10e9538]:
+        - generic [ref=f10e9539]: Other high
+        - generic [ref=f10e9540]: task-017 Search task intersections
+        - generic [ref=f10e9541]: Open
+        - generic [ref=f10e9542]: High
+        - generic [ref=f10e9543]: 2034-01-01
+        - button "Open project" [ref=f10e9544] [cursor=pointer]
+      - generic [ref=f10e9545]:
+        - generic [ref=f10e9546]: MIXED completed
+        - generic [ref=f10e9547]: task-017 Search task intersections
+        - generic [ref=f10e9548]: Completed
+        - generic [ref=f10e9549]: High
+        - generic [ref=f10e9550]: 2034-01-01
+        - button "Open project" [ref=f10e9551] [cursor=pointer]
+      - generic [ref=f10e9552]:
+        - generic [ref=f10e9553]: Mixed undated
+        - generic [ref=f10e9554]: task-017 Search task intersections
+        - generic [ref=f10e9555]: Open
+        - generic [ref=f10e9556]: High
+        - button "Open project" [ref=f10e9557] [cursor=pointer]
+      - generic [ref=f10e9558]:
+        - generic [ref=f10e9559]: mixed last
+        - generic [ref=f10e9560]: task-017 Search task intersections
+        - generic [ref=f10e9561]: Open
+        - generic [ref=f10e9562]: High
+        - generic [ref=f10e9563]: 2034-01-01
+        - button "Open project" [ref=f10e9564] [cursor=pointer]
+      - generic [ref=f10e9565]:
+        - generic [ref=f10e9566]: Other normal guard
+        - generic [ref=f10e9567]: task-017 Search task intersections
+        - generic [ref=f10e9568]: Open
+        - generic [ref=f10e9569]: Normal
+        - button "Open project" [ref=f10e9570] [cursor=pointer]
+      - generic [ref=f10e9571]:
+        - generic [ref=f10e9572]: Two spaces
+        - generic [ref=f10e9573]: task-017 Search internal spacing
+        - generic [ref=f10e9574]: Open
+        - generic [ref=f10e9575]: Normal
+        - button "Open project" [ref=f10e9576] [cursor=pointer]
+      - generic [ref=f10e9577]:
+        - generic [ref=f10e9578]: Two spaces sentinel
+        - generic [ref=f10e9579]: task-017 Search internal spacing
+        - generic [ref=f10e9580]: Open
+        - generic [ref=f10e9581]: Normal
+        - button "Open project" [ref=f10e9582] [cursor=pointer]
+      - generic [ref=f10e9583]:
+        - generic [ref=f10e9584]: Task preserved
+        - generic [ref=f10e9585]: task-017 Task reload
+        - generic [ref=f10e9586]: Open
+        - generic [ref=f10e9587]: Normal
+        - button "Open project" [ref=f10e9588] [cursor=pointer]
+      - generic [ref=f10e9589]:
+        - generic [ref=f10e9590]: Private to owner
+        - generic [ref=f10e9591]: task-017 Task owner
+        - generic [ref=f10e9592]: Open
+        - generic [ref=f10e9593]: Normal
+        - button "Open project" [ref=f10e9594] [cursor=pointer]
+      - generic [ref=f10e9595]:
+        - generic [ref=f10e9596]: Done task
+        - generic [ref=f10e9597]: task-017 Task filters
+        - generic [ref=f10e9598]: Open
+        - generic [ref=f10e9599]: Normal
+        - button "Open project" [ref=f10e9600] [cursor=pointer]
+      - generic [ref=f10e9601]:
+        - generic [ref=f10e9602]: Open task
+        - generic [ref=f10e9603]: task-017 Task filters
+        - generic [ref=f10e9604]: Open
+        - generic [ref=f10e9605]: Normal
+        - button "Open project" [ref=f10e9606] [cursor=pointer]
+      - generic [ref=f10e9607]:
+        - generic [ref=f10e9608]: Retained task
+        - generic [ref=f10e9609]: task-017 Archive tasks
+        - generic [ref=f10e9610]: Completed
+        - generic [ref=f10e9611]: Normal
+        - button "Open project" [ref=f10e9612] [cursor=pointer]
+      - generic [ref=f10e9613]:
+        - generic [ref=f10e9614]: Summary one
+        - generic [ref=f10e9615]: task-017 Summary project
+        - generic [ref=f10e9616]: Completed
+        - generic [ref=f10e9617]: Normal
+        - button "Open project" [ref=f10e9618] [cursor=pointer]
+      - generic [ref=f10e9619]:
+        - generic [ref=f10e9620]: Summary two
+        - generic [ref=f10e9621]: task-017 Summary project
+        - generic [ref=f10e9622]: Open
+        - generic [ref=f10e9623]: Normal
+        - button "Open project" [ref=f10e9624] [cursor=pointer]
+      - generic [ref=f10e9625]:
+        - generic [ref=f10e9626]: Identity task
+        - generic [ref=f10e9627]: task-017 Identity updated
+        - generic [ref=f10e9628]: Completed
+        - generic [ref=f10e9629]: Normal
+        - button "Open project" [ref=f10e9630] [cursor=pointer]
+      - generic [ref=f10e9631]:
+        - generic [ref=f10e9632]: Name updated
+        - generic [ref=f10e9633]: task-017 Task rename identity
+        - generic [ref=f10e9634]: Completed
+        - generic [ref=f10e9635]: Normal
+        - button "Open project" [ref=f10e9636] [cursor=pointer]
+      - generic [ref=f10e9637]:
+        - generic [ref=f10e9638]: Name second
+        - generic [ref=f10e9639]: task-017 Task rename identity
+        - generic [ref=f10e9640]: Open
+        - generic [ref=f10e9641]: Normal
+        - button "Open project" [ref=f10e9642] [cursor=pointer]
+      - generic [ref=f10e9643]:
+        - generic [ref=f10e9644]: Kept title
+        - generic [ref=f10e9645]: task-017 Task rename invalid
+        - generic [ref=f10e9646]: Open
+        - generic [ref=f10e9647]: Normal
+        - button "Open project" [ref=f10e9648] [cursor=pointer]
+      - generic [ref=f10e9649]:
+        - generic [ref=f10e9650]: Archived title
+        - generic [ref=f10e9651]: task-017 Task rename archive
+        - generic [ref=f10e9652]: Open
+        - generic [ref=f10e9653]: Normal
+        - button "Open project" [ref=f10e9654] [cursor=pointer]
+      - generic [ref=f10e9655]:
+        - generic [ref=f10e9656]: Independent normal
+        - generic [ref=f10e9657]: task-018 Defaults independent
+        - generic [ref=f10e9658]: Open
+        - generic [ref=f10e9659]: Normal
+        - button "Open project" [ref=f10e9660] [cursor=pointer]
+      - generic [ref=f10e9661]:
+        - generic [ref=f10e9662]: Before default change
+        - generic [ref=f10e9663]: task-018 Defaults inheritance
+        - generic [ref=f10e9664]: Completed
+        - generic [ref=f10e9665]: Normal
+        - button "Open project" [ref=f10e9666] [cursor=pointer]
+      - generic [ref=f10e9667]:
+        - generic [ref=f10e9668]: Inherited high
+        - generic [ref=f10e9669]: task-018 Defaults inheritance
+        - generic [ref=f10e9670]: Open
+        - generic [ref=f10e9671]: High
+        - button "Open project" [ref=f10e9672] [cursor=pointer]
+      - generic [ref=f10e9673]:
+        - generic [ref=f10e9674]: Inherited low
+        - generic [ref=f10e9675]: task-018 Defaults inheritance
+        - generic [ref=f10e9676]: Open
+        - generic [ref=f10e9677]: Low
+        - button "Open project" [ref=f10e9678] [cursor=pointer]
+      - generic [ref=f10e9679]:
+        - generic [ref=f10e9680]: Inherited normal
+        - generic [ref=f10e9681]: task-018 Defaults inheritance
+        - generic [ref=f10e9682]: Open
+        - generic [ref=f10e9683]: Normal
+        - button "Open project" [ref=f10e9684] [cursor=pointer]
+      - generic [ref=f10e9685]:
+        - generic [ref=f10e9686]: Lifecycle task
+        - generic [ref=f10e9687]: task-018 Defaults renamed
+        - generic [ref=f10e9688]: Open
+        - generic [ref=f10e9689]: Low
+        - button "Open project" [ref=f10e9690] [cursor=pointer]
+      - generic [ref=f10e9691]:
+        - generic [ref=f10e9692]: Restored inherits
+        - generic [ref=f10e9693]: task-018 Defaults renamed
+        - generic [ref=f10e9694]: Open
+        - generic [ref=f10e9695]: Low
+        - button "Open project" [ref=f10e9696] [cursor=pointer]
+      - generic [ref=f10e9697]:
+        - generic [ref=f10e9698]: Live before
+        - generic [ref=f10e9699]: task-018 Deletion fields
+        - generic [ref=f10e9700]: Open
+        - generic [ref=f10e9701]: Normal
+        - button "Open project" [ref=f10e9702] [cursor=pointer]
+      - generic [ref=f10e9703]:
+        - generic [ref=f10e9704]: Live after
+        - generic [ref=f10e9705]: task-018 Deletion fields
+        - generic [ref=f10e9706]: Open
+        - generic [ref=f10e9707]: Normal
+        - button "Open project" [ref=f10e9708] [cursor=pointer]
+      - generic [ref=f10e9709]:
+        - generic [ref=f10e9710]: Completed remove sentinel
+        - generic [ref=f10e9711]: task-018 Deletion fields
+        - generic [ref=f10e9712]: Completed
+        - generic [ref=f10e9713]: High
+        - generic [ref=f10e9714]: 2036-02-29
+        - button "Open project" [ref=f10e9715] [cursor=pointer]
+      - generic [ref=f10e9716]:
+        - generic [ref=f10e9717]: Completed remove outside
+        - generic [ref=f10e9718]: task-018 Deletion fields
+        - generic [ref=f10e9719]: Completed
+        - generic [ref=f10e9720]: High
+        - generic [ref=f10e9721]: 2037-01-01
+        - button "Open project" [ref=f10e9722] [cursor=pointer]
+      - generic [ref=f10e9723]:
+        - generic [ref=f10e9724]: Completed normal exclusion
+        - generic [ref=f10e9725]: task-018 Deletion fields
+        - generic [ref=f10e9726]: Completed
+        - generic [ref=f10e9727]: Normal
+        - button "Open project" [ref=f10e9728] [cursor=pointer]
+      - generic [ref=f10e9729]:
+        - generic [ref=f10e9730]: Completed unrelated high
+        - generic [ref=f10e9731]: task-018 Deletion fields
+        - generic [ref=f10e9732]: Completed
+        - generic [ref=f10e9733]: High
+        - button "Open project" [ref=f10e9734] [cursor=pointer]
+      - generic [ref=f10e9735]:
+        - generic [ref=f10e9736]: Target first
+        - generic [ref=f10e9737]: task-018 Deletion target
+        - generic [ref=f10e9738]: Open
+        - generic [ref=f10e9739]: Normal
+        - button "Open project" [ref=f10e9740] [cursor=pointer]
+      - generic [ref=f10e9741]:
+        - generic [ref=f10e9742]: Reserved
+        - generic [ref=f10e9743]: task-018 Deletion target
+        - generic [ref=f10e9744]: Completed
+        - generic [ref=f10e9745]: High
+        - generic [ref=f10e9746]: 2037-01-01
+        - generic [ref=f10e9747]: Restore original note
+        - button "Open project" [ref=f10e9748] [cursor=pointer]
+      - generic [ref=f10e9749]:
+        - generic [ref=f10e9750]: Target later
+        - generic [ref=f10e9751]: task-018 Deletion target
+        - generic [ref=f10e9752]: Open
+        - generic [ref=f10e9753]: Normal
+        - button "Open project" [ref=f10e9754] [cursor=pointer]
+      - generic [ref=f10e9755]:
+        - generic [ref=f10e9756]: Before
+        - generic [ref=f10e9757]: task-018 Deletion order
+        - generic [ref=f10e9758]: Open
+        - generic [ref=f10e9759]: Normal
+        - button "Open project" [ref=f10e9760] [cursor=pointer]
+      - generic [ref=f10e9761]:
+        - generic [ref=f10e9762]: After
+        - generic [ref=f10e9763]: task-018 Deletion order
+        - generic [ref=f10e9764]: Open
+        - generic [ref=f10e9765]: Normal
+        - button "Open project" [ref=f10e9766] [cursor=pointer]
+      - generic [ref=f10e9767]:
+        - generic [ref=f10e9768]: New arrival
+        - generic [ref=f10e9769]: task-018 Deletion order
+        - generic [ref=f10e9770]: Open
+        - generic [ref=f10e9771]: Normal
+        - button "Open project" [ref=f10e9772] [cursor=pointer]
+      - generic [ref=f10e9773]:
+        - generic [ref=f10e9774]: Calendar renamed
+        - generic [ref=f10e9775]: task-018 Calendar persistence
+        - generic [ref=f10e9776]: Open
+        - generic [ref=f10e9777]: Normal
+        - button "Open project" [ref=f10e9778] [cursor=pointer]
+      - generic [ref=f10e9779]:
+        - generic [ref=f10e9780]: Calendar valid
+        - generic [ref=f10e9781]: task-018 Calendar validation
+        - generic [ref=f10e9782]: Open
+        - generic [ref=f10e9783]: Normal
+        - generic [ref=f10e9784]: 2028-04-30
+        - button "Open project" [ref=f10e9785] [cursor=pointer]
+      - generic [ref=f10e9786]:
+        - generic [ref=f10e9787]: Dated first
+        - generic [ref=f10e9788]: task-018 Calendar independence
+        - generic [ref=f10e9789]: Completed
+        - generic [ref=f10e9790]: High
+        - generic [ref=f10e9791]: 2029-01-01
+        - button "Open project" [ref=f10e9792] [cursor=pointer]
+      - generic [ref=f10e9793]:
+        - generic [ref=f10e9794]: Undated second
+        - generic [ref=f10e9795]: task-018 Calendar independence
+        - generic [ref=f10e9796]: Open
+        - generic [ref=f10e9797]: Normal
+        - button "Open project" [ref=f10e9798] [cursor=pointer]
+      - generic [ref=f10e9799]:
+        - generic [ref=f10e9800]: Completed normal guard
+        - generic [ref=f10e9801]: task-018 Calendar independence
+        - generic [ref=f10e9802]: Completed
+        - generic [ref=f10e9803]: Normal
+        - button "Open project" [ref=f10e9804] [cursor=pointer]
+      - generic [ref=f10e9805]:
+        - generic [ref=f10e9806]: Owner task
+        - generic [ref=f10e9807]: task-018 Calendar second owner
+        - generic [ref=f10e9808]: Open
+        - generic [ref=f10e9809]: Normal
+        - button "Open project" [ref=f10e9810] [cursor=pointer]
+      - generic [ref=f10e9811]:
+        - generic [ref=f10e9812]: Archive dated
+        - generic [ref=f10e9813]: task-018 Calendar archival
+        - generic [ref=f10e9814]: Open
+        - generic [ref=f10e9815]: Normal
+        - generic [ref=f10e9816]: 2030-12-31
+        - button "Open project" [ref=f10e9817] [cursor=pointer]
+      - generic [ref=f10e9818]:
+        - generic [ref=f10e9819]: Before range
+        - generic [ref=f10e9820]: task-018 Range boundaries
+        - generic [ref=f10e9821]: Open
+        - generic [ref=f10e9822]: Normal
+        - generic [ref=f10e9823]: 2028-02-28
+        - button "Open project" [ref=f10e9824] [cursor=pointer]
+      - generic [ref=f10e9825]:
+        - generic [ref=f10e9826]: Range first
+        - generic [ref=f10e9827]: task-018 Range boundaries
+        - generic [ref=f10e9828]: Open
+        - generic [ref=f10e9829]: Normal
+        - generic [ref=f10e9830]: 2028-02-29
+        - button "Open project" [ref=f10e9831] [cursor=pointer]
+      - generic [ref=f10e9832]:
+        - generic [ref=f10e9833]: No calendar date
+        - generic [ref=f10e9834]: task-018 Range boundaries
+        - generic [ref=f10e9835]: Open
+        - generic [ref=f10e9836]: Normal
+        - button "Open project" [ref=f10e9837] [cursor=pointer]
+      - generic [ref=f10e9838]:
+        - generic [ref=f10e9839]: Range last
+        - generic [ref=f10e9840]: task-018 Range boundaries
+        - generic [ref=f10e9841]: Open
+        - generic [ref=f10e9842]: Normal
+        - generic [ref=f10e9843]: 2028-03-02
+        - button "Open project" [ref=f10e9844] [cursor=pointer]
+      - generic [ref=f10e9845]:
+        - generic [ref=f10e9846]: After range
+        - generic [ref=f10e9847]: task-018 Range boundaries
+        - generic [ref=f10e9848]: Open
+        - generic [ref=f10e9849]: Normal
+        - generic [ref=f10e9850]: 2028-03-03
+        - button "Open project" [ref=f10e9851] [cursor=pointer]
+      - generic [ref=f10e9852]:
+        - generic [ref=f10e9853]: Range matching
+        - generic [ref=f10e9854]: task-018 Range intersections
+        - generic [ref=f10e9855]: Open
+        - generic [ref=f10e9856]: High
+        - generic [ref=f10e9857]: 2029-02-01
+        - button "Open project" [ref=f10e9858] [cursor=pointer]
+      - generic [ref=f10e9859]:
+        - generic [ref=f10e9860]: Range low
+        - generic [ref=f10e9861]: task-018 Range intersections
+        - generic [ref=f10e9862]: Open
+        - generic [ref=f10e9863]: Normal
+        - generic [ref=f10e9864]: 2029-01-15
+        - button "Open project" [ref=f10e9865] [cursor=pointer]
+      - generic [ref=f10e9866]:
+        - generic [ref=f10e9867]: Range completed
+        - generic [ref=f10e9868]: task-018 Range intersections
+        - generic [ref=f10e9869]: Open
+        - generic [ref=f10e9870]: Low
+        - generic [ref=f10e9871]: 2029-01-15
+        - button "Open project" [ref=f10e9872] [cursor=pointer]
+      - generic [ref=f10e9873]:
+        - generic [ref=f10e9874]: Range undated
+        - generic [ref=f10e9875]: task-018 Range intersections
+        - generic [ref=f10e9876]: Open
+        - generic [ref=f10e9877]: High
+        - button "Open project" [ref=f10e9878] [cursor=pointer]
+      - generic [ref=f10e9879]:
+        - generic [ref=f10e9880]: Valid member
+        - generic [ref=f10e9881]: task-018 Range validation
+        - generic [ref=f10e9882]: Open
+        - generic [ref=f10e9883]: Normal
+        - generic [ref=f10e9884]: 2028-06-15
+        - button "Open project" [ref=f10e9885] [cursor=pointer]
+      - generic [ref=f10e9886]:
+        - generic [ref=f10e9887]: Undated outsider
+        - generic [ref=f10e9888]: task-018 Range validation
+        - generic [ref=f10e9889]: Open
+        - generic [ref=f10e9890]: Normal
+        - button "Open project" [ref=f10e9891] [cursor=pointer]
+      - generic [ref=f10e9892]:
+        - generic [ref=f10e9893]: Archived date renamed
+        - generic [ref=f10e9894]: task-018 Range archival
+        - generic [ref=f10e9895]: Open
+        - generic [ref=f10e9896]: Normal
+        - generic [ref=f10e9897]: 2030-01-01
+        - button "Open project" [ref=f10e9898] [cursor=pointer]
+      - generic [ref=f10e9899]:
+        - generic [ref=f10e9900]: Archived undated outsider
+        - generic [ref=f10e9901]: task-018 Range archival
+        - generic [ref=f10e9902]: Open
+        - generic [ref=f10e9903]: Normal
+        - button "Open project" [ref=f10e9904] [cursor=pointer]
+      - generic [ref=f10e9905]:
+        - generic [ref=f10e9906]: Retained range member
+        - generic [ref=f10e9907]: task-018 Range owner renamed
+        - generic [ref=f10e9908]: Open
+        - generic [ref=f10e9909]: High
+        - generic [ref=f10e9910]: 2031-03-01
+        - button "Open project" [ref=f10e9911] [cursor=pointer]
+      - generic [ref=f10e9912]:
+        - generic [ref=f10e9913]: Retained undated outsider
+        - generic [ref=f10e9914]: task-018 Range owner renamed
+        - generic [ref=f10e9915]: Open
+        - generic [ref=f10e9916]: Normal
+        - button "Open project" [ref=f10e9917] [cursor=pointer]
+      - generic [ref=f10e9918]:
+        - generic [ref=f10e9919]: Created outside range
+        - generic [ref=f10e9920]: task-018 Range owner renamed
+        - generic [ref=f10e9921]: Open
+        - generic [ref=f10e9922]: Low
+        - button "Open project" [ref=f10e9923] [cursor=pointer]
+      - generic [ref=f10e9924]:
+        - generic [ref=f10e9925]: Must not export
+        - generic [ref=f10e9926]: task-018 Export foreign
+        - generic [ref=f10e9927]: Open
+        - generic [ref=f10e9928]: Normal
+        - button "Open project" [ref=f10e9929] [cursor=pointer]
+      - generic [ref=f10e9930]:
+        - generic [ref=f10e9931]: Export before
+        - generic [ref=f10e9932]: task-018 Export full Ω
+        - generic [ref=f10e9933]: Open
+        - generic [ref=f10e9934]: Normal
+        - button "Open project" [ref=f10e9935] [cursor=pointer]
+      - generic [ref=f10e9936]:
+        - generic [ref=f10e9937]: Export after
+        - generic [ref=f10e9938]: task-018 Export full Ω
+        - generic [ref=f10e9939]: Open
+        - generic [ref=f10e9940]: Normal
+        - button "Open project" [ref=f10e9941] [cursor=pointer]
+      - generic [ref=f10e9942]:
+        - generic [ref=f10e9943]: Imported before
+        - generic [ref=f10e9944]: task-018 Import origin
+        - generic [ref=f10e9945]: Open
+        - generic [ref=f10e9946]: Normal
+        - button "Open project" [ref=f10e9947] [cursor=pointer]
+      - generic [ref=f10e9948]:
+        - generic [ref=f10e9949]: Imported after
+        - generic [ref=f10e9950]: task-018 Import origin
+        - generic [ref=f10e9951]: Open
+        - generic [ref=f10e9952]: Normal
+        - button "Open project" [ref=f10e9953] [cursor=pointer]
+      - generic [ref=f10e9954]:
+        - generic [ref=f10e9955]: Imported before
+        - generic [ref=f10e9956]: task-018 Import copy
+        - generic [ref=f10e9957]: Open
+        - generic [ref=f10e9958]: Normal
+        - button "Open project" [ref=f10e9959] [cursor=pointer]
+      - generic [ref=f10e9960]:
+        - generic [ref=f10e9961]: Imported reserved
+        - generic [ref=f10e9962]: task-018 Import copy
+        - generic [ref=f10e9963]: Completed
+        - generic [ref=f10e9964]: High
+        - generic [ref=f10e9965]: 2040-02-29
+        - generic [ref=f10e9966]: Changed only copy
+        - button "Open project" [ref=f10e9967] [cursor=pointer]
+      - generic [ref=f10e9968]:
+        - generic [ref=f10e9969]: Imported after
+        - generic [ref=f10e9970]: task-018 Import copy
+        - generic [ref=f10e9971]: Open
+        - generic [ref=f10e9972]: Normal
+        - button "Open project" [ref=f10e9973] [cursor=pointer]
+      - generic [ref=f10e9974]:
+        - generic [ref=f10e9975]: Imported arrival
+        - generic [ref=f10e9976]: task-018 Import copy
+        - generic [ref=f10e9977]: Open
+        - generic [ref=f10e9978]: Low
+        - button "Open project" [ref=f10e9979] [cursor=pointer]
+      - generic [ref=f10e9980]:
+        - generic [ref=f10e9981]: Guard retained
+        - generic [ref=f10e9982]: task-018 Parse guard existing
+        - generic [ref=f10e9983]: Open
+        - generic [ref=f10e9984]: Normal
+        - button "Open project" [ref=f10e9985] [cursor=pointer]
+      - generic [ref=f10e9986]:
+        - generic [ref=f10e9987]: Guard retained
+        - generic [ref=f10e9988]: task-018 Task guard existing
+        - generic [ref=f10e9989]: Open
+        - generic [ref=f10e9990]: Normal
+        - button "Open project" [ref=f10e9991] [cursor=pointer]
+      - generic [ref=f10e9992]:
+        - generic [ref=f10e9993]: Imported live
+        - generic [ref=f10e9994]: task-018 Import restart
+        - generic [ref=f10e9995]: Open
+        - generic [ref=f10e9996]: Low
+        - generic [ref=f10e9997]: 2044-02-29
+        - generic [ref=f10e9998]: Live import
+        - button "Open project" [ref=f10e9999] [cursor=pointer]
+      - generic [ref=f10e10000]:
+        - generic [ref=f10e10001]: Target first
+        - generic [ref=f10e10002]: task-018 Transfer target
+        - generic [ref=f10e10003]: Open
+        - generic [ref=f10e10004]: Normal
+        - button "Open project" [ref=f10e10005] [cursor=pointer]
+      - generic [ref=f10e10006]:
+        - generic [ref=f10e10007]: Target second
+        - generic [ref=f10e10008]: task-018 Transfer target
+        - generic [ref=f10e10009]: Open
+        - generic [ref=f10e10010]: Normal
+        - button "Open project" [ref=f10e10011] [cursor=pointer]
+      - generic [ref=f10e10012]:
+        - generic [ref=f10e10013]: Transferred complete
+        - generic [ref=f10e10014]: task-018 Transfer target
+        - generic [ref=f10e10015]: Completed
+        - generic [ref=f10e10016]: High
+        - generic [ref=f10e10017]: 2032-02-29
+        - button "Open project" [ref=f10e10018] [cursor=pointer]
+      - generic [ref=f10e10019]:
+        - generic [ref=f10e10020]: Source remaining
+        - generic [ref=f10e10021]: task-018 Transfer source
+        - generic [ref=f10e10022]: Open
+        - generic [ref=f10e10023]: Normal
+        - button "Open project" [ref=f10e10024] [cursor=pointer]
+      - generic [ref=f10e10025]:
+        - generic [ref=f10e10026]: Filtered target sentinel
+        - generic [ref=f10e10027]: task-018 Filtered transfer target
+        - generic [ref=f10e10028]: Open
+        - generic [ref=f10e10029]: Normal
+        - button "Open project" [ref=f10e10030] [cursor=pointer]
+      - generic [ref=f10e10031]:
+        - generic [ref=f10e10032]: Filtered moving
+        - generic [ref=f10e10033]: task-018 Filtered transfer target
+        - generic [ref=f10e10034]: Open
+        - generic [ref=f10e10035]: High
+        - generic [ref=f10e10036]: 2033-01-01
+        - button "Open project" [ref=f10e10037] [cursor=pointer]
+      - generic [ref=f10e10038]:
+        - generic [ref=f10e10039]: Filtered first
+        - generic [ref=f10e10040]: task-018 Filtered transfer source
+        - generic [ref=f10e10041]: Open
+        - generic [ref=f10e10042]: High
+        - generic [ref=f10e10043]: 2033-01-01
+        - button "Open project" [ref=f10e10044] [cursor=pointer]
+      - generic [ref=f10e10045]:
+        - generic [ref=f10e10046]: Filtered last
+        - generic [ref=f10e10047]: task-018 Filtered transfer source
+        - generic [ref=f10e10048]: Open
+        - generic [ref=f10e10049]: High
+        - generic [ref=f10e10050]: 2033-01-01
+        - button "Open project" [ref=f10e10051] [cursor=pointer]
+      - generic [ref=f10e10052]:
+        - generic [ref=f10e10053]: Filtered outside range
+        - generic [ref=f10e10054]: task-018 Filtered transfer source
+        - generic [ref=f10e10055]: Open
+        - generic [ref=f10e10056]: High
+        - generic [ref=f10e10057]: 2034-01-01
+        - button "Open project" [ref=f10e10058] [cursor=pointer]
+      - generic [ref=f10e10059]:
+        - generic [ref=f10e10060]: Filtered completed guard
+        - generic [ref=f10e10061]: task-018 Filtered transfer source
+        - generic [ref=f10e10062]: Completed
+        - generic [ref=f10e10063]: High
+        - button "Open project" [ref=f10e10064] [cursor=pointer]
+      - generic [ref=f10e10065]:
+        - generic [ref=f10e10066]: Filtered normal guard
+        - generic [ref=f10e10067]: task-018 Filtered transfer source
+        - generic [ref=f10e10068]: Open
+        - generic [ref=f10e10069]: Normal
+        - button "Open project" [ref=f10e10070] [cursor=pointer]
+      - generic [ref=f10e10071]:
+        - generic [ref=f10e10072]: Options task
+        - generic [ref=f10e10073]: task-018 Options owner
+        - generic [ref=f10e10074]: Open
+        - generic [ref=f10e10075]: Normal
+        - button "Open project" [ref=f10e10076] [cursor=pointer]
+      - generic [ref=f10e10077]:
+        - generic [ref=f10e10078]: Undated target sentinel
+        - generic [ref=f10e10079]: task-018 Read-only transfer target
+        - generic [ref=f10e10080]: Open
+        - generic [ref=f10e10081]: Normal
+        - button "Open project" [ref=f10e10082] [cursor=pointer]
+      - generic [ref=f10e10083]:
+        - generic [ref=f10e10084]: Undated transfer
+        - generic [ref=f10e10085]: task-018 Read-only transfer owner
+        - generic [ref=f10e10086]: Open
+        - generic [ref=f10e10087]: Normal
+        - button "Open project" [ref=f10e10088] [cursor=pointer]
+      - generic [ref=f10e10089]:
+        - generic [ref=f10e10090]: Undated owner sentinel
+        - generic [ref=f10e10091]: task-018 Read-only transfer owner
+        - generic [ref=f10e10092]: Open
+        - generic [ref=f10e10093]: Normal
+        - button "Open project" [ref=f10e10094] [cursor=pointer]
+      - generic [ref=f10e10095]:
+        - generic [ref=f10e10096]: Notes identity
+        - generic [ref=f10e10097]: task-018 Notes values
+        - generic [ref=f10e10098]: Open
+        - generic [ref=f10e10099]: High
+        - generic [ref=f10e10100]: 2035-01-01
+        - generic [ref=f10e10101]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e10102] [cursor=pointer]
+      - generic [ref=f10e10103]:
+        - generic [ref=f10e10104]: Only in notes title sentinel
+        - generic [ref=f10e10105]: task-018 Notes values
+        - generic [ref=f10e10106]: Open
+        - generic [ref=f10e10107]: Normal
+        - button "Open project" [ref=f10e10108] [cursor=pointer]
+      - generic [ref=f10e10109]:
+        - generic [ref=f10e10110]: Notes target existing
+        - generic [ref=f10e10111]: task-018 Notes target
+        - generic [ref=f10e10112]: Open
+        - generic [ref=f10e10113]: Normal
+        - button "Open project" [ref=f10e10114] [cursor=pointer]
+      - generic [ref=f10e10115]:
+        - generic [ref=f10e10116]: Notes before
+        - generic [ref=f10e10117]: task-018 Notes owner
+        - generic [ref=f10e10118]: Open
+        - generic [ref=f10e10119]: Normal
+        - button "Open project" [ref=f10e10120] [cursor=pointer]
+      - generic [ref=f10e10121]:
+        - generic [ref=f10e10122]: Notes travelling
+        - generic [ref=f10e10123]: task-018 Notes owner
+        - generic [ref=f10e10124]: Open
+        - generic [ref=f10e10125]: Normal
+        - generic [ref=f10e10126]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e10127] [cursor=pointer]
+      - generic [ref=f10e10128]:
+        - generic [ref=f10e10129]: Notes after
+        - generic [ref=f10e10130]: task-018 Notes owner
+        - generic [ref=f10e10131]: Open
+        - generic [ref=f10e10132]: Normal
+        - button "Open project" [ref=f10e10133] [cursor=pointer]
+      - generic [ref=f10e10134]:
+        - generic [ref=f10e10135]: High open first
+        - generic [ref=f10e10136]: task-018 Priority intersection
+        - generic [ref=f10e10137]: Open
+        - generic [ref=f10e10138]: High
+        - button "Open project" [ref=f10e10139] [cursor=pointer]
+      - generic [ref=f10e10140]:
+        - generic [ref=f10e10141]: Low open
+        - generic [ref=f10e10142]: task-018 Priority intersection
+        - generic [ref=f10e10143]: Open
+        - generic [ref=f10e10144]: Low
+        - button "Open project" [ref=f10e10145] [cursor=pointer]
+      - generic [ref=f10e10146]:
+        - generic [ref=f10e10147]: High completed
+        - generic [ref=f10e10148]: task-018 Priority intersection
+        - generic [ref=f10e10149]: Completed
+        - generic [ref=f10e10150]: High
+        - button "Open project" [ref=f10e10151] [cursor=pointer]
+      - generic [ref=f10e10152]:
+        - generic [ref=f10e10153]: High open last
+        - generic [ref=f10e10154]: task-018 Priority intersection
+        - generic [ref=f10e10155]: Open
+        - generic [ref=f10e10156]: High
+        - button "Open project" [ref=f10e10157] [cursor=pointer]
+      - generic [ref=f10e10158]:
+        - generic [ref=f10e10159]: Leaving priority
+        - generic [ref=f10e10160]: task-018 Priority live filters
+        - generic [ref=f10e10161]: Open
+        - generic [ref=f10e10162]: Low
+        - button "Open project" [ref=f10e10163] [cursor=pointer]
+      - generic [ref=f10e10164]:
+        - generic [ref=f10e10165]: Leaving completion
+        - generic [ref=f10e10166]: task-018 Priority live filters
+        - generic [ref=f10e10167]: Open
+        - generic [ref=f10e10168]: High
+        - button "Open project" [ref=f10e10169] [cursor=pointer]
+      - generic [ref=f10e10170]:
+        - generic [ref=f10e10171]: Completed high guard
+        - generic [ref=f10e10172]: task-018 Priority live filters
+        - generic [ref=f10e10173]: Completed
+        - generic [ref=f10e10174]: High
+        - button "Open project" [ref=f10e10175] [cursor=pointer]
+      - generic [ref=f10e10176]:
+        - generic [ref=f10e10177]: Open normal guard
+        - generic [ref=f10e10178]: task-018 Priority live filters
+        - generic [ref=f10e10179]: Open
+        - generic [ref=f10e10180]: Normal
+        - button "Open project" [ref=f10e10181] [cursor=pointer]
+      - generic [ref=f10e10182]:
+        - generic [ref=f10e10183]: Filtered new title
+        - generic [ref=f10e10184]: task-018 Priority rename filters
+        - generic [ref=f10e10185]: Open
+        - generic [ref=f10e10186]: Low
+        - button "Open project" [ref=f10e10187] [cursor=pointer]
+      - generic [ref=f10e10188]:
+        - generic [ref=f10e10189]: Unmatched normal task
+        - generic [ref=f10e10190]: task-018 Priority rename filters
+        - generic [ref=f10e10191]: Open
+        - generic [ref=f10e10192]: Normal
+        - button "Open project" [ref=f10e10193] [cursor=pointer]
+      - generic [ref=f10e10194]:
+        - generic [ref=f10e10195]: Completed low guard
+        - generic [ref=f10e10196]: task-018 Priority rename filters
+        - generic [ref=f10e10197]: Completed
+        - generic [ref=f10e10198]: Low
+        - button "Open project" [ref=f10e10199] [cursor=pointer]
+      - generic [ref=f10e10200]:
+        - generic [ref=f10e10201]: Archived high open
+        - generic [ref=f10e10202]: task-018 Archived combined filters
+        - generic [ref=f10e10203]: Open
+        - generic [ref=f10e10204]: High
+        - button "Open project" [ref=f10e10205] [cursor=pointer]
+      - generic [ref=f10e10206]:
+        - generic [ref=f10e10207]: Archived normal completed
+        - generic [ref=f10e10208]: task-018 Archived combined filters
+        - generic [ref=f10e10209]: Completed
+        - generic [ref=f10e10210]: Normal
+        - button "Open project" [ref=f10e10211] [cursor=pointer]
+      - generic [ref=f10e10212]:
+        - generic [ref=f10e10213]: Priority renamed
+        - generic [ref=f10e10214]: task-018 Priority ownership
+        - generic [ref=f10e10215]: Open
+        - generic [ref=f10e10216]: High
+        - button "Open project" [ref=f10e10217] [cursor=pointer]
+      - generic [ref=f10e10218]:
+        - generic [ref=f10e10219]: Priority second
+        - generic [ref=f10e10220]: task-018 Priority ownership
+        - generic [ref=f10e10221]: Open
+        - generic [ref=f10e10222]: Low
+        - button "Open project" [ref=f10e10223] [cursor=pointer]
+      - generic [ref=f10e10224]:
+        - generic [ref=f10e10225]: Priority other task
+        - generic [ref=f10e10226]: task-018 Priority other owner
+        - generic [ref=f10e10227]: Open
+        - generic [ref=f10e10228]: Normal
+        - button "Open project" [ref=f10e10229] [cursor=pointer]
+      - generic [ref=f10e10230]:
+        - generic [ref=f10e10231]: Priority completed
+        - generic [ref=f10e10232]: task-018 Priority completion
+        - generic [ref=f10e10233]: Completed
+        - generic [ref=f10e10234]: Low
+        - button "Open project" [ref=f10e10235] [cursor=pointer]
+      - generic [ref=f10e10236]:
+        - generic [ref=f10e10237]: Priority open
+        - generic [ref=f10e10238]: task-018 Priority completion
+        - generic [ref=f10e10239]: Open
+        - generic [ref=f10e10240]: High
+        - button "Open project" [ref=f10e10241] [cursor=pointer]
+      - generic [ref=f10e10242]:
+        - generic [ref=f10e10243]: Priority retained
+        - generic [ref=f10e10244]: task-018 Priority archive
+        - generic [ref=f10e10245]: Open
+        - generic [ref=f10e10246]: Normal
+        - button "Open project" [ref=f10e10247] [cursor=pointer]
+      - generic [ref=f10e10248]:
+        - generic [ref=f10e10249]: Return first
+        - generic [ref=f10e10250]: task-018 Return owner
+        - generic [ref=f10e10251]: Open
+        - generic [ref=f10e10252]: Normal
+        - button "Open project" [ref=f10e10253] [cursor=pointer]
+      - generic [ref=f10e10254]:
+        - generic [ref=f10e10255]: Return second
+        - generic [ref=f10e10256]: task-018 Return owner
+        - generic [ref=f10e10257]: Completed
+        - generic [ref=f10e10258]: High
+        - button "Open project" [ref=f10e10259] [cursor=pointer]
+      - generic [ref=f10e10260]:
+        - generic [ref=f10e10261]: Return third
+        - generic [ref=f10e10262]: task-018 Return owner
+        - generic [ref=f10e10263]: Open
+        - generic [ref=f10e10264]: Normal
+        - button "Open project" [ref=f10e10265] [cursor=pointer]
+      - generic [ref=f10e10266]:
+        - generic [ref=f10e10267]: Return fourth
+        - generic [ref=f10e10268]: task-018 Return owner
+        - generic [ref=f10e10269]: Open
+        - generic [ref=f10e10270]: Normal
+        - button "Open project" [ref=f10e10271] [cursor=pointer]
+      - generic [ref=f10e10272]:
+        - generic [ref=f10e10273]: Identity before
+        - generic [ref=f10e10274]: task-018 Returned owner renamed
+        - generic [ref=f10e10275]: Open
+        - generic [ref=f10e10276]: Normal
+        - button "Open project" [ref=f10e10277] [cursor=pointer]
+      - generic [ref=f10e10278]:
+        - generic [ref=f10e10279]: Identity returning
+        - generic [ref=f10e10280]: task-018 Returned owner renamed
+        - generic [ref=f10e10281]: Open
+        - generic [ref=f10e10282]: Normal
+        - button "Open project" [ref=f10e10283] [cursor=pointer]
+      - generic [ref=f10e10284]:
+        - generic [ref=f10e10285]: Identity after
+        - generic [ref=f10e10286]: task-018 Returned owner renamed
+        - generic [ref=f10e10287]: Open
+        - generic [ref=f10e10288]: Normal
+        - button "Open project" [ref=f10e10289] [cursor=pointer]
+      - generic [ref=f10e10290]:
+        - generic [ref=f10e10291]: Second existing
+        - generic [ref=f10e10292]: task-018 Position second owner
+        - generic [ref=f10e10293]: Open
+        - generic [ref=f10e10294]: Normal
+        - button "Open project" [ref=f10e10295] [cursor=pointer]
+      - generic [ref=f10e10296]:
+        - generic [ref=f10e10297]: Second newly created
+        - generic [ref=f10e10298]: task-018 Position second owner
+        - generic [ref=f10e10299]: Open
+        - generic [ref=f10e10300]: Normal
+        - button "Open project" [ref=f10e10301] [cursor=pointer]
+      - generic [ref=f10e10302]:
+        - generic [ref=f10e10303]: First existing
+        - generic [ref=f10e10304]: task-018 Position first owner
+        - generic [ref=f10e10305]: Open
+        - generic [ref=f10e10306]: Normal
+        - button "Open project" [ref=f10e10307] [cursor=pointer]
+      - generic [ref=f10e10308]:
+        - generic [ref=f10e10309]: Position travelling
+        - generic [ref=f10e10310]: task-018 Position first owner
+        - generic [ref=f10e10311]: Open
+        - generic [ref=f10e10312]: Normal
+        - button "Open project" [ref=f10e10313] [cursor=pointer]
+      - generic [ref=f10e10314]:
+        - generic [ref=f10e10315]: First later
+        - generic [ref=f10e10316]: task-018 Position first owner
+        - generic [ref=f10e10317]: Open
+        - generic [ref=f10e10318]: Normal
+        - button "Open project" [ref=f10e10319] [cursor=pointer]
+      - generic [ref=f10e10320]:
+        - generic [ref=f10e10321]: First newly created
+        - generic [ref=f10e10322]: task-018 Position first owner
+        - generic [ref=f10e10323]: Open
+        - generic [ref=f10e10324]: Normal
+        - button "Open project" [ref=f10e10325] [cursor=pointer]
+      - generic [ref=f10e10326]:
+        - generic [ref=f10e10327]: Original task gap
+        - generic [ref=f10e10328]: task-018 Whitespace retained owner
+        - generic [ref=f10e10329]: Open
+        - generic [ref=f10e10330]: High
+        - button "Open project" [ref=f10e10331] [cursor=pointer]
+      - generic [ref=f10e10332]:
+        - generic [ref=f10e10333]: Other task gap
+        - generic [ref=f10e10334]: task-018 Whitespace retained owner
+        - generic [ref=f10e10335]: Open
+        - generic [ref=f10e10336]: High
+        - button "Open project" [ref=f10e10337] [cursor=pointer]
+      - generic [ref=f10e10338]:
+        - generic [ref=f10e10339]: Mixed first
+        - generic [ref=f10e10340]: task-018 Search task intersections
+        - generic [ref=f10e10341]: Open
+        - generic [ref=f10e10342]: High
+        - generic [ref=f10e10343]: 2034-01-01
+        - button "Open project" [ref=f10e10344] [cursor=pointer]
+      - generic [ref=f10e10345]:
+        - generic [ref=f10e10346]: Other high
+        - generic [ref=f10e10347]: task-018 Search task intersections
+        - generic [ref=f10e10348]: Open
+        - generic [ref=f10e10349]: High
+        - generic [ref=f10e10350]: 2034-01-01
+        - button "Open project" [ref=f10e10351] [cursor=pointer]
+      - generic [ref=f10e10352]:
+        - generic [ref=f10e10353]: MIXED completed
+        - generic [ref=f10e10354]: task-018 Search task intersections
+        - generic [ref=f10e10355]: Completed
+        - generic [ref=f10e10356]: High
+        - generic [ref=f10e10357]: 2034-01-01
+        - button "Open project" [ref=f10e10358] [cursor=pointer]
+      - generic [ref=f10e10359]:
+        - generic [ref=f10e10360]: Mixed undated
+        - generic [ref=f10e10361]: task-018 Search task intersections
+        - generic [ref=f10e10362]: Open
+        - generic [ref=f10e10363]: High
+        - button "Open project" [ref=f10e10364] [cursor=pointer]
+      - generic [ref=f10e10365]:
+        - generic [ref=f10e10366]: mixed last
+        - generic [ref=f10e10367]: task-018 Search task intersections
+        - generic [ref=f10e10368]: Open
+        - generic [ref=f10e10369]: High
+        - generic [ref=f10e10370]: 2034-01-01
+        - button "Open project" [ref=f10e10371] [cursor=pointer]
+      - generic [ref=f10e10372]:
+        - generic [ref=f10e10373]: Other normal guard
+        - generic [ref=f10e10374]: task-018 Search task intersections
+        - generic [ref=f10e10375]: Open
+        - generic [ref=f10e10376]: Normal
+        - button "Open project" [ref=f10e10377] [cursor=pointer]
+      - generic [ref=f10e10378]:
+        - generic [ref=f10e10379]: Two spaces
+        - generic [ref=f10e10380]: task-018 Search internal spacing
+        - generic [ref=f10e10381]: Open
+        - generic [ref=f10e10382]: Normal
+        - button "Open project" [ref=f10e10383] [cursor=pointer]
+      - generic [ref=f10e10384]:
+        - generic [ref=f10e10385]: Two spaces sentinel
+        - generic [ref=f10e10386]: task-018 Search internal spacing
+        - generic [ref=f10e10387]: Open
+        - generic [ref=f10e10388]: Normal
+        - button "Open project" [ref=f10e10389] [cursor=pointer]
+      - generic [ref=f10e10390]:
+        - generic [ref=f10e10391]: Task preserved
+        - generic [ref=f10e10392]: task-018 Task reload
+        - generic [ref=f10e10393]: Open
+        - generic [ref=f10e10394]: Normal
+        - button "Open project" [ref=f10e10395] [cursor=pointer]
+      - generic [ref=f10e10396]:
+        - generic [ref=f10e10397]: Private to owner
+        - generic [ref=f10e10398]: task-018 Task owner
+        - generic [ref=f10e10399]: Open
+        - generic [ref=f10e10400]: Normal
+        - button "Open project" [ref=f10e10401] [cursor=pointer]
+      - generic [ref=f10e10402]:
+        - generic [ref=f10e10403]: Done task
+        - generic [ref=f10e10404]: task-018 Task filters
+        - generic [ref=f10e10405]: Open
+        - generic [ref=f10e10406]: Normal
+        - button "Open project" [ref=f10e10407] [cursor=pointer]
+      - generic [ref=f10e10408]:
+        - generic [ref=f10e10409]: Open task
+        - generic [ref=f10e10410]: task-018 Task filters
+        - generic [ref=f10e10411]: Open
+        - generic [ref=f10e10412]: Normal
+        - button "Open project" [ref=f10e10413] [cursor=pointer]
+      - generic [ref=f10e10414]:
+        - generic [ref=f10e10415]: Retained task
+        - generic [ref=f10e10416]: task-018 Archive tasks
+        - generic [ref=f10e10417]: Completed
+        - generic [ref=f10e10418]: Normal
+        - button "Open project" [ref=f10e10419] [cursor=pointer]
+      - generic [ref=f10e10420]:
+        - generic [ref=f10e10421]: Summary one
+        - generic [ref=f10e10422]: task-018 Summary project
+        - generic [ref=f10e10423]: Completed
+        - generic [ref=f10e10424]: Normal
+        - button "Open project" [ref=f10e10425] [cursor=pointer]
+      - generic [ref=f10e10426]:
+        - generic [ref=f10e10427]: Summary two
+        - generic [ref=f10e10428]: task-018 Summary project
+        - generic [ref=f10e10429]: Open
+        - generic [ref=f10e10430]: Normal
+        - button "Open project" [ref=f10e10431] [cursor=pointer]
+      - generic [ref=f10e10432]:
+        - generic [ref=f10e10433]: Identity task
+        - generic [ref=f10e10434]: task-018 Identity updated
+        - generic [ref=f10e10435]: Completed
+        - generic [ref=f10e10436]: Normal
+        - button "Open project" [ref=f10e10437] [cursor=pointer]
+      - generic [ref=f10e10438]:
+        - generic [ref=f10e10439]: Name updated
+        - generic [ref=f10e10440]: task-018 Task rename identity
+        - generic [ref=f10e10441]: Completed
+        - generic [ref=f10e10442]: Normal
+        - button "Open project" [ref=f10e10443] [cursor=pointer]
+      - generic [ref=f10e10444]:
+        - generic [ref=f10e10445]: Name second
+        - generic [ref=f10e10446]: task-018 Task rename identity
+        - generic [ref=f10e10447]: Open
+        - generic [ref=f10e10448]: Normal
+        - button "Open project" [ref=f10e10449] [cursor=pointer]
+      - generic [ref=f10e10450]:
+        - generic [ref=f10e10451]: Kept title
+        - generic [ref=f10e10452]: task-018 Task rename invalid
+        - generic [ref=f10e10453]: Open
+        - generic [ref=f10e10454]: Normal
+        - button "Open project" [ref=f10e10455] [cursor=pointer]
+      - generic [ref=f10e10456]:
+        - generic [ref=f10e10457]: Archived title
+        - generic [ref=f10e10458]: task-018 Task rename archive
+        - generic [ref=f10e10459]: Open
+        - generic [ref=f10e10460]: Normal
+        - button "Open project" [ref=f10e10461] [cursor=pointer]
+      - generic [ref=f10e10462]:
+        - generic [ref=f10e10463]: Independent normal
+        - generic [ref=f10e10464]: task-019 Defaults independent
+        - generic [ref=f10e10465]: Open
+        - generic [ref=f10e10466]: Normal
+        - button "Open project" [ref=f10e10467] [cursor=pointer]
+      - generic [ref=f10e10468]:
+        - generic [ref=f10e10469]: Before default change
+        - generic [ref=f10e10470]: task-019 Defaults inheritance
+        - generic [ref=f10e10471]: Completed
+        - generic [ref=f10e10472]: Normal
+        - button "Open project" [ref=f10e10473] [cursor=pointer]
+      - generic [ref=f10e10474]:
+        - generic [ref=f10e10475]: Inherited high
+        - generic [ref=f10e10476]: task-019 Defaults inheritance
+        - generic [ref=f10e10477]: Open
+        - generic [ref=f10e10478]: High
+        - button "Open project" [ref=f10e10479] [cursor=pointer]
+      - generic [ref=f10e10480]:
+        - generic [ref=f10e10481]: Inherited low
+        - generic [ref=f10e10482]: task-019 Defaults inheritance
+        - generic [ref=f10e10483]: Open
+        - generic [ref=f10e10484]: Low
+        - button "Open project" [ref=f10e10485] [cursor=pointer]
+      - generic [ref=f10e10486]:
+        - generic [ref=f10e10487]: Inherited normal
+        - generic [ref=f10e10488]: task-019 Defaults inheritance
+        - generic [ref=f10e10489]: Open
+        - generic [ref=f10e10490]: Normal
+        - button "Open project" [ref=f10e10491] [cursor=pointer]
+      - generic [ref=f10e10492]:
+        - generic [ref=f10e10493]: Lifecycle task
+        - generic [ref=f10e10494]: task-019 Defaults renamed
+        - generic [ref=f10e10495]: Open
+        - generic [ref=f10e10496]: Low
+        - button "Open project" [ref=f10e10497] [cursor=pointer]
+      - generic [ref=f10e10498]:
+        - generic [ref=f10e10499]: Restored inherits
+        - generic [ref=f10e10500]: task-019 Defaults renamed
+        - generic [ref=f10e10501]: Open
+        - generic [ref=f10e10502]: Low
+        - button "Open project" [ref=f10e10503] [cursor=pointer]
+      - generic [ref=f10e10504]:
+        - generic [ref=f10e10505]: Live before
+        - generic [ref=f10e10506]: task-019 Deletion fields
+        - generic [ref=f10e10507]: Open
+        - generic [ref=f10e10508]: Normal
+        - button "Open project" [ref=f10e10509] [cursor=pointer]
+      - generic [ref=f10e10510]:
+        - generic [ref=f10e10511]: Live after
+        - generic [ref=f10e10512]: task-019 Deletion fields
+        - generic [ref=f10e10513]: Open
+        - generic [ref=f10e10514]: Normal
+        - button "Open project" [ref=f10e10515] [cursor=pointer]
+      - generic [ref=f10e10516]:
+        - generic [ref=f10e10517]: Completed remove sentinel
+        - generic [ref=f10e10518]: task-019 Deletion fields
+        - generic [ref=f10e10519]: Completed
+        - generic [ref=f10e10520]: High
+        - generic [ref=f10e10521]: 2036-02-29
+        - button "Open project" [ref=f10e10522] [cursor=pointer]
+      - generic [ref=f10e10523]:
+        - generic [ref=f10e10524]: Completed remove outside
+        - generic [ref=f10e10525]: task-019 Deletion fields
+        - generic [ref=f10e10526]: Completed
+        - generic [ref=f10e10527]: High
+        - generic [ref=f10e10528]: 2037-01-01
+        - button "Open project" [ref=f10e10529] [cursor=pointer]
+      - generic [ref=f10e10530]:
+        - generic [ref=f10e10531]: Completed normal exclusion
+        - generic [ref=f10e10532]: task-019 Deletion fields
+        - generic [ref=f10e10533]: Completed
+        - generic [ref=f10e10534]: Normal
+        - button "Open project" [ref=f10e10535] [cursor=pointer]
+      - generic [ref=f10e10536]:
+        - generic [ref=f10e10537]: Completed unrelated high
+        - generic [ref=f10e10538]: task-019 Deletion fields
+        - generic [ref=f10e10539]: Completed
+        - generic [ref=f10e10540]: High
+        - button "Open project" [ref=f10e10541] [cursor=pointer]
+      - generic [ref=f10e10542]:
+        - generic [ref=f10e10543]: Target first
+        - generic [ref=f10e10544]: task-019 Deletion target
+        - generic [ref=f10e10545]: Open
+        - generic [ref=f10e10546]: Normal
+        - button "Open project" [ref=f10e10547] [cursor=pointer]
+      - generic [ref=f10e10548]:
+        - generic [ref=f10e10549]: Reserved
+        - generic [ref=f10e10550]: task-019 Deletion target
+        - generic [ref=f10e10551]: Completed
+        - generic [ref=f10e10552]: High
+        - generic [ref=f10e10553]: 2037-01-01
+        - generic [ref=f10e10554]: Restore original note
+        - button "Open project" [ref=f10e10555] [cursor=pointer]
+      - generic [ref=f10e10556]:
+        - generic [ref=f10e10557]: Target later
+        - generic [ref=f10e10558]: task-019 Deletion target
+        - generic [ref=f10e10559]: Open
+        - generic [ref=f10e10560]: Normal
+        - button "Open project" [ref=f10e10561] [cursor=pointer]
+      - generic [ref=f10e10562]:
+        - generic [ref=f10e10563]: Before
+        - generic [ref=f10e10564]: task-019 Deletion order
+        - generic [ref=f10e10565]: Open
+        - generic [ref=f10e10566]: Normal
+        - button "Open project" [ref=f10e10567] [cursor=pointer]
+      - generic [ref=f10e10568]:
+        - generic [ref=f10e10569]: After
+        - generic [ref=f10e10570]: task-019 Deletion order
+        - generic [ref=f10e10571]: Open
+        - generic [ref=f10e10572]: Normal
+        - button "Open project" [ref=f10e10573] [cursor=pointer]
+      - generic [ref=f10e10574]:
+        - generic [ref=f10e10575]: New arrival
+        - generic [ref=f10e10576]: task-019 Deletion order
+        - generic [ref=f10e10577]: Open
+        - generic [ref=f10e10578]: Normal
+        - button "Open project" [ref=f10e10579] [cursor=pointer]
+      - generic [ref=f10e10580]:
+        - generic [ref=f10e10581]: task-019 Directory Zulu
+        - generic [ref=f10e10582]: task-019 Directory Zulu owner
+        - generic [ref=f10e10583]: Open
+        - generic [ref=f10e10584]: High
+        - generic [ref=f10e10585]: 2045-01-01
+        - generic [ref=f10e10586]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e10587] [cursor=pointer]
+      - generic [ref=f10e10588]:
+        - generic [ref=f10e10589]: task-019 Directory Alpha
+        - generic [ref=f10e10590]: task-019 Directory Zulu owner
+        - generic [ref=f10e10591]: Completed
+        - generic [ref=f10e10592]: Low
+        - button "Open project" [ref=f10e10593] [cursor=pointer]
+      - generic [ref=f10e10594]:
+        - generic [ref=f10e10595]: Foreign directory title
+        - generic [ref=f10e10596]: task-019 Directory Zulu owner
+        - generic [ref=f10e10597]: Open
+        - generic [ref=f10e10598]: Normal
+        - generic [ref=f10e10599]: task-019 Directory notes only
+        - button "Open project" [ref=f10e10600] [cursor=pointer]
+      - generic [ref=f10e10601]:
+        - generic [ref=f10e10602]: task-019 Directory Mid
+        - generic [ref=f10e10603]: task-019 Directory Alpha owner
+        - generic [ref=f10e10604]: Open
+        - generic [ref=f10e10605]: Normal
+        - button "Open project" [ref=f10e10606] [cursor=pointer]
+      - generic [ref=f10e10607]:
+        - generic [ref=f10e10608]: task-019 Filter hit
+        - generic [ref=f10e10609]: task-019 Directory filter owner
+        - generic [ref=f10e10610]: Open
+        - generic [ref=f10e10611]: High
+        - generic [ref=f10e10612]: 2046-03-01
+        - button "Open project" [ref=f10e10613] [cursor=pointer]
+      - generic [ref=f10e10614]:
+        - generic [ref=f10e10615]: task-019 Filter done
+        - generic [ref=f10e10616]: task-019 Directory filter owner
+        - generic [ref=f10e10617]: Completed
+        - generic [ref=f10e10618]: High
+        - generic [ref=f10e10619]: 2046-03-01
+        - button "Open project" [ref=f10e10620] [cursor=pointer]
+      - generic [ref=f10e10621]:
+        - generic [ref=f10e10622]: task-019 Filter low
+        - generic [ref=f10e10623]: task-019 Directory filter owner
+        - generic [ref=f10e10624]: Open
+        - generic [ref=f10e10625]: Low
+        - generic [ref=f10e10626]: 2046-03-01
+        - button "Open project" [ref=f10e10627] [cursor=pointer]
+      - generic [ref=f10e10628]:
+        - generic [ref=f10e10629]: task-019 Filter undated
+        - generic [ref=f10e10630]: task-019 Directory filter owner
+        - generic [ref=f10e10631]: Open
+        - generic [ref=f10e10632]: High
+        - button "Open project" [ref=f10e10633] [cursor=pointer]
+      - generic [ref=f10e10634]:
+        - generic [ref=f10e10635]: task-019 Filter outside
+        - generic [ref=f10e10636]: task-019 Directory filter owner
+        - generic [ref=f10e10637]: Open
+        - generic [ref=f10e10638]: High
+        - generic [ref=f10e10639]: 2046-04-01
+        - button "Open project" [ref=f10e10640] [cursor=pointer]
+      - generic [ref=f10e10641]:
+        - generic [ref=f10e10642]: task-019 Gap task
+        - generic [ref=f10e10643]: task-019 Directory whitespace
+        - generic [ref=f10e10644]: Open
+        - generic [ref=f10e10645]: Normal
+        - button "Open project" [ref=f10e10646] [cursor=pointer]
+      - generic [ref=f10e10647]:
+        - generic [ref=f10e10648]: Calendar renamed
+        - generic [ref=f10e10649]: task-019 Calendar persistence
+        - generic [ref=f10e10650]: Open
+        - generic [ref=f10e10651]: Normal
+        - button "Open project" [ref=f10e10652] [cursor=pointer]
+      - generic [ref=f10e10653]:
+        - generic [ref=f10e10654]: Calendar valid
+        - generic [ref=f10e10655]: task-019 Calendar validation
+        - generic [ref=f10e10656]: Open
+        - generic [ref=f10e10657]: Normal
+        - generic [ref=f10e10658]: 2028-04-30
+        - button "Open project" [ref=f10e10659] [cursor=pointer]
+      - generic [ref=f10e10660]:
+        - generic [ref=f10e10661]: Dated first
+        - generic [ref=f10e10662]: task-019 Calendar independence
+        - generic [ref=f10e10663]: Completed
+        - generic [ref=f10e10664]: High
+        - generic [ref=f10e10665]: 2029-01-01
+        - button "Open project" [ref=f10e10666] [cursor=pointer]
+      - generic [ref=f10e10667]:
+        - generic [ref=f10e10668]: Undated second
+        - generic [ref=f10e10669]: task-019 Calendar independence
+        - generic [ref=f10e10670]: Open
+        - generic [ref=f10e10671]: Normal
+        - button "Open project" [ref=f10e10672] [cursor=pointer]
+      - generic [ref=f10e10673]:
+        - generic [ref=f10e10674]: Completed normal guard
+        - generic [ref=f10e10675]: task-019 Calendar independence
+        - generic [ref=f10e10676]: Completed
+        - generic [ref=f10e10677]: Normal
+        - button "Open project" [ref=f10e10678] [cursor=pointer]
+      - generic [ref=f10e10679]:
+        - generic [ref=f10e10680]: Owner task
+        - generic [ref=f10e10681]: task-019 Calendar second owner
+        - generic [ref=f10e10682]: Open
+        - generic [ref=f10e10683]: Normal
+        - button "Open project" [ref=f10e10684] [cursor=pointer]
+      - generic [ref=f10e10685]:
+        - generic [ref=f10e10686]: Archive dated
+        - generic [ref=f10e10687]: task-019 Calendar archival
+        - generic [ref=f10e10688]: Open
+        - generic [ref=f10e10689]: Normal
+        - generic [ref=f10e10690]: 2030-12-31
+        - button "Open project" [ref=f10e10691] [cursor=pointer]
+      - generic [ref=f10e10692]:
+        - generic [ref=f10e10693]: Before range
+        - generic [ref=f10e10694]: task-019 Range boundaries
+        - generic [ref=f10e10695]: Open
+        - generic [ref=f10e10696]: Normal
+        - generic [ref=f10e10697]: 2028-02-28
+        - button "Open project" [ref=f10e10698] [cursor=pointer]
+      - generic [ref=f10e10699]:
+        - generic [ref=f10e10700]: Range first
+        - generic [ref=f10e10701]: task-019 Range boundaries
+        - generic [ref=f10e10702]: Open
+        - generic [ref=f10e10703]: Normal
+        - generic [ref=f10e10704]: 2028-02-29
+        - button "Open project" [ref=f10e10705] [cursor=pointer]
+      - generic [ref=f10e10706]:
+        - generic [ref=f10e10707]: No calendar date
+        - generic [ref=f10e10708]: task-019 Range boundaries
+        - generic [ref=f10e10709]: Open
+        - generic [ref=f10e10710]: Normal
+        - button "Open project" [ref=f10e10711] [cursor=pointer]
+      - generic [ref=f10e10712]:
+        - generic [ref=f10e10713]: Range last
+        - generic [ref=f10e10714]: task-019 Range boundaries
+        - generic [ref=f10e10715]: Open
+        - generic [ref=f10e10716]: Normal
+        - generic [ref=f10e10717]: 2028-03-02
+        - button "Open project" [ref=f10e10718] [cursor=pointer]
+      - generic [ref=f10e10719]:
+        - generic [ref=f10e10720]: After range
+        - generic [ref=f10e10721]: task-019 Range boundaries
+        - generic [ref=f10e10722]: Open
+        - generic [ref=f10e10723]: Normal
+        - generic [ref=f10e10724]: 2028-03-03
+        - button "Open project" [ref=f10e10725] [cursor=pointer]
+      - generic [ref=f10e10726]:
+        - generic [ref=f10e10727]: Range matching
+        - generic [ref=f10e10728]: task-019 Range intersections
+        - generic [ref=f10e10729]: Open
+        - generic [ref=f10e10730]: High
+        - generic [ref=f10e10731]: 2029-02-01
+        - button "Open project" [ref=f10e10732] [cursor=pointer]
+      - generic [ref=f10e10733]:
+        - generic [ref=f10e10734]: Range low
+        - generic [ref=f10e10735]: task-019 Range intersections
+        - generic [ref=f10e10736]: Open
+        - generic [ref=f10e10737]: Normal
+        - generic [ref=f10e10738]: 2029-01-15
+        - button "Open project" [ref=f10e10739] [cursor=pointer]
+      - generic [ref=f10e10740]:
+        - generic [ref=f10e10741]: Range completed
+        - generic [ref=f10e10742]: task-019 Range intersections
+        - generic [ref=f10e10743]: Open
+        - generic [ref=f10e10744]: Low
+        - generic [ref=f10e10745]: 2029-01-15
+        - button "Open project" [ref=f10e10746] [cursor=pointer]
+      - generic [ref=f10e10747]:
+        - generic [ref=f10e10748]: Range undated
+        - generic [ref=f10e10749]: task-019 Range intersections
+        - generic [ref=f10e10750]: Open
+        - generic [ref=f10e10751]: High
+        - button "Open project" [ref=f10e10752] [cursor=pointer]
+      - generic [ref=f10e10753]:
+        - generic [ref=f10e10754]: Valid member
+        - generic [ref=f10e10755]: task-019 Range validation
+        - generic [ref=f10e10756]: Open
+        - generic [ref=f10e10757]: Normal
+        - generic [ref=f10e10758]: 2028-06-15
+        - button "Open project" [ref=f10e10759] [cursor=pointer]
+      - generic [ref=f10e10760]:
+        - generic [ref=f10e10761]: Undated outsider
+        - generic [ref=f10e10762]: task-019 Range validation
+        - generic [ref=f10e10763]: Open
+        - generic [ref=f10e10764]: Normal
+        - button "Open project" [ref=f10e10765] [cursor=pointer]
+      - generic [ref=f10e10766]:
+        - generic [ref=f10e10767]: Archived date renamed
+        - generic [ref=f10e10768]: task-019 Range archival
+        - generic [ref=f10e10769]: Open
+        - generic [ref=f10e10770]: Normal
+        - generic [ref=f10e10771]: 2030-01-01
+        - button "Open project" [ref=f10e10772] [cursor=pointer]
+      - generic [ref=f10e10773]:
+        - generic [ref=f10e10774]: Archived undated outsider
+        - generic [ref=f10e10775]: task-019 Range archival
+        - generic [ref=f10e10776]: Open
+        - generic [ref=f10e10777]: Normal
+        - button "Open project" [ref=f10e10778] [cursor=pointer]
+      - generic [ref=f10e10779]:
+        - generic [ref=f10e10780]: Retained range member
+        - generic [ref=f10e10781]: task-019 Range owner renamed
+        - generic [ref=f10e10782]: Open
+        - generic [ref=f10e10783]: High
+        - generic [ref=f10e10784]: 2031-03-01
+        - button "Open project" [ref=f10e10785] [cursor=pointer]
+      - generic [ref=f10e10786]:
+        - generic [ref=f10e10787]: Retained undated outsider
+        - generic [ref=f10e10788]: task-019 Range owner renamed
+        - generic [ref=f10e10789]: Open
+        - generic [ref=f10e10790]: Normal
+        - button "Open project" [ref=f10e10791] [cursor=pointer]
+      - generic [ref=f10e10792]:
+        - generic [ref=f10e10793]: Created outside range
+        - generic [ref=f10e10794]: task-019 Range owner renamed
+        - generic [ref=f10e10795]: Open
+        - generic [ref=f10e10796]: Low
+        - button "Open project" [ref=f10e10797] [cursor=pointer]
+      - generic [ref=f10e10798]:
+        - generic [ref=f10e10799]: Must not export
+        - generic [ref=f10e10800]: task-019 Export foreign
+        - generic [ref=f10e10801]: Open
+        - generic [ref=f10e10802]: Normal
+        - button "Open project" [ref=f10e10803] [cursor=pointer]
+      - generic [ref=f10e10804]:
+        - generic [ref=f10e10805]: Export before
+        - generic [ref=f10e10806]: task-019 Export full Ω
+        - generic [ref=f10e10807]: Open
+        - generic [ref=f10e10808]: Normal
+        - button "Open project" [ref=f10e10809] [cursor=pointer]
+      - generic [ref=f10e10810]:
+        - generic [ref=f10e10811]: Export after
+        - generic [ref=f10e10812]: task-019 Export full Ω
+        - generic [ref=f10e10813]: Open
+        - generic [ref=f10e10814]: Normal
+        - button "Open project" [ref=f10e10815] [cursor=pointer]
+      - generic [ref=f10e10816]:
+        - generic [ref=f10e10817]: Imported before
+        - generic [ref=f10e10818]: task-019 Import origin
+        - generic [ref=f10e10819]: Open
+        - generic [ref=f10e10820]: Normal
+        - button "Open project" [ref=f10e10821] [cursor=pointer]
+      - generic [ref=f10e10822]:
+        - generic [ref=f10e10823]: Imported after
+        - generic [ref=f10e10824]: task-019 Import origin
+        - generic [ref=f10e10825]: Open
+        - generic [ref=f10e10826]: Normal
+        - button "Open project" [ref=f10e10827] [cursor=pointer]
+      - generic [ref=f10e10828]:
+        - generic [ref=f10e10829]: Imported before
+        - generic [ref=f10e10830]: task-019 Import copy
+        - generic [ref=f10e10831]: Open
+        - generic [ref=f10e10832]: Normal
+        - button "Open project" [ref=f10e10833] [cursor=pointer]
+      - generic [ref=f10e10834]:
+        - generic [ref=f10e10835]: Imported reserved
+        - generic [ref=f10e10836]: task-019 Import copy
+        - generic [ref=f10e10837]: Completed
+        - generic [ref=f10e10838]: High
+        - generic [ref=f10e10839]: 2040-02-29
+        - generic [ref=f10e10840]: Changed only copy
+        - button "Open project" [ref=f10e10841] [cursor=pointer]
+      - generic [ref=f10e10842]:
+        - generic [ref=f10e10843]: Imported after
+        - generic [ref=f10e10844]: task-019 Import copy
+        - generic [ref=f10e10845]: Open
+        - generic [ref=f10e10846]: Normal
+        - button "Open project" [ref=f10e10847] [cursor=pointer]
+      - generic [ref=f10e10848]:
+        - generic [ref=f10e10849]: Imported arrival
+        - generic [ref=f10e10850]: task-019 Import copy
+        - generic [ref=f10e10851]: Open
+        - generic [ref=f10e10852]: Low
+        - button "Open project" [ref=f10e10853] [cursor=pointer]
+      - generic [ref=f10e10854]:
+        - generic [ref=f10e10855]: Guard retained
+        - generic [ref=f10e10856]: task-019 Parse guard existing
+        - generic [ref=f10e10857]: Open
+        - generic [ref=f10e10858]: Normal
+        - button "Open project" [ref=f10e10859] [cursor=pointer]
+      - generic [ref=f10e10860]:
+        - generic [ref=f10e10861]: Guard retained
+        - generic [ref=f10e10862]: task-019 Task guard existing
+        - generic [ref=f10e10863]: Open
+        - generic [ref=f10e10864]: Normal
+        - button "Open project" [ref=f10e10865] [cursor=pointer]
+      - generic [ref=f10e10866]:
+        - generic [ref=f10e10867]: Imported live
+        - generic [ref=f10e10868]: task-019 Import restart
+        - generic [ref=f10e10869]: Open
+        - generic [ref=f10e10870]: Low
+        - generic [ref=f10e10871]: 2044-02-29
+        - generic [ref=f10e10872]: Live import
+        - button "Open project" [ref=f10e10873] [cursor=pointer]
+      - generic [ref=f10e10874]:
+        - generic [ref=f10e10875]: Target first
+        - generic [ref=f10e10876]: task-019 Transfer target
+        - generic [ref=f10e10877]: Open
+        - generic [ref=f10e10878]: Normal
+        - button "Open project" [ref=f10e10879] [cursor=pointer]
+      - generic [ref=f10e10880]:
+        - generic [ref=f10e10881]: Target second
+        - generic [ref=f10e10882]: task-019 Transfer target
+        - generic [ref=f10e10883]: Open
+        - generic [ref=f10e10884]: Normal
+        - button "Open project" [ref=f10e10885] [cursor=pointer]
+      - generic [ref=f10e10886]:
+        - generic [ref=f10e10887]: Transferred complete
+        - generic [ref=f10e10888]: task-019 Transfer target
+        - generic [ref=f10e10889]: Completed
+        - generic [ref=f10e10890]: High
+        - generic [ref=f10e10891]: 2032-02-29
+        - button "Open project" [ref=f10e10892] [cursor=pointer]
+      - generic [ref=f10e10893]:
+        - generic [ref=f10e10894]: Source remaining
+        - generic [ref=f10e10895]: task-019 Transfer source
+        - generic [ref=f10e10896]: Open
+        - generic [ref=f10e10897]: Normal
+        - button "Open project" [ref=f10e10898] [cursor=pointer]
+      - generic [ref=f10e10899]:
+        - generic [ref=f10e10900]: Filtered target sentinel
+        - generic [ref=f10e10901]: task-019 Filtered transfer target
+        - generic [ref=f10e10902]: Open
+        - generic [ref=f10e10903]: Normal
+        - button "Open project" [ref=f10e10904] [cursor=pointer]
+      - generic [ref=f10e10905]:
+        - generic [ref=f10e10906]: Filtered moving
+        - generic [ref=f10e10907]: task-019 Filtered transfer target
+        - generic [ref=f10e10908]: Open
+        - generic [ref=f10e10909]: High
+        - generic [ref=f10e10910]: 2033-01-01
+        - button "Open project" [ref=f10e10911] [cursor=pointer]
+      - generic [ref=f10e10912]:
+        - generic [ref=f10e10913]: Filtered first
+        - generic [ref=f10e10914]: task-019 Filtered transfer source
+        - generic [ref=f10e10915]: Open
+        - generic [ref=f10e10916]: High
+        - generic [ref=f10e10917]: 2033-01-01
+        - button "Open project" [ref=f10e10918] [cursor=pointer]
+      - generic [ref=f10e10919]:
+        - generic [ref=f10e10920]: Filtered last
+        - generic [ref=f10e10921]: task-019 Filtered transfer source
+        - generic [ref=f10e10922]: Open
+        - generic [ref=f10e10923]: High
+        - generic [ref=f10e10924]: 2033-01-01
+        - button "Open project" [ref=f10e10925] [cursor=pointer]
+      - generic [ref=f10e10926]:
+        - generic [ref=f10e10927]: Filtered outside range
+        - generic [ref=f10e10928]: task-019 Filtered transfer source
+        - generic [ref=f10e10929]: Open
+        - generic [ref=f10e10930]: High
+        - generic [ref=f10e10931]: 2034-01-01
+        - button "Open project" [ref=f10e10932] [cursor=pointer]
+      - generic [ref=f10e10933]:
+        - generic [ref=f10e10934]: Filtered completed guard
+        - generic [ref=f10e10935]: task-019 Filtered transfer source
+        - generic [ref=f10e10936]: Completed
+        - generic [ref=f10e10937]: High
+        - button "Open project" [ref=f10e10938] [cursor=pointer]
+      - generic [ref=f10e10939]:
+        - generic [ref=f10e10940]: Filtered normal guard
+        - generic [ref=f10e10941]: task-019 Filtered transfer source
+        - generic [ref=f10e10942]: Open
+        - generic [ref=f10e10943]: Normal
+        - button "Open project" [ref=f10e10944] [cursor=pointer]
+      - generic [ref=f10e10945]:
+        - generic [ref=f10e10946]: Options task
+        - generic [ref=f10e10947]: task-019 Options owner
+        - generic [ref=f10e10948]: Open
+        - generic [ref=f10e10949]: Normal
+        - button "Open project" [ref=f10e10950] [cursor=pointer]
+      - generic [ref=f10e10951]:
+        - generic [ref=f10e10952]: Undated target sentinel
+        - generic [ref=f10e10953]: task-019 Read-only transfer target
+        - generic [ref=f10e10954]: Open
+        - generic [ref=f10e10955]: Normal
+        - button "Open project" [ref=f10e10956] [cursor=pointer]
+      - generic [ref=f10e10957]:
+        - generic [ref=f10e10958]: Undated transfer
+        - generic [ref=f10e10959]: task-019 Read-only transfer owner
+        - generic [ref=f10e10960]: Open
+        - generic [ref=f10e10961]: Normal
+        - button "Open project" [ref=f10e10962] [cursor=pointer]
+      - generic [ref=f10e10963]:
+        - generic [ref=f10e10964]: Undated owner sentinel
+        - generic [ref=f10e10965]: task-019 Read-only transfer owner
+        - generic [ref=f10e10966]: Open
+        - generic [ref=f10e10967]: Normal
+        - button "Open project" [ref=f10e10968] [cursor=pointer]
+      - generic [ref=f10e10969]:
+        - generic [ref=f10e10970]: Notes identity
+        - generic [ref=f10e10971]: task-019 Notes values
+        - generic [ref=f10e10972]: Open
+        - generic [ref=f10e10973]: High
+        - generic [ref=f10e10974]: 2035-01-01
+        - generic [ref=f10e10975]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e10976] [cursor=pointer]
+      - generic [ref=f10e10977]:
+        - generic [ref=f10e10978]: Only in notes title sentinel
+        - generic [ref=f10e10979]: task-019 Notes values
+        - generic [ref=f10e10980]: Open
+        - generic [ref=f10e10981]: Normal
+        - button "Open project" [ref=f10e10982] [cursor=pointer]
+      - generic [ref=f10e10983]:
+        - generic [ref=f10e10984]: Notes target existing
+        - generic [ref=f10e10985]: task-019 Notes target
+        - generic [ref=f10e10986]: Open
+        - generic [ref=f10e10987]: Normal
+        - button "Open project" [ref=f10e10988] [cursor=pointer]
+      - generic [ref=f10e10989]:
+        - generic [ref=f10e10990]: Notes before
+        - generic [ref=f10e10991]: task-019 Notes owner
+        - generic [ref=f10e10992]: Open
+        - generic [ref=f10e10993]: Normal
+        - button "Open project" [ref=f10e10994] [cursor=pointer]
+      - generic [ref=f10e10995]:
+        - generic [ref=f10e10996]: Notes travelling
+        - generic [ref=f10e10997]: task-019 Notes owner
+        - generic [ref=f10e10998]: Open
+        - generic [ref=f10e10999]: Normal
+        - generic [ref=f10e11000]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e11001] [cursor=pointer]
+      - generic [ref=f10e11002]:
+        - generic [ref=f10e11003]: Notes after
+        - generic [ref=f10e11004]: task-019 Notes owner
+        - generic [ref=f10e11005]: Open
+        - generic [ref=f10e11006]: Normal
+        - button "Open project" [ref=f10e11007] [cursor=pointer]
+      - generic [ref=f10e11008]:
+        - generic [ref=f10e11009]: High open first
+        - generic [ref=f10e11010]: task-019 Priority intersection
+        - generic [ref=f10e11011]: Open
+        - generic [ref=f10e11012]: High
+        - button "Open project" [ref=f10e11013] [cursor=pointer]
+      - generic [ref=f10e11014]:
+        - generic [ref=f10e11015]: Low open
+        - generic [ref=f10e11016]: task-019 Priority intersection
+        - generic [ref=f10e11017]: Open
+        - generic [ref=f10e11018]: Low
+        - button "Open project" [ref=f10e11019] [cursor=pointer]
+      - generic [ref=f10e11020]:
+        - generic [ref=f10e11021]: High completed
+        - generic [ref=f10e11022]: task-019 Priority intersection
+        - generic [ref=f10e11023]: Completed
+        - generic [ref=f10e11024]: High
+        - button "Open project" [ref=f10e11025] [cursor=pointer]
+      - generic [ref=f10e11026]:
+        - generic [ref=f10e11027]: High open last
+        - generic [ref=f10e11028]: task-019 Priority intersection
+        - generic [ref=f10e11029]: Open
+        - generic [ref=f10e11030]: High
+        - button "Open project" [ref=f10e11031] [cursor=pointer]
+      - generic [ref=f10e11032]:
+        - generic [ref=f10e11033]: Leaving priority
+        - generic [ref=f10e11034]: task-019 Priority live filters
+        - generic [ref=f10e11035]: Open
+        - generic [ref=f10e11036]: Low
+        - button "Open project" [ref=f10e11037] [cursor=pointer]
+      - generic [ref=f10e11038]:
+        - generic [ref=f10e11039]: Leaving completion
+        - generic [ref=f10e11040]: task-019 Priority live filters
+        - generic [ref=f10e11041]: Open
+        - generic [ref=f10e11042]: High
+        - button "Open project" [ref=f10e11043] [cursor=pointer]
+      - generic [ref=f10e11044]:
+        - generic [ref=f10e11045]: Completed high guard
+        - generic [ref=f10e11046]: task-019 Priority live filters
+        - generic [ref=f10e11047]: Completed
+        - generic [ref=f10e11048]: High
+        - button "Open project" [ref=f10e11049] [cursor=pointer]
+      - generic [ref=f10e11050]:
+        - generic [ref=f10e11051]: Open normal guard
+        - generic [ref=f10e11052]: task-019 Priority live filters
+        - generic [ref=f10e11053]: Open
+        - generic [ref=f10e11054]: Normal
+        - button "Open project" [ref=f10e11055] [cursor=pointer]
+      - generic [ref=f10e11056]:
+        - generic [ref=f10e11057]: Filtered new title
+        - generic [ref=f10e11058]: task-019 Priority rename filters
+        - generic [ref=f10e11059]: Open
+        - generic [ref=f10e11060]: Low
+        - button "Open project" [ref=f10e11061] [cursor=pointer]
+      - generic [ref=f10e11062]:
+        - generic [ref=f10e11063]: Unmatched normal task
+        - generic [ref=f10e11064]: task-019 Priority rename filters
+        - generic [ref=f10e11065]: Open
+        - generic [ref=f10e11066]: Normal
+        - button "Open project" [ref=f10e11067] [cursor=pointer]
+      - generic [ref=f10e11068]:
+        - generic [ref=f10e11069]: Completed low guard
+        - generic [ref=f10e11070]: task-019 Priority rename filters
+        - generic [ref=f10e11071]: Completed
+        - generic [ref=f10e11072]: Low
+        - button "Open project" [ref=f10e11073] [cursor=pointer]
+      - generic [ref=f10e11074]:
+        - generic [ref=f10e11075]: Archived high open
+        - generic [ref=f10e11076]: task-019 Archived combined filters
+        - generic [ref=f10e11077]: Open
+        - generic [ref=f10e11078]: High
+        - button "Open project" [ref=f10e11079] [cursor=pointer]
+      - generic [ref=f10e11080]:
+        - generic [ref=f10e11081]: Archived normal completed
+        - generic [ref=f10e11082]: task-019 Archived combined filters
+        - generic [ref=f10e11083]: Completed
+        - generic [ref=f10e11084]: Normal
+        - button "Open project" [ref=f10e11085] [cursor=pointer]
+      - generic [ref=f10e11086]:
+        - generic [ref=f10e11087]: Priority renamed
+        - generic [ref=f10e11088]: task-019 Priority ownership
+        - generic [ref=f10e11089]: Open
+        - generic [ref=f10e11090]: High
+        - button "Open project" [ref=f10e11091] [cursor=pointer]
+      - generic [ref=f10e11092]:
+        - generic [ref=f10e11093]: Priority second
+        - generic [ref=f10e11094]: task-019 Priority ownership
+        - generic [ref=f10e11095]: Open
+        - generic [ref=f10e11096]: Low
+        - button "Open project" [ref=f10e11097] [cursor=pointer]
+      - generic [ref=f10e11098]:
+        - generic [ref=f10e11099]: Priority other task
+        - generic [ref=f10e11100]: task-019 Priority other owner
+        - generic [ref=f10e11101]: Open
+        - generic [ref=f10e11102]: Normal
+        - button "Open project" [ref=f10e11103] [cursor=pointer]
+      - generic [ref=f10e11104]:
+        - generic [ref=f10e11105]: Priority completed
+        - generic [ref=f10e11106]: task-019 Priority completion
+        - generic [ref=f10e11107]: Completed
+        - generic [ref=f10e11108]: Low
+        - button "Open project" [ref=f10e11109] [cursor=pointer]
+      - generic [ref=f10e11110]:
+        - generic [ref=f10e11111]: Priority open
+        - generic [ref=f10e11112]: task-019 Priority completion
+        - generic [ref=f10e11113]: Open
+        - generic [ref=f10e11114]: High
+        - button "Open project" [ref=f10e11115] [cursor=pointer]
+      - generic [ref=f10e11116]:
+        - generic [ref=f10e11117]: Priority retained
+        - generic [ref=f10e11118]: task-019 Priority archive
+        - generic [ref=f10e11119]: Open
+        - generic [ref=f10e11120]: Normal
+        - button "Open project" [ref=f10e11121] [cursor=pointer]
+      - generic [ref=f10e11122]:
+        - generic [ref=f10e11123]: Return first
+        - generic [ref=f10e11124]: task-019 Return owner
+        - generic [ref=f10e11125]: Open
+        - generic [ref=f10e11126]: Normal
+        - button "Open project" [ref=f10e11127] [cursor=pointer]
+      - generic [ref=f10e11128]:
+        - generic [ref=f10e11129]: Return second
+        - generic [ref=f10e11130]: task-019 Return owner
+        - generic [ref=f10e11131]: Completed
+        - generic [ref=f10e11132]: High
+        - button "Open project" [ref=f10e11133] [cursor=pointer]
+      - generic [ref=f10e11134]:
+        - generic [ref=f10e11135]: Return third
+        - generic [ref=f10e11136]: task-019 Return owner
+        - generic [ref=f10e11137]: Open
+        - generic [ref=f10e11138]: Normal
+        - button "Open project" [ref=f10e11139] [cursor=pointer]
+      - generic [ref=f10e11140]:
+        - generic [ref=f10e11141]: Return fourth
+        - generic [ref=f10e11142]: task-019 Return owner
+        - generic [ref=f10e11143]: Open
+        - generic [ref=f10e11144]: Normal
+        - button "Open project" [ref=f10e11145] [cursor=pointer]
+      - generic [ref=f10e11146]:
+        - generic [ref=f10e11147]: Identity before
+        - generic [ref=f10e11148]: task-019 Returned owner renamed
+        - generic [ref=f10e11149]: Open
+        - generic [ref=f10e11150]: Normal
+        - button "Open project" [ref=f10e11151] [cursor=pointer]
+      - generic [ref=f10e11152]:
+        - generic [ref=f10e11153]: Identity returning
+        - generic [ref=f10e11154]: task-019 Returned owner renamed
+        - generic [ref=f10e11155]: Open
+        - generic [ref=f10e11156]: Normal
+        - button "Open project" [ref=f10e11157] [cursor=pointer]
+      - generic [ref=f10e11158]:
+        - generic [ref=f10e11159]: Identity after
+        - generic [ref=f10e11160]: task-019 Returned owner renamed
+        - generic [ref=f10e11161]: Open
+        - generic [ref=f10e11162]: Normal
+        - button "Open project" [ref=f10e11163] [cursor=pointer]
+      - generic [ref=f10e11164]:
+        - generic [ref=f10e11165]: Second existing
+        - generic [ref=f10e11166]: task-019 Position second owner
+        - generic [ref=f10e11167]: Open
+        - generic [ref=f10e11168]: Normal
+        - button "Open project" [ref=f10e11169] [cursor=pointer]
+      - generic [ref=f10e11170]:
+        - generic [ref=f10e11171]: Second newly created
+        - generic [ref=f10e11172]: task-019 Position second owner
+        - generic [ref=f10e11173]: Open
+        - generic [ref=f10e11174]: Normal
+        - button "Open project" [ref=f10e11175] [cursor=pointer]
+      - generic [ref=f10e11176]:
+        - generic [ref=f10e11177]: First existing
+        - generic [ref=f10e11178]: task-019 Position first owner
+        - generic [ref=f10e11179]: Open
+        - generic [ref=f10e11180]: Normal
+        - button "Open project" [ref=f10e11181] [cursor=pointer]
+      - generic [ref=f10e11182]:
+        - generic [ref=f10e11183]: Position travelling
+        - generic [ref=f10e11184]: task-019 Position first owner
+        - generic [ref=f10e11185]: Open
+        - generic [ref=f10e11186]: Normal
+        - button "Open project" [ref=f10e11187] [cursor=pointer]
+      - generic [ref=f10e11188]:
+        - generic [ref=f10e11189]: First later
+        - generic [ref=f10e11190]: task-019 Position first owner
+        - generic [ref=f10e11191]: Open
+        - generic [ref=f10e11192]: Normal
+        - button "Open project" [ref=f10e11193] [cursor=pointer]
+      - generic [ref=f10e11194]:
+        - generic [ref=f10e11195]: First newly created
+        - generic [ref=f10e11196]: task-019 Position first owner
+        - generic [ref=f10e11197]: Open
+        - generic [ref=f10e11198]: Normal
+        - button "Open project" [ref=f10e11199] [cursor=pointer]
+      - generic [ref=f10e11200]:
+        - generic [ref=f10e11201]: Original task gap
+        - generic [ref=f10e11202]: task-019 Whitespace retained owner
+        - generic [ref=f10e11203]: Open
+        - generic [ref=f10e11204]: High
+        - button "Open project" [ref=f10e11205] [cursor=pointer]
+      - generic [ref=f10e11206]:
+        - generic [ref=f10e11207]: Other task gap
+        - generic [ref=f10e11208]: task-019 Whitespace retained owner
+        - generic [ref=f10e11209]: Open
+        - generic [ref=f10e11210]: High
+        - button "Open project" [ref=f10e11211] [cursor=pointer]
+      - generic [ref=f10e11212]:
+        - generic [ref=f10e11213]: Mixed first
+        - generic [ref=f10e11214]: task-019 Search task intersections
+        - generic [ref=f10e11215]: Open
+        - generic [ref=f10e11216]: High
+        - generic [ref=f10e11217]: 2034-01-01
+        - button "Open project" [ref=f10e11218] [cursor=pointer]
+      - generic [ref=f10e11219]:
+        - generic [ref=f10e11220]: Other high
+        - generic [ref=f10e11221]: task-019 Search task intersections
+        - generic [ref=f10e11222]: Open
+        - generic [ref=f10e11223]: High
+        - generic [ref=f10e11224]: 2034-01-01
+        - button "Open project" [ref=f10e11225] [cursor=pointer]
+      - generic [ref=f10e11226]:
+        - generic [ref=f10e11227]: MIXED completed
+        - generic [ref=f10e11228]: task-019 Search task intersections
+        - generic [ref=f10e11229]: Completed
+        - generic [ref=f10e11230]: High
+        - generic [ref=f10e11231]: 2034-01-01
+        - button "Open project" [ref=f10e11232] [cursor=pointer]
+      - generic [ref=f10e11233]:
+        - generic [ref=f10e11234]: Mixed undated
+        - generic [ref=f10e11235]: task-019 Search task intersections
+        - generic [ref=f10e11236]: Open
+        - generic [ref=f10e11237]: High
+        - button "Open project" [ref=f10e11238] [cursor=pointer]
+      - generic [ref=f10e11239]:
+        - generic [ref=f10e11240]: mixed last
+        - generic [ref=f10e11241]: task-019 Search task intersections
+        - generic [ref=f10e11242]: Open
+        - generic [ref=f10e11243]: High
+        - generic [ref=f10e11244]: 2034-01-01
+        - button "Open project" [ref=f10e11245] [cursor=pointer]
+      - generic [ref=f10e11246]:
+        - generic [ref=f10e11247]: Other normal guard
+        - generic [ref=f10e11248]: task-019 Search task intersections
+        - generic [ref=f10e11249]: Open
+        - generic [ref=f10e11250]: Normal
+        - button "Open project" [ref=f10e11251] [cursor=pointer]
+      - generic [ref=f10e11252]:
+        - generic [ref=f10e11253]: Two spaces
+        - generic [ref=f10e11254]: task-019 Search internal spacing
+        - generic [ref=f10e11255]: Open
+        - generic [ref=f10e11256]: Normal
+        - button "Open project" [ref=f10e11257] [cursor=pointer]
+      - generic [ref=f10e11258]:
+        - generic [ref=f10e11259]: Two spaces sentinel
+        - generic [ref=f10e11260]: task-019 Search internal spacing
+        - generic [ref=f10e11261]: Open
+        - generic [ref=f10e11262]: Normal
+        - button "Open project" [ref=f10e11263] [cursor=pointer]
+      - generic [ref=f10e11264]:
+        - generic [ref=f10e11265]: Task preserved
+        - generic [ref=f10e11266]: task-019 Task reload
+        - generic [ref=f10e11267]: Open
+        - generic [ref=f10e11268]: Normal
+        - button "Open project" [ref=f10e11269] [cursor=pointer]
+      - generic [ref=f10e11270]:
+        - generic [ref=f10e11271]: Private to owner
+        - generic [ref=f10e11272]: task-019 Task owner
+        - generic [ref=f10e11273]: Open
+        - generic [ref=f10e11274]: Normal
+        - button "Open project" [ref=f10e11275] [cursor=pointer]
+      - generic [ref=f10e11276]:
+        - generic [ref=f10e11277]: Done task
+        - generic [ref=f10e11278]: task-019 Task filters
+        - generic [ref=f10e11279]: Open
+        - generic [ref=f10e11280]: Normal
+        - button "Open project" [ref=f10e11281] [cursor=pointer]
+      - generic [ref=f10e11282]:
+        - generic [ref=f10e11283]: Open task
+        - generic [ref=f10e11284]: task-019 Task filters
+        - generic [ref=f10e11285]: Open
+        - generic [ref=f10e11286]: Normal
+        - button "Open project" [ref=f10e11287] [cursor=pointer]
+      - generic [ref=f10e11288]:
+        - generic [ref=f10e11289]: Retained task
+        - generic [ref=f10e11290]: task-019 Archive tasks
+        - generic [ref=f10e11291]: Completed
+        - generic [ref=f10e11292]: Normal
+        - button "Open project" [ref=f10e11293] [cursor=pointer]
+      - generic [ref=f10e11294]:
+        - generic [ref=f10e11295]: Summary one
+        - generic [ref=f10e11296]: task-019 Summary project
+        - generic [ref=f10e11297]: Completed
+        - generic [ref=f10e11298]: Normal
+        - button "Open project" [ref=f10e11299] [cursor=pointer]
+      - generic [ref=f10e11300]:
+        - generic [ref=f10e11301]: Summary two
+        - generic [ref=f10e11302]: task-019 Summary project
+        - generic [ref=f10e11303]: Open
+        - generic [ref=f10e11304]: Normal
+        - button "Open project" [ref=f10e11305] [cursor=pointer]
+      - generic [ref=f10e11306]:
+        - generic [ref=f10e11307]: Identity task
+        - generic [ref=f10e11308]: task-019 Identity updated
+        - generic [ref=f10e11309]: Completed
+        - generic [ref=f10e11310]: Normal
+        - button "Open project" [ref=f10e11311] [cursor=pointer]
+      - generic [ref=f10e11312]:
+        - generic [ref=f10e11313]: Name updated
+        - generic [ref=f10e11314]: task-019 Task rename identity
+        - generic [ref=f10e11315]: Completed
+        - generic [ref=f10e11316]: Normal
+        - button "Open project" [ref=f10e11317] [cursor=pointer]
+      - generic [ref=f10e11318]:
+        - generic [ref=f10e11319]: Name second
+        - generic [ref=f10e11320]: task-019 Task rename identity
+        - generic [ref=f10e11321]: Open
+        - generic [ref=f10e11322]: Normal
+        - button "Open project" [ref=f10e11323] [cursor=pointer]
+      - generic [ref=f10e11324]:
+        - generic [ref=f10e11325]: Kept title
+        - generic [ref=f10e11326]: task-019 Task rename invalid
+        - generic [ref=f10e11327]: Open
+        - generic [ref=f10e11328]: Normal
+        - button "Open project" [ref=f10e11329] [cursor=pointer]
+      - generic [ref=f10e11330]:
+        - generic [ref=f10e11331]: Archived title
+        - generic [ref=f10e11332]: task-019 Task rename archive
+        - generic [ref=f10e11333]: Open
+        - generic [ref=f10e11334]: Normal
+        - button "Open project" [ref=f10e11335] [cursor=pointer]
+      - generic [ref=f10e11336]:
+        - generic [ref=f10e11337]: task-020 Bulk match first
+        - generic [ref=f10e11338]: task-020 Bulk first owner
+        - generic [ref=f10e11339]: Open
+        - generic [ref=f10e11340]: High
+        - generic [ref=f10e11341]: 2050-01-01
+        - generic [ref=f10e11342]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e11343] [cursor=pointer]
+      - generic [ref=f10e11344]:
+        - generic [ref=f10e11345]: task-020 Bulk match low
+        - generic [ref=f10e11346]: task-020 Bulk first owner
+        - generic [ref=f10e11347]: Open
+        - generic [ref=f10e11348]: Low
+        - generic [ref=f10e11349]: 2050-01-01
+        - button "Open project" [ref=f10e11350] [cursor=pointer]
+      - generic [ref=f10e11351]:
+        - generic [ref=f10e11352]: task-020 Bulk match done
+        - generic [ref=f10e11353]: task-020 Bulk first owner
+        - generic [ref=f10e11354]: Open
+        - generic [ref=f10e11355]: High
+        - generic [ref=f10e11356]: 2050-01-01
+        - button "Open project" [ref=f10e11357] [cursor=pointer]
+      - generic [ref=f10e11358]:
+        - generic [ref=f10e11359]: task-020 Bulk other title
+        - generic [ref=f10e11360]: task-020 Bulk first owner
+        - generic [ref=f10e11361]: Open
+        - generic [ref=f10e11362]: High
+        - generic [ref=f10e11363]: 2050-01-01
+        - button "Open project" [ref=f10e11364] [cursor=pointer]
+      - generic [ref=f10e11365]:
+        - generic [ref=f10e11366]: task-020 Bulk match later
+        - generic [ref=f10e11367]: task-020 Bulk first owner
+        - generic [ref=f10e11368]: Open
+        - generic [ref=f10e11369]: High
+        - generic [ref=f10e11370]: 2050-01-02
+        - button "Open project" [ref=f10e11371] [cursor=pointer]
+      - generic [ref=f10e11372]:
+        - generic [ref=f10e11373]: task-020 Bulk match second
+        - generic [ref=f10e11374]: task-020 Bulk first owner
+        - generic [ref=f10e11375]: Open
+        - generic [ref=f10e11376]: High
+        - generic [ref=f10e11377]: 2050-01-01
+        - generic [ref=f10e11378]: Second original note
+        - button "Open project" [ref=f10e11379] [cursor=pointer]
+      - generic [ref=f10e11380]:
+        - generic [ref=f10e11381]: Bulk later reservation sentinel
+        - generic [ref=f10e11382]: task-020 Bulk first owner
+        - generic [ref=f10e11383]: Open
+        - generic [ref=f10e11384]: Normal
+        - button "Open project" [ref=f10e11385] [cursor=pointer]
+      - generic [ref=f10e11386]:
+        - generic [ref=f10e11387]: task-020 Bulk match second done
+        - generic [ref=f10e11388]: task-020 Bulk second owner
+        - generic [ref=f10e11389]: Open
+        - generic [ref=f10e11390]: High
+        - generic [ref=f10e11391]: 2050-01-01
+        - button "Open project" [ref=f10e11392] [cursor=pointer]
+      - generic [ref=f10e11393]:
+        - generic [ref=f10e11394]: task-020 Bulk match undated
+        - generic [ref=f10e11395]: task-020 Bulk second owner
+        - generic [ref=f10e11396]: Open
+        - generic [ref=f10e11397]: High
+        - button "Open project" [ref=f10e11398] [cursor=pointer]
+      - generic [ref=f10e11399]:
+        - generic [ref=f10e11400]: task-020 Protected live
+        - generic [ref=f10e11401]: task-020 Bulk protected
+        - generic [ref=f10e11402]: Completed
+        - generic [ref=f10e11403]: Low
+        - generic [ref=f10e11404]: 2051-01-01
+        - button "Open project" [ref=f10e11405] [cursor=pointer]
+      - generic [ref=f10e11406]:
+        - generic [ref=f10e11407]: task-020 Bulk restart record Bulk restart first
+        - generic [ref=f10e11408]: task-020 Bulk restart first
+        - generic [ref=f10e11409]: Completed
+        - generic [ref=f10e11410]: High
+        - generic [ref=f10e11411]: 2052-02-29
+        - generic [ref=f10e11412]: Bulk restart Ω original
+        - button "Open project" [ref=f10e11413] [cursor=pointer]
+      - generic [ref=f10e11414]:
+        - generic [ref=f10e11415]: task-020 Bulk restart record Bulk restart second
+        - generic [ref=f10e11416]: task-020 Bulk restart second
+        - generic [ref=f10e11417]: Completed
+        - generic [ref=f10e11418]: High
+        - generic [ref=f10e11419]: 2052-02-29
+        - generic [ref=f10e11420]: Bulk restart Ω original
+        - button "Open project" [ref=f10e11421] [cursor=pointer]
+      - generic [ref=f10e11422]:
+        - generic [ref=f10e11423]: Independent normal
+        - generic [ref=f10e11424]: task-020 Defaults independent
+        - generic [ref=f10e11425]: Open
+        - generic [ref=f10e11426]: Normal
+        - button "Open project" [ref=f10e11427] [cursor=pointer]
+      - generic [ref=f10e11428]:
+        - generic [ref=f10e11429]: Before default change
+        - generic [ref=f10e11430]: task-020 Defaults inheritance
+        - generic [ref=f10e11431]: Completed
+        - generic [ref=f10e11432]: Normal
+        - button "Open project" [ref=f10e11433] [cursor=pointer]
+      - generic [ref=f10e11434]:
+        - generic [ref=f10e11435]: Inherited high
+        - generic [ref=f10e11436]: task-020 Defaults inheritance
+        - generic [ref=f10e11437]: Open
+        - generic [ref=f10e11438]: High
+        - button "Open project" [ref=f10e11439] [cursor=pointer]
+      - generic [ref=f10e11440]:
+        - generic [ref=f10e11441]: Inherited low
+        - generic [ref=f10e11442]: task-020 Defaults inheritance
+        - generic [ref=f10e11443]: Open
+        - generic [ref=f10e11444]: Low
+        - button "Open project" [ref=f10e11445] [cursor=pointer]
+      - generic [ref=f10e11446]:
+        - generic [ref=f10e11447]: Inherited normal
+        - generic [ref=f10e11448]: task-020 Defaults inheritance
+        - generic [ref=f10e11449]: Open
+        - generic [ref=f10e11450]: Normal
+        - button "Open project" [ref=f10e11451] [cursor=pointer]
+      - generic [ref=f10e11452]:
+        - generic [ref=f10e11453]: Lifecycle task
+        - generic [ref=f10e11454]: task-020 Defaults renamed
+        - generic [ref=f10e11455]: Open
+        - generic [ref=f10e11456]: Low
+        - button "Open project" [ref=f10e11457] [cursor=pointer]
+      - generic [ref=f10e11458]:
+        - generic [ref=f10e11459]: Restored inherits
+        - generic [ref=f10e11460]: task-020 Defaults renamed
+        - generic [ref=f10e11461]: Open
+        - generic [ref=f10e11462]: Low
+        - button "Open project" [ref=f10e11463] [cursor=pointer]
+      - generic [ref=f10e11464]:
+        - generic [ref=f10e11465]: Live before
+        - generic [ref=f10e11466]: task-020 Deletion fields
+        - generic [ref=f10e11467]: Open
+        - generic [ref=f10e11468]: Normal
+        - button "Open project" [ref=f10e11469] [cursor=pointer]
+      - generic [ref=f10e11470]:
+        - generic [ref=f10e11471]: Live after
+        - generic [ref=f10e11472]: task-020 Deletion fields
+        - generic [ref=f10e11473]: Open
+        - generic [ref=f10e11474]: Normal
+        - button "Open project" [ref=f10e11475] [cursor=pointer]
+      - generic [ref=f10e11476]:
+        - generic [ref=f10e11477]: Completed remove sentinel
+        - generic [ref=f10e11478]: task-020 Deletion fields
+        - generic [ref=f10e11479]: Completed
+        - generic [ref=f10e11480]: High
+        - generic [ref=f10e11481]: 2036-02-29
+        - button "Open project" [ref=f10e11482] [cursor=pointer]
+      - generic [ref=f10e11483]:
+        - generic [ref=f10e11484]: Completed remove outside
+        - generic [ref=f10e11485]: task-020 Deletion fields
+        - generic [ref=f10e11486]: Completed
+        - generic [ref=f10e11487]: High
+        - generic [ref=f10e11488]: 2037-01-01
+        - button "Open project" [ref=f10e11489] [cursor=pointer]
+      - generic [ref=f10e11490]:
+        - generic [ref=f10e11491]: Completed normal exclusion
+        - generic [ref=f10e11492]: task-020 Deletion fields
+        - generic [ref=f10e11493]: Completed
+        - generic [ref=f10e11494]: Normal
+        - button "Open project" [ref=f10e11495] [cursor=pointer]
+      - generic [ref=f10e11496]:
+        - generic [ref=f10e11497]: Completed unrelated high
+        - generic [ref=f10e11498]: task-020 Deletion fields
+        - generic [ref=f10e11499]: Completed
+        - generic [ref=f10e11500]: High
+        - button "Open project" [ref=f10e11501] [cursor=pointer]
+      - generic [ref=f10e11502]:
+        - generic [ref=f10e11503]: Target first
+        - generic [ref=f10e11504]: task-020 Deletion target
+        - generic [ref=f10e11505]: Open
+        - generic [ref=f10e11506]: Normal
+        - button "Open project" [ref=f10e11507] [cursor=pointer]
+      - generic [ref=f10e11508]:
+        - generic [ref=f10e11509]: Reserved
+        - generic [ref=f10e11510]: task-020 Deletion target
+        - generic [ref=f10e11511]: Completed
+        - generic [ref=f10e11512]: High
+        - generic [ref=f10e11513]: 2037-01-01
+        - generic [ref=f10e11514]: Restore original note
+        - button "Open project" [ref=f10e11515] [cursor=pointer]
+      - generic [ref=f10e11516]:
+        - generic [ref=f10e11517]: Target later
+        - generic [ref=f10e11518]: task-020 Deletion target
+        - generic [ref=f10e11519]: Open
+        - generic [ref=f10e11520]: Normal
+        - button "Open project" [ref=f10e11521] [cursor=pointer]
+      - generic [ref=f10e11522]:
+        - generic [ref=f10e11523]: Before
+        - generic [ref=f10e11524]: task-020 Deletion order
+        - generic [ref=f10e11525]: Open
+        - generic [ref=f10e11526]: Normal
+        - button "Open project" [ref=f10e11527] [cursor=pointer]
+      - generic [ref=f10e11528]:
+        - generic [ref=f10e11529]: After
+        - generic [ref=f10e11530]: task-020 Deletion order
+        - generic [ref=f10e11531]: Open
+        - generic [ref=f10e11532]: Normal
+        - button "Open project" [ref=f10e11533] [cursor=pointer]
+      - generic [ref=f10e11534]:
+        - generic [ref=f10e11535]: New arrival
+        - generic [ref=f10e11536]: task-020 Deletion order
+        - generic [ref=f10e11537]: Open
+        - generic [ref=f10e11538]: Normal
+        - button "Open project" [ref=f10e11539] [cursor=pointer]
+      - generic [ref=f10e11540]:
+        - generic [ref=f10e11541]: task-020 Directory Zulu
+        - generic [ref=f10e11542]: task-020 Directory Zulu owner
+        - generic [ref=f10e11543]: Open
+        - generic [ref=f10e11544]: High
+        - generic [ref=f10e11545]: 2045-01-01
+        - generic [ref=f10e11546]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e11547] [cursor=pointer]
+      - generic [ref=f10e11548]:
+        - generic [ref=f10e11549]: task-020 Directory Alpha
+        - generic [ref=f10e11550]: task-020 Directory Zulu owner
+        - generic [ref=f10e11551]: Completed
+        - generic [ref=f10e11552]: Low
+        - button "Open project" [ref=f10e11553] [cursor=pointer]
+      - generic [ref=f10e11554]:
+        - generic [ref=f10e11555]: Foreign directory title
+        - generic [ref=f10e11556]: task-020 Directory Zulu owner
+        - generic [ref=f10e11557]: Open
+        - generic [ref=f10e11558]: Normal
+        - generic [ref=f10e11559]: task-020 Directory notes only
+        - button "Open project" [ref=f10e11560] [cursor=pointer]
+      - generic [ref=f10e11561]:
+        - generic [ref=f10e11562]: task-020 Directory Mid
+        - generic [ref=f10e11563]: task-020 Directory Alpha owner
+        - generic [ref=f10e11564]: Open
+        - generic [ref=f10e11565]: Normal
+        - button "Open project" [ref=f10e11566] [cursor=pointer]
+      - generic [ref=f10e11567]:
+        - generic [ref=f10e11568]: task-020 Filter hit
+        - generic [ref=f10e11569]: task-020 Directory filter owner
+        - generic [ref=f10e11570]: Open
+        - generic [ref=f10e11571]: High
+        - generic [ref=f10e11572]: 2046-03-01
+        - button "Open project" [ref=f10e11573] [cursor=pointer]
+      - generic [ref=f10e11574]:
+        - generic [ref=f10e11575]: task-020 Filter done
+        - generic [ref=f10e11576]: task-020 Directory filter owner
+        - generic [ref=f10e11577]: Completed
+        - generic [ref=f10e11578]: High
+        - generic [ref=f10e11579]: 2046-03-01
+        - button "Open project" [ref=f10e11580] [cursor=pointer]
+      - generic [ref=f10e11581]:
+        - generic [ref=f10e11582]: task-020 Filter low
+        - generic [ref=f10e11583]: task-020 Directory filter owner
+        - generic [ref=f10e11584]: Open
+        - generic [ref=f10e11585]: Low
+        - generic [ref=f10e11586]: 2046-03-01
+        - button "Open project" [ref=f10e11587] [cursor=pointer]
+      - generic [ref=f10e11588]:
+        - generic [ref=f10e11589]: task-020 Filter undated
+        - generic [ref=f10e11590]: task-020 Directory filter owner
+        - generic [ref=f10e11591]: Open
+        - generic [ref=f10e11592]: High
+        - button "Open project" [ref=f10e11593] [cursor=pointer]
+      - generic [ref=f10e11594]:
+        - generic [ref=f10e11595]: task-020 Filter outside
+        - generic [ref=f10e11596]: task-020 Directory filter owner
+        - generic [ref=f10e11597]: Open
+        - generic [ref=f10e11598]: High
+        - generic [ref=f10e11599]: 2046-04-01
+        - button "Open project" [ref=f10e11600] [cursor=pointer]
+      - generic [ref=f10e11601]:
+        - generic [ref=f10e11602]: task-020 Gap task
+        - generic [ref=f10e11603]: task-020 Directory whitespace
+        - generic [ref=f10e11604]: Open
+        - generic [ref=f10e11605]: Normal
+        - button "Open project" [ref=f10e11606] [cursor=pointer]
+      - generic [ref=f10e11607]:
+        - generic [ref=f10e11608]: Calendar renamed
+        - generic [ref=f10e11609]: task-020 Calendar persistence
+        - generic [ref=f10e11610]: Open
+        - generic [ref=f10e11611]: Normal
+        - button "Open project" [ref=f10e11612] [cursor=pointer]
+      - generic [ref=f10e11613]:
+        - generic [ref=f10e11614]: Calendar valid
+        - generic [ref=f10e11615]: task-020 Calendar validation
+        - generic [ref=f10e11616]: Open
+        - generic [ref=f10e11617]: Normal
+        - generic [ref=f10e11618]: 2028-04-30
+        - button "Open project" [ref=f10e11619] [cursor=pointer]
+      - generic [ref=f10e11620]:
+        - generic [ref=f10e11621]: Dated first
+        - generic [ref=f10e11622]: task-020 Calendar independence
+        - generic [ref=f10e11623]: Completed
+        - generic [ref=f10e11624]: High
+        - generic [ref=f10e11625]: 2029-01-01
+        - button "Open project" [ref=f10e11626] [cursor=pointer]
+      - generic [ref=f10e11627]:
+        - generic [ref=f10e11628]: Undated second
+        - generic [ref=f10e11629]: task-020 Calendar independence
+        - generic [ref=f10e11630]: Open
+        - generic [ref=f10e11631]: Normal
+        - button "Open project" [ref=f10e11632] [cursor=pointer]
+      - generic [ref=f10e11633]:
+        - generic [ref=f10e11634]: Completed normal guard
+        - generic [ref=f10e11635]: task-020 Calendar independence
+        - generic [ref=f10e11636]: Completed
+        - generic [ref=f10e11637]: Normal
+        - button "Open project" [ref=f10e11638] [cursor=pointer]
+      - generic [ref=f10e11639]:
+        - generic [ref=f10e11640]: Owner task
+        - generic [ref=f10e11641]: task-020 Calendar second owner
+        - generic [ref=f10e11642]: Open
+        - generic [ref=f10e11643]: Normal
+        - button "Open project" [ref=f10e11644] [cursor=pointer]
+      - generic [ref=f10e11645]:
+        - generic [ref=f10e11646]: Archive dated
+        - generic [ref=f10e11647]: task-020 Calendar archival
+        - generic [ref=f10e11648]: Open
+        - generic [ref=f10e11649]: Normal
+        - generic [ref=f10e11650]: 2030-12-31
+        - button "Open project" [ref=f10e11651] [cursor=pointer]
+      - generic [ref=f10e11652]:
+        - generic [ref=f10e11653]: Before range
+        - generic [ref=f10e11654]: task-020 Range boundaries
+        - generic [ref=f10e11655]: Open
+        - generic [ref=f10e11656]: Normal
+        - generic [ref=f10e11657]: 2028-02-28
+        - button "Open project" [ref=f10e11658] [cursor=pointer]
+      - generic [ref=f10e11659]:
+        - generic [ref=f10e11660]: Range first
+        - generic [ref=f10e11661]: task-020 Range boundaries
+        - generic [ref=f10e11662]: Open
+        - generic [ref=f10e11663]: Normal
+        - generic [ref=f10e11664]: 2028-02-29
+        - button "Open project" [ref=f10e11665] [cursor=pointer]
+      - generic [ref=f10e11666]:
+        - generic [ref=f10e11667]: No calendar date
+        - generic [ref=f10e11668]: task-020 Range boundaries
+        - generic [ref=f10e11669]: Open
+        - generic [ref=f10e11670]: Normal
+        - button "Open project" [ref=f10e11671] [cursor=pointer]
+      - generic [ref=f10e11672]:
+        - generic [ref=f10e11673]: Range last
+        - generic [ref=f10e11674]: task-020 Range boundaries
+        - generic [ref=f10e11675]: Open
+        - generic [ref=f10e11676]: Normal
+        - generic [ref=f10e11677]: 2028-03-02
+        - button "Open project" [ref=f10e11678] [cursor=pointer]
+      - generic [ref=f10e11679]:
+        - generic [ref=f10e11680]: After range
+        - generic [ref=f10e11681]: task-020 Range boundaries
+        - generic [ref=f10e11682]: Open
+        - generic [ref=f10e11683]: Normal
+        - generic [ref=f10e11684]: 2028-03-03
+        - button "Open project" [ref=f10e11685] [cursor=pointer]
+      - generic [ref=f10e11686]:
+        - generic [ref=f10e11687]: Range matching
+        - generic [ref=f10e11688]: task-020 Range intersections
+        - generic [ref=f10e11689]: Open
+        - generic [ref=f10e11690]: High
+        - generic [ref=f10e11691]: 2029-02-01
+        - button "Open project" [ref=f10e11692] [cursor=pointer]
+      - generic [ref=f10e11693]:
+        - generic [ref=f10e11694]: Range low
+        - generic [ref=f10e11695]: task-020 Range intersections
+        - generic [ref=f10e11696]: Open
+        - generic [ref=f10e11697]: Normal
+        - generic [ref=f10e11698]: 2029-01-15
+        - button "Open project" [ref=f10e11699] [cursor=pointer]
+      - generic [ref=f10e11700]:
+        - generic [ref=f10e11701]: Range completed
+        - generic [ref=f10e11702]: task-020 Range intersections
+        - generic [ref=f10e11703]: Open
+        - generic [ref=f10e11704]: Low
+        - generic [ref=f10e11705]: 2029-01-15
+        - button "Open project" [ref=f10e11706] [cursor=pointer]
+      - generic [ref=f10e11707]:
+        - generic [ref=f10e11708]: Range undated
+        - generic [ref=f10e11709]: task-020 Range intersections
+        - generic [ref=f10e11710]: Open
+        - generic [ref=f10e11711]: High
+        - button "Open project" [ref=f10e11712] [cursor=pointer]
+      - generic [ref=f10e11713]:
+        - generic [ref=f10e11714]: Valid member
+        - generic [ref=f10e11715]: task-020 Range validation
+        - generic [ref=f10e11716]: Open
+        - generic [ref=f10e11717]: Normal
+        - generic [ref=f10e11718]: 2028-06-15
+        - button "Open project" [ref=f10e11719] [cursor=pointer]
+      - generic [ref=f10e11720]:
+        - generic [ref=f10e11721]: Undated outsider
+        - generic [ref=f10e11722]: task-020 Range validation
+        - generic [ref=f10e11723]: Open
+        - generic [ref=f10e11724]: Normal
+        - button "Open project" [ref=f10e11725] [cursor=pointer]
+      - generic [ref=f10e11726]:
+        - generic [ref=f10e11727]: Archived date renamed
+        - generic [ref=f10e11728]: task-020 Range archival
+        - generic [ref=f10e11729]: Open
+        - generic [ref=f10e11730]: Normal
+        - generic [ref=f10e11731]: 2030-01-01
+        - button "Open project" [ref=f10e11732] [cursor=pointer]
+      - generic [ref=f10e11733]:
+        - generic [ref=f10e11734]: Archived undated outsider
+        - generic [ref=f10e11735]: task-020 Range archival
+        - generic [ref=f10e11736]: Open
+        - generic [ref=f10e11737]: Normal
+        - button "Open project" [ref=f10e11738] [cursor=pointer]
+      - generic [ref=f10e11739]:
+        - generic [ref=f10e11740]: Retained range member
+        - generic [ref=f10e11741]: task-020 Range owner renamed
+        - generic [ref=f10e11742]: Open
+        - generic [ref=f10e11743]: High
+        - generic [ref=f10e11744]: 2031-03-01
+        - button "Open project" [ref=f10e11745] [cursor=pointer]
+      - generic [ref=f10e11746]:
+        - generic [ref=f10e11747]: Retained undated outsider
+        - generic [ref=f10e11748]: task-020 Range owner renamed
+        - generic [ref=f10e11749]: Open
+        - generic [ref=f10e11750]: Normal
+        - button "Open project" [ref=f10e11751] [cursor=pointer]
+      - generic [ref=f10e11752]:
+        - generic [ref=f10e11753]: Created outside range
+        - generic [ref=f10e11754]: task-020 Range owner renamed
+        - generic [ref=f10e11755]: Open
+        - generic [ref=f10e11756]: Low
+        - button "Open project" [ref=f10e11757] [cursor=pointer]
+      - generic [ref=f10e11758]:
+        - generic [ref=f10e11759]: Must not export
+        - generic [ref=f10e11760]: task-020 Export foreign
+        - generic [ref=f10e11761]: Open
+        - generic [ref=f10e11762]: Normal
+        - button "Open project" [ref=f10e11763] [cursor=pointer]
+      - generic [ref=f10e11764]:
+        - generic [ref=f10e11765]: Export before
+        - generic [ref=f10e11766]: task-020 Export full Ω
+        - generic [ref=f10e11767]: Open
+        - generic [ref=f10e11768]: Normal
+        - button "Open project" [ref=f10e11769] [cursor=pointer]
+      - generic [ref=f10e11770]:
+        - generic [ref=f10e11771]: Export after
+        - generic [ref=f10e11772]: task-020 Export full Ω
+        - generic [ref=f10e11773]: Open
+        - generic [ref=f10e11774]: Normal
+        - button "Open project" [ref=f10e11775] [cursor=pointer]
+      - generic [ref=f10e11776]:
+        - generic [ref=f10e11777]: Imported before
+        - generic [ref=f10e11778]: task-020 Import origin
+        - generic [ref=f10e11779]: Open
+        - generic [ref=f10e11780]: Normal
+        - button "Open project" [ref=f10e11781] [cursor=pointer]
+      - generic [ref=f10e11782]:
+        - generic [ref=f10e11783]: Imported after
+        - generic [ref=f10e11784]: task-020 Import origin
+        - generic [ref=f10e11785]: Open
+        - generic [ref=f10e11786]: Normal
+        - button "Open project" [ref=f10e11787] [cursor=pointer]
+      - generic [ref=f10e11788]:
+        - generic [ref=f10e11789]: Imported before
+        - generic [ref=f10e11790]: task-020 Import copy
+        - generic [ref=f10e11791]: Open
+        - generic [ref=f10e11792]: Normal
+        - button "Open project" [ref=f10e11793] [cursor=pointer]
+      - generic [ref=f10e11794]:
+        - generic [ref=f10e11795]: Imported reserved
+        - generic [ref=f10e11796]: task-020 Import copy
+        - generic [ref=f10e11797]: Completed
+        - generic [ref=f10e11798]: High
+        - generic [ref=f10e11799]: 2040-02-29
+        - generic [ref=f10e11800]: Changed only copy
+        - button "Open project" [ref=f10e11801] [cursor=pointer]
+      - generic [ref=f10e11802]:
+        - generic [ref=f10e11803]: Imported after
+        - generic [ref=f10e11804]: task-020 Import copy
+        - generic [ref=f10e11805]: Open
+        - generic [ref=f10e11806]: Normal
+        - button "Open project" [ref=f10e11807] [cursor=pointer]
+      - generic [ref=f10e11808]:
+        - generic [ref=f10e11809]: Imported arrival
+        - generic [ref=f10e11810]: task-020 Import copy
+        - generic [ref=f10e11811]: Open
+        - generic [ref=f10e11812]: Low
+        - button "Open project" [ref=f10e11813] [cursor=pointer]
+      - generic [ref=f10e11814]:
+        - generic [ref=f10e11815]: Guard retained
+        - generic [ref=f10e11816]: task-020 Parse guard existing
+        - generic [ref=f10e11817]: Open
+        - generic [ref=f10e11818]: Normal
+        - button "Open project" [ref=f10e11819] [cursor=pointer]
+      - generic [ref=f10e11820]:
+        - generic [ref=f10e11821]: Guard retained
+        - generic [ref=f10e11822]: task-020 Task guard existing
+        - generic [ref=f10e11823]: Open
+        - generic [ref=f10e11824]: Normal
+        - button "Open project" [ref=f10e11825] [cursor=pointer]
+      - generic [ref=f10e11826]:
+        - generic [ref=f10e11827]: Imported live
+        - generic [ref=f10e11828]: task-020 Import restart
+        - generic [ref=f10e11829]: Open
+        - generic [ref=f10e11830]: Low
+        - generic [ref=f10e11831]: 2044-02-29
+        - generic [ref=f10e11832]: Live import
+        - button "Open project" [ref=f10e11833] [cursor=pointer]
+      - generic [ref=f10e11834]:
+        - generic [ref=f10e11835]: Target first
+        - generic [ref=f10e11836]: task-020 Transfer target
+        - generic [ref=f10e11837]: Open
+        - generic [ref=f10e11838]: Normal
+        - button "Open project" [ref=f10e11839] [cursor=pointer]
+      - generic [ref=f10e11840]:
+        - generic [ref=f10e11841]: Target second
+        - generic [ref=f10e11842]: task-020 Transfer target
+        - generic [ref=f10e11843]: Open
+        - generic [ref=f10e11844]: Normal
+        - button "Open project" [ref=f10e11845] [cursor=pointer]
+      - generic [ref=f10e11846]:
+        - generic [ref=f10e11847]: Transferred complete
+        - generic [ref=f10e11848]: task-020 Transfer target
+        - generic [ref=f10e11849]: Completed
+        - generic [ref=f10e11850]: High
+        - generic [ref=f10e11851]: 2032-02-29
+        - button "Open project" [ref=f10e11852] [cursor=pointer]
+      - generic [ref=f10e11853]:
+        - generic [ref=f10e11854]: Source remaining
+        - generic [ref=f10e11855]: task-020 Transfer source
+        - generic [ref=f10e11856]: Open
+        - generic [ref=f10e11857]: Normal
+        - button "Open project" [ref=f10e11858] [cursor=pointer]
+      - generic [ref=f10e11859]:
+        - generic [ref=f10e11860]: Filtered target sentinel
+        - generic [ref=f10e11861]: task-020 Filtered transfer target
+        - generic [ref=f10e11862]: Open
+        - generic [ref=f10e11863]: Normal
+        - button "Open project" [ref=f10e11864] [cursor=pointer]
+      - generic [ref=f10e11865]:
+        - generic [ref=f10e11866]: Filtered moving
+        - generic [ref=f10e11867]: task-020 Filtered transfer target
+        - generic [ref=f10e11868]: Open
+        - generic [ref=f10e11869]: High
+        - generic [ref=f10e11870]: 2033-01-01
+        - button "Open project" [ref=f10e11871] [cursor=pointer]
+      - generic [ref=f10e11872]:
+        - generic [ref=f10e11873]: Filtered first
+        - generic [ref=f10e11874]: task-020 Filtered transfer source
+        - generic [ref=f10e11875]: Open
+        - generic [ref=f10e11876]: High
+        - generic [ref=f10e11877]: 2033-01-01
+        - button "Open project" [ref=f10e11878] [cursor=pointer]
+      - generic [ref=f10e11879]:
+        - generic [ref=f10e11880]: Filtered last
+        - generic [ref=f10e11881]: task-020 Filtered transfer source
+        - generic [ref=f10e11882]: Open
+        - generic [ref=f10e11883]: High
+        - generic [ref=f10e11884]: 2033-01-01
+        - button "Open project" [ref=f10e11885] [cursor=pointer]
+      - generic [ref=f10e11886]:
+        - generic [ref=f10e11887]: Filtered outside range
+        - generic [ref=f10e11888]: task-020 Filtered transfer source
+        - generic [ref=f10e11889]: Open
+        - generic [ref=f10e11890]: High
+        - generic [ref=f10e11891]: 2034-01-01
+        - button "Open project" [ref=f10e11892] [cursor=pointer]
+      - generic [ref=f10e11893]:
+        - generic [ref=f10e11894]: Filtered completed guard
+        - generic [ref=f10e11895]: task-020 Filtered transfer source
+        - generic [ref=f10e11896]: Completed
+        - generic [ref=f10e11897]: High
+        - button "Open project" [ref=f10e11898] [cursor=pointer]
+      - generic [ref=f10e11899]:
+        - generic [ref=f10e11900]: Filtered normal guard
+        - generic [ref=f10e11901]: task-020 Filtered transfer source
+        - generic [ref=f10e11902]: Open
+        - generic [ref=f10e11903]: Normal
+        - button "Open project" [ref=f10e11904] [cursor=pointer]
+      - generic [ref=f10e11905]:
+        - generic [ref=f10e11906]: Options task
+        - generic [ref=f10e11907]: task-020 Options owner
+        - generic [ref=f10e11908]: Open
+        - generic [ref=f10e11909]: Normal
+        - button "Open project" [ref=f10e11910] [cursor=pointer]
+      - generic [ref=f10e11911]:
+        - generic [ref=f10e11912]: Undated target sentinel
+        - generic [ref=f10e11913]: task-020 Read-only transfer target
+        - generic [ref=f10e11914]: Open
+        - generic [ref=f10e11915]: Normal
+        - button "Open project" [ref=f10e11916] [cursor=pointer]
+      - generic [ref=f10e11917]:
+        - generic [ref=f10e11918]: Undated transfer
+        - generic [ref=f10e11919]: task-020 Read-only transfer owner
+        - generic [ref=f10e11920]: Open
+        - generic [ref=f10e11921]: Normal
+        - button "Open project" [ref=f10e11922] [cursor=pointer]
+      - generic [ref=f10e11923]:
+        - generic [ref=f10e11924]: Undated owner sentinel
+        - generic [ref=f10e11925]: task-020 Read-only transfer owner
+        - generic [ref=f10e11926]: Open
+        - generic [ref=f10e11927]: Normal
+        - button "Open project" [ref=f10e11928] [cursor=pointer]
+      - generic [ref=f10e11929]:
+        - generic [ref=f10e11930]: Notes identity
+        - generic [ref=f10e11931]: task-020 Notes values
+        - generic [ref=f10e11932]: Open
+        - generic [ref=f10e11933]: High
+        - generic [ref=f10e11934]: 2035-01-01
+        - generic [ref=f10e11935]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e11936] [cursor=pointer]
+      - generic [ref=f10e11937]:
+        - generic [ref=f10e11938]: Only in notes title sentinel
+        - generic [ref=f10e11939]: task-020 Notes values
+        - generic [ref=f10e11940]: Open
+        - generic [ref=f10e11941]: Normal
+        - button "Open project" [ref=f10e11942] [cursor=pointer]
+      - generic [ref=f10e11943]:
+        - generic [ref=f10e11944]: Notes target existing
+        - generic [ref=f10e11945]: task-020 Notes target
+        - generic [ref=f10e11946]: Open
+        - generic [ref=f10e11947]: Normal
+        - button "Open project" [ref=f10e11948] [cursor=pointer]
+      - generic [ref=f10e11949]:
+        - generic [ref=f10e11950]: Notes before
+        - generic [ref=f10e11951]: task-020 Notes owner
+        - generic [ref=f10e11952]: Open
+        - generic [ref=f10e11953]: Normal
+        - button "Open project" [ref=f10e11954] [cursor=pointer]
+      - generic [ref=f10e11955]:
+        - generic [ref=f10e11956]: Notes travelling
+        - generic [ref=f10e11957]: task-020 Notes owner
+        - generic [ref=f10e11958]: Open
+        - generic [ref=f10e11959]: Normal
+        - generic [ref=f10e11960]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e11961] [cursor=pointer]
+      - generic [ref=f10e11962]:
+        - generic [ref=f10e11963]: Notes after
+        - generic [ref=f10e11964]: task-020 Notes owner
+        - generic [ref=f10e11965]: Open
+        - generic [ref=f10e11966]: Normal
+        - button "Open project" [ref=f10e11967] [cursor=pointer]
+      - generic [ref=f10e11968]:
+        - generic [ref=f10e11969]: High open first
+        - generic [ref=f10e11970]: task-020 Priority intersection
+        - generic [ref=f10e11971]: Open
+        - generic [ref=f10e11972]: High
+        - button "Open project" [ref=f10e11973] [cursor=pointer]
+      - generic [ref=f10e11974]:
+        - generic [ref=f10e11975]: Low open
+        - generic [ref=f10e11976]: task-020 Priority intersection
+        - generic [ref=f10e11977]: Open
+        - generic [ref=f10e11978]: Low
+        - button "Open project" [ref=f10e11979] [cursor=pointer]
+      - generic [ref=f10e11980]:
+        - generic [ref=f10e11981]: High completed
+        - generic [ref=f10e11982]: task-020 Priority intersection
+        - generic [ref=f10e11983]: Completed
+        - generic [ref=f10e11984]: High
+        - button "Open project" [ref=f10e11985] [cursor=pointer]
+      - generic [ref=f10e11986]:
+        - generic [ref=f10e11987]: High open last
+        - generic [ref=f10e11988]: task-020 Priority intersection
+        - generic [ref=f10e11989]: Open
+        - generic [ref=f10e11990]: High
+        - button "Open project" [ref=f10e11991] [cursor=pointer]
+      - generic [ref=f10e11992]:
+        - generic [ref=f10e11993]: Leaving priority
+        - generic [ref=f10e11994]: task-020 Priority live filters
+        - generic [ref=f10e11995]: Open
+        - generic [ref=f10e11996]: Low
+        - button "Open project" [ref=f10e11997] [cursor=pointer]
+      - generic [ref=f10e11998]:
+        - generic [ref=f10e11999]: Leaving completion
+        - generic [ref=f10e12000]: task-020 Priority live filters
+        - generic [ref=f10e12001]: Open
+        - generic [ref=f10e12002]: High
+        - button "Open project" [ref=f10e12003] [cursor=pointer]
+      - generic [ref=f10e12004]:
+        - generic [ref=f10e12005]: Completed high guard
+        - generic [ref=f10e12006]: task-020 Priority live filters
+        - generic [ref=f10e12007]: Completed
+        - generic [ref=f10e12008]: High
+        - button "Open project" [ref=f10e12009] [cursor=pointer]
+      - generic [ref=f10e12010]:
+        - generic [ref=f10e12011]: Open normal guard
+        - generic [ref=f10e12012]: task-020 Priority live filters
+        - generic [ref=f10e12013]: Open
+        - generic [ref=f10e12014]: Normal
+        - button "Open project" [ref=f10e12015] [cursor=pointer]
+      - generic [ref=f10e12016]:
+        - generic [ref=f10e12017]: Filtered new title
+        - generic [ref=f10e12018]: task-020 Priority rename filters
+        - generic [ref=f10e12019]: Open
+        - generic [ref=f10e12020]: Low
+        - button "Open project" [ref=f10e12021] [cursor=pointer]
+      - generic [ref=f10e12022]:
+        - generic [ref=f10e12023]: Unmatched normal task
+        - generic [ref=f10e12024]: task-020 Priority rename filters
+        - generic [ref=f10e12025]: Open
+        - generic [ref=f10e12026]: Normal
+        - button "Open project" [ref=f10e12027] [cursor=pointer]
+      - generic [ref=f10e12028]:
+        - generic [ref=f10e12029]: Completed low guard
+        - generic [ref=f10e12030]: task-020 Priority rename filters
+        - generic [ref=f10e12031]: Completed
+        - generic [ref=f10e12032]: Low
+        - button "Open project" [ref=f10e12033] [cursor=pointer]
+      - generic [ref=f10e12034]:
+        - generic [ref=f10e12035]: Archived high open
+        - generic [ref=f10e12036]: task-020 Archived combined filters
+        - generic [ref=f10e12037]: Open
+        - generic [ref=f10e12038]: High
+        - button "Open project" [ref=f10e12039] [cursor=pointer]
+      - generic [ref=f10e12040]:
+        - generic [ref=f10e12041]: Archived normal completed
+        - generic [ref=f10e12042]: task-020 Archived combined filters
+        - generic [ref=f10e12043]: Completed
+        - generic [ref=f10e12044]: Normal
+        - button "Open project" [ref=f10e12045] [cursor=pointer]
+      - generic [ref=f10e12046]:
+        - generic [ref=f10e12047]: Priority renamed
+        - generic [ref=f10e12048]: task-020 Priority ownership
+        - generic [ref=f10e12049]: Open
+        - generic [ref=f10e12050]: High
+        - button "Open project" [ref=f10e12051] [cursor=pointer]
+      - generic [ref=f10e12052]:
+        - generic [ref=f10e12053]: Priority second
+        - generic [ref=f10e12054]: task-020 Priority ownership
+        - generic [ref=f10e12055]: Open
+        - generic [ref=f10e12056]: Low
+        - button "Open project" [ref=f10e12057] [cursor=pointer]
+      - generic [ref=f10e12058]:
+        - generic [ref=f10e12059]: Priority other task
+        - generic [ref=f10e12060]: task-020 Priority other owner
+        - generic [ref=f10e12061]: Open
+        - generic [ref=f10e12062]: Normal
+        - button "Open project" [ref=f10e12063] [cursor=pointer]
+      - generic [ref=f10e12064]:
+        - generic [ref=f10e12065]: Priority completed
+        - generic [ref=f10e12066]: task-020 Priority completion
+        - generic [ref=f10e12067]: Completed
+        - generic [ref=f10e12068]: Low
+        - button "Open project" [ref=f10e12069] [cursor=pointer]
+      - generic [ref=f10e12070]:
+        - generic [ref=f10e12071]: Priority open
+        - generic [ref=f10e12072]: task-020 Priority completion
+        - generic [ref=f10e12073]: Open
+        - generic [ref=f10e12074]: High
+        - button "Open project" [ref=f10e12075] [cursor=pointer]
+      - generic [ref=f10e12076]:
+        - generic [ref=f10e12077]: Priority retained
+        - generic [ref=f10e12078]: task-020 Priority archive
+        - generic [ref=f10e12079]: Open
+        - generic [ref=f10e12080]: Normal
+        - button "Open project" [ref=f10e12081] [cursor=pointer]
+      - generic [ref=f10e12082]:
+        - generic [ref=f10e12083]: Return first
+        - generic [ref=f10e12084]: task-020 Return owner
+        - generic [ref=f10e12085]: Open
+        - generic [ref=f10e12086]: Normal
+        - button "Open project" [ref=f10e12087] [cursor=pointer]
+      - generic [ref=f10e12088]:
+        - generic [ref=f10e12089]: Return second
+        - generic [ref=f10e12090]: task-020 Return owner
+        - generic [ref=f10e12091]: Completed
+        - generic [ref=f10e12092]: High
+        - button "Open project" [ref=f10e12093] [cursor=pointer]
+      - generic [ref=f10e12094]:
+        - generic [ref=f10e12095]: Return third
+        - generic [ref=f10e12096]: task-020 Return owner
+        - generic [ref=f10e12097]: Open
+        - generic [ref=f10e12098]: Normal
+        - button "Open project" [ref=f10e12099] [cursor=pointer]
+      - generic [ref=f10e12100]:
+        - generic [ref=f10e12101]: Return fourth
+        - generic [ref=f10e12102]: task-020 Return owner
+        - generic [ref=f10e12103]: Open
+        - generic [ref=f10e12104]: Normal
+        - button "Open project" [ref=f10e12105] [cursor=pointer]
+      - generic [ref=f10e12106]:
+        - generic [ref=f10e12107]: Identity before
+        - generic [ref=f10e12108]: task-020 Returned owner renamed
+        - generic [ref=f10e12109]: Open
+        - generic [ref=f10e12110]: Normal
+        - button "Open project" [ref=f10e12111] [cursor=pointer]
+      - generic [ref=f10e12112]:
+        - generic [ref=f10e12113]: Identity returning
+        - generic [ref=f10e12114]: task-020 Returned owner renamed
+        - generic [ref=f10e12115]: Open
+        - generic [ref=f10e12116]: Normal
+        - button "Open project" [ref=f10e12117] [cursor=pointer]
+      - generic [ref=f10e12118]:
+        - generic [ref=f10e12119]: Identity after
+        - generic [ref=f10e12120]: task-020 Returned owner renamed
+        - generic [ref=f10e12121]: Open
+        - generic [ref=f10e12122]: Normal
+        - button "Open project" [ref=f10e12123] [cursor=pointer]
+      - generic [ref=f10e12124]:
+        - generic [ref=f10e12125]: Second existing
+        - generic [ref=f10e12126]: task-020 Position second owner
+        - generic [ref=f10e12127]: Open
+        - generic [ref=f10e12128]: Normal
+        - button "Open project" [ref=f10e12129] [cursor=pointer]
+      - generic [ref=f10e12130]:
+        - generic [ref=f10e12131]: Second newly created
+        - generic [ref=f10e12132]: task-020 Position second owner
+        - generic [ref=f10e12133]: Open
+        - generic [ref=f10e12134]: Normal
+        - button "Open project" [ref=f10e12135] [cursor=pointer]
+      - generic [ref=f10e12136]:
+        - generic [ref=f10e12137]: First existing
+        - generic [ref=f10e12138]: task-020 Position first owner
+        - generic [ref=f10e12139]: Open
+        - generic [ref=f10e12140]: Normal
+        - button "Open project" [ref=f10e12141] [cursor=pointer]
+      - generic [ref=f10e12142]:
+        - generic [ref=f10e12143]: Position travelling
+        - generic [ref=f10e12144]: task-020 Position first owner
+        - generic [ref=f10e12145]: Open
+        - generic [ref=f10e12146]: Normal
+        - button "Open project" [ref=f10e12147] [cursor=pointer]
+      - generic [ref=f10e12148]:
+        - generic [ref=f10e12149]: First later
+        - generic [ref=f10e12150]: task-020 Position first owner
+        - generic [ref=f10e12151]: Open
+        - generic [ref=f10e12152]: Normal
+        - button "Open project" [ref=f10e12153] [cursor=pointer]
+      - generic [ref=f10e12154]:
+        - generic [ref=f10e12155]: First newly created
+        - generic [ref=f10e12156]: task-020 Position first owner
+        - generic [ref=f10e12157]: Open
+        - generic [ref=f10e12158]: Normal
+        - button "Open project" [ref=f10e12159] [cursor=pointer]
+      - generic [ref=f10e12160]:
+        - generic [ref=f10e12161]: Original task gap
+        - generic [ref=f10e12162]: task-020 Whitespace retained owner
+        - generic [ref=f10e12163]: Open
+        - generic [ref=f10e12164]: High
+        - button "Open project" [ref=f10e12165] [cursor=pointer]
+      - generic [ref=f10e12166]:
+        - generic [ref=f10e12167]: Other task gap
+        - generic [ref=f10e12168]: task-020 Whitespace retained owner
+        - generic [ref=f10e12169]: Open
+        - generic [ref=f10e12170]: High
+        - button "Open project" [ref=f10e12171] [cursor=pointer]
+      - generic [ref=f10e12172]:
+        - generic [ref=f10e12173]: Mixed first
+        - generic [ref=f10e12174]: task-020 Search task intersections
+        - generic [ref=f10e12175]: Open
+        - generic [ref=f10e12176]: High
+        - generic [ref=f10e12177]: 2034-01-01
+        - button "Open project" [ref=f10e12178] [cursor=pointer]
+      - generic [ref=f10e12179]:
+        - generic [ref=f10e12180]: Other high
+        - generic [ref=f10e12181]: task-020 Search task intersections
+        - generic [ref=f10e12182]: Open
+        - generic [ref=f10e12183]: High
+        - generic [ref=f10e12184]: 2034-01-01
+        - button "Open project" [ref=f10e12185] [cursor=pointer]
+      - generic [ref=f10e12186]:
+        - generic [ref=f10e12187]: MIXED completed
+        - generic [ref=f10e12188]: task-020 Search task intersections
+        - generic [ref=f10e12189]: Completed
+        - generic [ref=f10e12190]: High
+        - generic [ref=f10e12191]: 2034-01-01
+        - button "Open project" [ref=f10e12192] [cursor=pointer]
+      - generic [ref=f10e12193]:
+        - generic [ref=f10e12194]: Mixed undated
+        - generic [ref=f10e12195]: task-020 Search task intersections
+        - generic [ref=f10e12196]: Open
+        - generic [ref=f10e12197]: High
+        - button "Open project" [ref=f10e12198] [cursor=pointer]
+      - generic [ref=f10e12199]:
+        - generic [ref=f10e12200]: mixed last
+        - generic [ref=f10e12201]: task-020 Search task intersections
+        - generic [ref=f10e12202]: Open
+        - generic [ref=f10e12203]: High
+        - generic [ref=f10e12204]: 2034-01-01
+        - button "Open project" [ref=f10e12205] [cursor=pointer]
+      - generic [ref=f10e12206]:
+        - generic [ref=f10e12207]: Other normal guard
+        - generic [ref=f10e12208]: task-020 Search task intersections
+        - generic [ref=f10e12209]: Open
+        - generic [ref=f10e12210]: Normal
+        - button "Open project" [ref=f10e12211] [cursor=pointer]
+      - generic [ref=f10e12212]:
+        - generic [ref=f10e12213]: Two spaces
+        - generic [ref=f10e12214]: task-020 Search internal spacing
+        - generic [ref=f10e12215]: Open
+        - generic [ref=f10e12216]: Normal
+        - button "Open project" [ref=f10e12217] [cursor=pointer]
+      - generic [ref=f10e12218]:
+        - generic [ref=f10e12219]: Two spaces sentinel
+        - generic [ref=f10e12220]: task-020 Search internal spacing
+        - generic [ref=f10e12221]: Open
+        - generic [ref=f10e12222]: Normal
+        - button "Open project" [ref=f10e12223] [cursor=pointer]
+      - generic [ref=f10e12224]:
+        - generic [ref=f10e12225]: Task preserved
+        - generic [ref=f10e12226]: task-020 Task reload
+        - generic [ref=f10e12227]: Open
+        - generic [ref=f10e12228]: Normal
+        - button "Open project" [ref=f10e12229] [cursor=pointer]
+      - generic [ref=f10e12230]:
+        - generic [ref=f10e12231]: Private to owner
+        - generic [ref=f10e12232]: task-020 Task owner
+        - generic [ref=f10e12233]: Open
+        - generic [ref=f10e12234]: Normal
+        - button "Open project" [ref=f10e12235] [cursor=pointer]
+      - generic [ref=f10e12236]:
+        - generic [ref=f10e12237]: Done task
+        - generic [ref=f10e12238]: task-020 Task filters
+        - generic [ref=f10e12239]: Open
+        - generic [ref=f10e12240]: Normal
+        - button "Open project" [ref=f10e12241] [cursor=pointer]
+      - generic [ref=f10e12242]:
+        - generic [ref=f10e12243]: Open task
+        - generic [ref=f10e12244]: task-020 Task filters
+        - generic [ref=f10e12245]: Open
+        - generic [ref=f10e12246]: Normal
+        - button "Open project" [ref=f10e12247] [cursor=pointer]
+      - generic [ref=f10e12248]:
+        - generic [ref=f10e12249]: Retained task
+        - generic [ref=f10e12250]: task-020 Archive tasks
+        - generic [ref=f10e12251]: Completed
+        - generic [ref=f10e12252]: Normal
+        - button "Open project" [ref=f10e12253] [cursor=pointer]
+      - generic [ref=f10e12254]:
+        - generic [ref=f10e12255]: Summary one
+        - generic [ref=f10e12256]: task-020 Summary project
+        - generic [ref=f10e12257]: Completed
+        - generic [ref=f10e12258]: Normal
+        - button "Open project" [ref=f10e12259] [cursor=pointer]
+      - generic [ref=f10e12260]:
+        - generic [ref=f10e12261]: Summary two
+        - generic [ref=f10e12262]: task-020 Summary project
+        - generic [ref=f10e12263]: Open
+        - generic [ref=f10e12264]: Normal
+        - button "Open project" [ref=f10e12265] [cursor=pointer]
+      - generic [ref=f10e12266]:
+        - generic [ref=f10e12267]: Identity task
+        - generic [ref=f10e12268]: task-020 Identity updated
+        - generic [ref=f10e12269]: Completed
+        - generic [ref=f10e12270]: Normal
+        - button "Open project" [ref=f10e12271] [cursor=pointer]
+      - generic [ref=f10e12272]:
+        - generic [ref=f10e12273]: Name updated
+        - generic [ref=f10e12274]: task-020 Task rename identity
+        - generic [ref=f10e12275]: Completed
+        - generic [ref=f10e12276]: Normal
+        - button "Open project" [ref=f10e12277] [cursor=pointer]
+      - generic [ref=f10e12278]:
+        - generic [ref=f10e12279]: Name second
+        - generic [ref=f10e12280]: task-020 Task rename identity
+        - generic [ref=f10e12281]: Open
+        - generic [ref=f10e12282]: Normal
+        - button "Open project" [ref=f10e12283] [cursor=pointer]
+      - generic [ref=f10e12284]:
+        - generic [ref=f10e12285]: Kept title
+        - generic [ref=f10e12286]: task-020 Task rename invalid
+        - generic [ref=f10e12287]: Open
+        - generic [ref=f10e12288]: Normal
+        - button "Open project" [ref=f10e12289] [cursor=pointer]
+      - generic [ref=f10e12290]:
+        - generic [ref=f10e12291]: Archived title
+        - generic [ref=f10e12292]: task-020 Task rename archive
+        - generic [ref=f10e12293]: Open
+        - generic [ref=f10e12294]: Normal
+        - button "Open project" [ref=f10e12295] [cursor=pointer]
+      - generic [ref=f10e12296]:
+        - generic [ref=f10e12297]: task-021 Bulk match first
+        - generic [ref=f10e12298]: task-021 Bulk first owner
+        - generic [ref=f10e12299]: Open
+        - generic [ref=f10e12300]: High
+        - generic [ref=f10e12301]: 2050-01-01
+        - generic [ref=f10e12302]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e12303] [cursor=pointer]
+      - generic [ref=f10e12304]:
+        - generic [ref=f10e12305]: task-021 Bulk match low
+        - generic [ref=f10e12306]: task-021 Bulk first owner
+        - generic [ref=f10e12307]: Open
+        - generic [ref=f10e12308]: Low
+        - generic [ref=f10e12309]: 2050-01-01
+        - button "Open project" [ref=f10e12310] [cursor=pointer]
+      - generic [ref=f10e12311]:
+        - generic [ref=f10e12312]: task-021 Bulk match done
+        - generic [ref=f10e12313]: task-021 Bulk first owner
+        - generic [ref=f10e12314]: Open
+        - generic [ref=f10e12315]: High
+        - generic [ref=f10e12316]: 2050-01-01
+        - button "Open project" [ref=f10e12317] [cursor=pointer]
+      - generic [ref=f10e12318]:
+        - generic [ref=f10e12319]: task-021 Bulk other title
+        - generic [ref=f10e12320]: task-021 Bulk first owner
+        - generic [ref=f10e12321]: Open
+        - generic [ref=f10e12322]: High
+        - generic [ref=f10e12323]: 2050-01-01
+        - button "Open project" [ref=f10e12324] [cursor=pointer]
+      - generic [ref=f10e12325]:
+        - generic [ref=f10e12326]: task-021 Bulk match later
+        - generic [ref=f10e12327]: task-021 Bulk first owner
+        - generic [ref=f10e12328]: Open
+        - generic [ref=f10e12329]: High
+        - generic [ref=f10e12330]: 2050-01-02
+        - button "Open project" [ref=f10e12331] [cursor=pointer]
+      - generic [ref=f10e12332]:
+        - generic [ref=f10e12333]: task-021 Bulk match second
+        - generic [ref=f10e12334]: task-021 Bulk first owner
+        - generic [ref=f10e12335]: Open
+        - generic [ref=f10e12336]: High
+        - generic [ref=f10e12337]: 2050-01-01
+        - generic [ref=f10e12338]: Second original note
+        - button "Open project" [ref=f10e12339] [cursor=pointer]
+      - generic [ref=f10e12340]:
+        - generic [ref=f10e12341]: Bulk later reservation sentinel
+        - generic [ref=f10e12342]: task-021 Bulk first owner
+        - generic [ref=f10e12343]: Open
+        - generic [ref=f10e12344]: Normal
+        - button "Open project" [ref=f10e12345] [cursor=pointer]
+      - generic [ref=f10e12346]:
+        - generic [ref=f10e12347]: task-021 Bulk match second done
+        - generic [ref=f10e12348]: task-021 Bulk second owner
+        - generic [ref=f10e12349]: Open
+        - generic [ref=f10e12350]: High
+        - generic [ref=f10e12351]: 2050-01-01
+        - button "Open project" [ref=f10e12352] [cursor=pointer]
+      - generic [ref=f10e12353]:
+        - generic [ref=f10e12354]: task-021 Bulk match undated
+        - generic [ref=f10e12355]: task-021 Bulk second owner
+        - generic [ref=f10e12356]: Open
+        - generic [ref=f10e12357]: High
+        - button "Open project" [ref=f10e12358] [cursor=pointer]
+      - generic [ref=f10e12359]:
+        - generic [ref=f10e12360]: task-021 Protected live
+        - generic [ref=f10e12361]: task-021 Bulk protected
+        - generic [ref=f10e12362]: Completed
+        - generic [ref=f10e12363]: Low
+        - generic [ref=f10e12364]: 2051-01-01
+        - button "Open project" [ref=f10e12365] [cursor=pointer]
+      - generic [ref=f10e12366]:
+        - generic [ref=f10e12367]: task-021 Bulk restart record Bulk restart first
+        - generic [ref=f10e12368]: task-021 Bulk restart first
+        - generic [ref=f10e12369]: Completed
+        - generic [ref=f10e12370]: High
+        - generic [ref=f10e12371]: 2052-02-29
+        - generic [ref=f10e12372]: Bulk restart Ω original
+        - button "Open project" [ref=f10e12373] [cursor=pointer]
+      - generic [ref=f10e12374]:
+        - generic [ref=f10e12375]: task-021 Bulk restart record Bulk restart second
+        - generic [ref=f10e12376]: task-021 Bulk restart second
+        - generic [ref=f10e12377]: Completed
+        - generic [ref=f10e12378]: High
+        - generic [ref=f10e12379]: 2052-02-29
+        - generic [ref=f10e12380]: Bulk restart Ω original
+        - button "Open project" [ref=f10e12381] [cursor=pointer]
+      - generic [ref=f10e12382]:
+        - generic [ref=f10e12383]: Independent normal
+        - generic [ref=f10e12384]: task-021 Defaults independent
+        - generic [ref=f10e12385]: Open
+        - generic [ref=f10e12386]: Normal
+        - button "Open project" [ref=f10e12387] [cursor=pointer]
+      - generic [ref=f10e12388]:
+        - generic [ref=f10e12389]: Before default change
+        - generic [ref=f10e12390]: task-021 Defaults inheritance
+        - generic [ref=f10e12391]: Completed
+        - generic [ref=f10e12392]: Normal
+        - button "Open project" [ref=f10e12393] [cursor=pointer]
+      - generic [ref=f10e12394]:
+        - generic [ref=f10e12395]: Inherited high
+        - generic [ref=f10e12396]: task-021 Defaults inheritance
+        - generic [ref=f10e12397]: Open
+        - generic [ref=f10e12398]: High
+        - button "Open project" [ref=f10e12399] [cursor=pointer]
+      - generic [ref=f10e12400]:
+        - generic [ref=f10e12401]: Inherited low
+        - generic [ref=f10e12402]: task-021 Defaults inheritance
+        - generic [ref=f10e12403]: Open
+        - generic [ref=f10e12404]: Low
+        - button "Open project" [ref=f10e12405] [cursor=pointer]
+      - generic [ref=f10e12406]:
+        - generic [ref=f10e12407]: Inherited normal
+        - generic [ref=f10e12408]: task-021 Defaults inheritance
+        - generic [ref=f10e12409]: Open
+        - generic [ref=f10e12410]: Normal
+        - button "Open project" [ref=f10e12411] [cursor=pointer]
+      - generic [ref=f10e12412]:
+        - generic [ref=f10e12413]: Lifecycle task
+        - generic [ref=f10e12414]: task-021 Defaults renamed
+        - generic [ref=f10e12415]: Open
+        - generic [ref=f10e12416]: Low
+        - button "Open project" [ref=f10e12417] [cursor=pointer]
+      - generic [ref=f10e12418]:
+        - generic [ref=f10e12419]: Restored inherits
+        - generic [ref=f10e12420]: task-021 Defaults renamed
+        - generic [ref=f10e12421]: Open
+        - generic [ref=f10e12422]: Low
+        - button "Open project" [ref=f10e12423] [cursor=pointer]
+      - generic [ref=f10e12424]:
+        - generic [ref=f10e12425]: Live before
+        - generic [ref=f10e12426]: task-021 Deletion fields
+        - generic [ref=f10e12427]: Open
+        - generic [ref=f10e12428]: Normal
+        - button "Open project" [ref=f10e12429] [cursor=pointer]
+      - generic [ref=f10e12430]:
+        - generic [ref=f10e12431]: Live after
+        - generic [ref=f10e12432]: task-021 Deletion fields
+        - generic [ref=f10e12433]: Open
+        - generic [ref=f10e12434]: Normal
+        - button "Open project" [ref=f10e12435] [cursor=pointer]
+      - generic [ref=f10e12436]:
+        - generic [ref=f10e12437]: Completed remove sentinel
+        - generic [ref=f10e12438]: task-021 Deletion fields
+        - generic [ref=f10e12439]: Completed
+        - generic [ref=f10e12440]: High
+        - generic [ref=f10e12441]: 2036-02-29
+        - button "Open project" [ref=f10e12442] [cursor=pointer]
+      - generic [ref=f10e12443]:
+        - generic [ref=f10e12444]: Completed remove outside
+        - generic [ref=f10e12445]: task-021 Deletion fields
+        - generic [ref=f10e12446]: Completed
+        - generic [ref=f10e12447]: High
+        - generic [ref=f10e12448]: 2037-01-01
+        - button "Open project" [ref=f10e12449] [cursor=pointer]
+      - generic [ref=f10e12450]:
+        - generic [ref=f10e12451]: Completed normal exclusion
+        - generic [ref=f10e12452]: task-021 Deletion fields
+        - generic [ref=f10e12453]: Completed
+        - generic [ref=f10e12454]: Normal
+        - button "Open project" [ref=f10e12455] [cursor=pointer]
+      - generic [ref=f10e12456]:
+        - generic [ref=f10e12457]: Completed unrelated high
+        - generic [ref=f10e12458]: task-021 Deletion fields
+        - generic [ref=f10e12459]: Completed
+        - generic [ref=f10e12460]: High
+        - button "Open project" [ref=f10e12461] [cursor=pointer]
+      - generic [ref=f10e12462]:
+        - generic [ref=f10e12463]: Target first
+        - generic [ref=f10e12464]: task-021 Deletion target
+        - generic [ref=f10e12465]: Open
+        - generic [ref=f10e12466]: Normal
+        - button "Open project" [ref=f10e12467] [cursor=pointer]
+      - generic [ref=f10e12468]:
+        - generic [ref=f10e12469]: Reserved
+        - generic [ref=f10e12470]: task-021 Deletion target
+        - generic [ref=f10e12471]: Completed
+        - generic [ref=f10e12472]: High
+        - generic [ref=f10e12473]: 2037-01-01
+        - generic [ref=f10e12474]: Restore original note
+        - button "Open project" [ref=f10e12475] [cursor=pointer]
+      - generic [ref=f10e12476]:
+        - generic [ref=f10e12477]: Target later
+        - generic [ref=f10e12478]: task-021 Deletion target
+        - generic [ref=f10e12479]: Open
+        - generic [ref=f10e12480]: Normal
+        - button "Open project" [ref=f10e12481] [cursor=pointer]
+      - generic [ref=f10e12482]:
+        - generic [ref=f10e12483]: Before
+        - generic [ref=f10e12484]: task-021 Deletion order
+        - generic [ref=f10e12485]: Open
+        - generic [ref=f10e12486]: Normal
+        - button "Open project" [ref=f10e12487] [cursor=pointer]
+      - generic [ref=f10e12488]:
+        - generic [ref=f10e12489]: After
+        - generic [ref=f10e12490]: task-021 Deletion order
+        - generic [ref=f10e12491]: Open
+        - generic [ref=f10e12492]: Normal
+        - button "Open project" [ref=f10e12493] [cursor=pointer]
+      - generic [ref=f10e12494]:
+        - generic [ref=f10e12495]: New arrival
+        - generic [ref=f10e12496]: task-021 Deletion order
+        - generic [ref=f10e12497]: Open
+        - generic [ref=f10e12498]: Normal
+        - button "Open project" [ref=f10e12499] [cursor=pointer]
+      - generic [ref=f10e12500]:
+        - generic [ref=f10e12501]: task-021 Order stable zulu
+        - generic [ref=f10e12502]: task-021 Ordering Zulu owner
+        - generic [ref=f10e12503]: Open
+        - generic [ref=f10e12504]: High
+        - generic [ref=f10e12505]: 2053-02-01
+        - button "Open project" [ref=f10e12506] [cursor=pointer]
+      - generic [ref=f10e12507]:
+        - generic [ref=f10e12508]: task-021 Order stable bravo
+        - generic [ref=f10e12509]: task-021 Ordering Zulu owner
+        - generic [ref=f10e12510]: Open
+        - generic [ref=f10e12511]: Low
+        - button "Open project" [ref=f10e12512] [cursor=pointer]
+      - generic [ref=f10e12513]:
+        - generic [ref=f10e12514]: task-021 Order stable Alpha
+        - generic [ref=f10e12515]: task-021 Ordering Zulu owner
+        - generic [ref=f10e12516]: Open
+        - generic [ref=f10e12517]: Normal
+        - generic [ref=f10e12518]: 2053-01-01
+        - button "Open project" [ref=f10e12519] [cursor=pointer]
+      - generic [ref=f10e12520]:
+        - generic [ref=f10e12521]: task-021 Order stable ALPHA
+        - generic [ref=f10e12522]: task-021 Ordering Alpha owner
+        - generic [ref=f10e12523]: Open
+        - generic [ref=f10e12524]: Normal
+        - generic [ref=f10e12525]: 2053-01-01
+        - button "Open project" [ref=f10e12526] [cursor=pointer]
+      - generic [ref=f10e12527]:
+        - generic [ref=f10e12528]: task-021 Order stable bravo
+        - generic [ref=f10e12529]: task-021 Ordering Alpha owner
+        - generic [ref=f10e12530]: Open
+        - generic [ref=f10e12531]: High
+        - generic [ref=f10e12532]: 2053-02-01
+        - button "Open project" [ref=f10e12533] [cursor=pointer]
+      - generic [ref=f10e12534]:
+        - generic [ref=f10e12535]: task-021 Order action alpha
+        - generic [ref=f10e12536]: task-021 Ordering actions owner
+        - generic [ref=f10e12537]: Completed
+        - generic [ref=f10e12538]: High
+        - generic [ref=f10e12539]: 2054-02-01
+        - button "Open project" [ref=f10e12540] [cursor=pointer]
+      - generic [ref=f10e12541]:
+        - generic [ref=f10e12542]: task-021 Order action zulu
+        - generic [ref=f10e12543]: task-021 Ordering actions owner
+        - generic [ref=f10e12544]: Completed
+        - generic [ref=f10e12545]: High
+        - generic [ref=f10e12546]: 2054-01-01
+        - button "Open project" [ref=f10e12547] [cursor=pointer]
+      - generic [ref=f10e12548]:
+        - generic [ref=f10e12549]: task-021 Order action middle
+        - generic [ref=f10e12550]: task-021 Ordering actions owner
+        - generic [ref=f10e12551]: Open
+        - generic [ref=f10e12552]: High
+        - button "Open project" [ref=f10e12553] [cursor=pointer]
+      - generic [ref=f10e12554]:
+        - generic [ref=f10e12555]: task-021 Order action low
+        - generic [ref=f10e12556]: task-021 Ordering actions owner
+        - generic [ref=f10e12557]: Open
+        - generic [ref=f10e12558]: Low
+        - generic [ref=f10e12559]: 2054-01-01
+        - button "Open project" [ref=f10e12560] [cursor=pointer]
+      - generic [ref=f10e12561]:
+        - generic [ref=f10e12562]: task-021 Order action done
+        - generic [ref=f10e12563]: task-021 Ordering actions owner
+        - generic [ref=f10e12564]: Completed
+        - generic [ref=f10e12565]: High
+        - generic [ref=f10e12566]: 2054-01-01
+        - button "Open project" [ref=f10e12567] [cursor=pointer]
+      - generic [ref=f10e12568]:
+        - generic [ref=f10e12569]: task-021 Order protected active guard
+        - generic [ref=f10e12570]: task-021 Ordering active guard owner
+        - generic [ref=f10e12571]: Open
+        - generic [ref=f10e12572]: Normal
+        - button "Open project" [ref=f10e12573] [cursor=pointer]
+      - generic [ref=f10e12574]:
+        - generic [ref=f10e12575]: task-021 Order Unicode å
+        - generic [ref=f10e12576]: task-021 Ordering Unicode owner
+        - generic [ref=f10e12577]: Open
+        - generic [ref=f10e12578]: Normal
+        - button "Open project" [ref=f10e12579] [cursor=pointer]
+      - generic [ref=f10e12580]:
+        - generic [ref=f10e12581]: task-021 Order Unicode Å
+        - generic [ref=f10e12582]: task-021 Ordering Unicode owner
+        - generic [ref=f10e12583]: Open
+        - generic [ref=f10e12584]: Normal
+        - button "Open project" [ref=f10e12585] [cursor=pointer]
+      - generic [ref=f10e12586]:
+        - generic [ref=f10e12587]: task-021 Order Unicode 🙂
+        - generic [ref=f10e12588]: task-021 Ordering Unicode owner
+        - generic [ref=f10e12589]: Open
+        - generic [ref=f10e12590]: Normal
+        - button "Open project" [ref=f10e12591] [cursor=pointer]
+      - generic [ref=f10e12592]:
+        - generic [ref=f10e12593]: task-021 Order Unicode 
+        - generic [ref=f10e12594]: task-021 Ordering Unicode owner
+        - generic [ref=f10e12595]: Open
+        - generic [ref=f10e12596]: Normal
+        - button "Open project" [ref=f10e12597] [cursor=pointer]
+      - generic [ref=f10e12598]:
+        - generic [ref=f10e12599]: task-021 Directory Zulu
+        - generic [ref=f10e12600]: task-021 Directory Zulu owner
+        - generic [ref=f10e12601]: Open
+        - generic [ref=f10e12602]: High
+        - generic [ref=f10e12603]: 2045-01-01
+        - generic [ref=f10e12604]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e12605] [cursor=pointer]
+      - generic [ref=f10e12606]:
+        - generic [ref=f10e12607]: task-021 Directory Alpha
+        - generic [ref=f10e12608]: task-021 Directory Zulu owner
+        - generic [ref=f10e12609]: Completed
+        - generic [ref=f10e12610]: Low
+        - button "Open project" [ref=f10e12611] [cursor=pointer]
+      - generic [ref=f10e12612]:
+        - generic [ref=f10e12613]: Foreign directory title
+        - generic [ref=f10e12614]: task-021 Directory Zulu owner
+        - generic [ref=f10e12615]: Open
+        - generic [ref=f10e12616]: Normal
+        - generic [ref=f10e12617]: task-021 Directory notes only
+        - button "Open project" [ref=f10e12618] [cursor=pointer]
+      - generic [ref=f10e12619]:
+        - generic [ref=f10e12620]: task-021 Directory Mid
+        - generic [ref=f10e12621]: task-021 Directory Alpha owner
+        - generic [ref=f10e12622]: Open
+        - generic [ref=f10e12623]: Normal
+        - button "Open project" [ref=f10e12624] [cursor=pointer]
+      - generic [ref=f10e12625]:
+        - generic [ref=f10e12626]: task-021 Filter hit
+        - generic [ref=f10e12627]: task-021 Directory filter owner
+        - generic [ref=f10e12628]: Open
+        - generic [ref=f10e12629]: High
+        - generic [ref=f10e12630]: 2046-03-01
+        - button "Open project" [ref=f10e12631] [cursor=pointer]
+      - generic [ref=f10e12632]:
+        - generic [ref=f10e12633]: task-021 Filter done
+        - generic [ref=f10e12634]: task-021 Directory filter owner
+        - generic [ref=f10e12635]: Completed
+        - generic [ref=f10e12636]: High
+        - generic [ref=f10e12637]: 2046-03-01
+        - button "Open project" [ref=f10e12638] [cursor=pointer]
+      - generic [ref=f10e12639]:
+        - generic [ref=f10e12640]: task-021 Filter low
+        - generic [ref=f10e12641]: task-021 Directory filter owner
+        - generic [ref=f10e12642]: Open
+        - generic [ref=f10e12643]: Low
+        - generic [ref=f10e12644]: 2046-03-01
+        - button "Open project" [ref=f10e12645] [cursor=pointer]
+      - generic [ref=f10e12646]:
+        - generic [ref=f10e12647]: task-021 Filter undated
+        - generic [ref=f10e12648]: task-021 Directory filter owner
+        - generic [ref=f10e12649]: Open
+        - generic [ref=f10e12650]: High
+        - button "Open project" [ref=f10e12651] [cursor=pointer]
+      - generic [ref=f10e12652]:
+        - generic [ref=f10e12653]: task-021 Filter outside
+        - generic [ref=f10e12654]: task-021 Directory filter owner
+        - generic [ref=f10e12655]: Open
+        - generic [ref=f10e12656]: High
+        - generic [ref=f10e12657]: 2046-04-01
+        - button "Open project" [ref=f10e12658] [cursor=pointer]
+      - generic [ref=f10e12659]:
+        - generic [ref=f10e12660]: task-021 Gap task
+        - generic [ref=f10e12661]: task-021 Directory whitespace
+        - generic [ref=f10e12662]: Open
+        - generic [ref=f10e12663]: Normal
+        - button "Open project" [ref=f10e12664] [cursor=pointer]
+      - generic [ref=f10e12665]:
+        - generic [ref=f10e12666]: Calendar renamed
+        - generic [ref=f10e12667]: task-021 Calendar persistence
+        - generic [ref=f10e12668]: Open
+        - generic [ref=f10e12669]: Normal
+        - button "Open project" [ref=f10e12670] [cursor=pointer]
+      - generic [ref=f10e12671]:
+        - generic [ref=f10e12672]: Calendar valid
+        - generic [ref=f10e12673]: task-021 Calendar validation
+        - generic [ref=f10e12674]: Open
+        - generic [ref=f10e12675]: Normal
+        - generic [ref=f10e12676]: 2028-04-30
+        - button "Open project" [ref=f10e12677] [cursor=pointer]
+      - generic [ref=f10e12678]:
+        - generic [ref=f10e12679]: Dated first
+        - generic [ref=f10e12680]: task-021 Calendar independence
+        - generic [ref=f10e12681]: Completed
+        - generic [ref=f10e12682]: High
+        - generic [ref=f10e12683]: 2029-01-01
+        - button "Open project" [ref=f10e12684] [cursor=pointer]
+      - generic [ref=f10e12685]:
+        - generic [ref=f10e12686]: Undated second
+        - generic [ref=f10e12687]: task-021 Calendar independence
+        - generic [ref=f10e12688]: Open
+        - generic [ref=f10e12689]: Normal
+        - button "Open project" [ref=f10e12690] [cursor=pointer]
+      - generic [ref=f10e12691]:
+        - generic [ref=f10e12692]: Completed normal guard
+        - generic [ref=f10e12693]: task-021 Calendar independence
+        - generic [ref=f10e12694]: Completed
+        - generic [ref=f10e12695]: Normal
+        - button "Open project" [ref=f10e12696] [cursor=pointer]
+      - generic [ref=f10e12697]:
+        - generic [ref=f10e12698]: Owner task
+        - generic [ref=f10e12699]: task-021 Calendar second owner
+        - generic [ref=f10e12700]: Open
+        - generic [ref=f10e12701]: Normal
+        - button "Open project" [ref=f10e12702] [cursor=pointer]
+      - generic [ref=f10e12703]:
+        - generic [ref=f10e12704]: Archive dated
+        - generic [ref=f10e12705]: task-021 Calendar archival
+        - generic [ref=f10e12706]: Open
+        - generic [ref=f10e12707]: Normal
+        - generic [ref=f10e12708]: 2030-12-31
+        - button "Open project" [ref=f10e12709] [cursor=pointer]
+      - generic [ref=f10e12710]:
+        - generic [ref=f10e12711]: Before range
+        - generic [ref=f10e12712]: task-021 Range boundaries
+        - generic [ref=f10e12713]: Open
+        - generic [ref=f10e12714]: Normal
+        - generic [ref=f10e12715]: 2028-02-28
+        - button "Open project" [ref=f10e12716] [cursor=pointer]
+      - generic [ref=f10e12717]:
+        - generic [ref=f10e12718]: Range first
+        - generic [ref=f10e12719]: task-021 Range boundaries
+        - generic [ref=f10e12720]: Open
+        - generic [ref=f10e12721]: Normal
+        - generic [ref=f10e12722]: 2028-02-29
+        - button "Open project" [ref=f10e12723] [cursor=pointer]
+      - generic [ref=f10e12724]:
+        - generic [ref=f10e12725]: No calendar date
+        - generic [ref=f10e12726]: task-021 Range boundaries
+        - generic [ref=f10e12727]: Open
+        - generic [ref=f10e12728]: Normal
+        - button "Open project" [ref=f10e12729] [cursor=pointer]
+      - generic [ref=f10e12730]:
+        - generic [ref=f10e12731]: Range last
+        - generic [ref=f10e12732]: task-021 Range boundaries
+        - generic [ref=f10e12733]: Open
+        - generic [ref=f10e12734]: Normal
+        - generic [ref=f10e12735]: 2028-03-02
+        - button "Open project" [ref=f10e12736] [cursor=pointer]
+      - generic [ref=f10e12737]:
+        - generic [ref=f10e12738]: After range
+        - generic [ref=f10e12739]: task-021 Range boundaries
+        - generic [ref=f10e12740]: Open
+        - generic [ref=f10e12741]: Normal
+        - generic [ref=f10e12742]: 2028-03-03
+        - button "Open project" [ref=f10e12743] [cursor=pointer]
+      - generic [ref=f10e12744]:
+        - generic [ref=f10e12745]: Range matching
+        - generic [ref=f10e12746]: task-021 Range intersections
+        - generic [ref=f10e12747]: Open
+        - generic [ref=f10e12748]: High
+        - generic [ref=f10e12749]: 2029-02-01
+        - button "Open project" [ref=f10e12750] [cursor=pointer]
+      - generic [ref=f10e12751]:
+        - generic [ref=f10e12752]: Range low
+        - generic [ref=f10e12753]: task-021 Range intersections
+        - generic [ref=f10e12754]: Open
+        - generic [ref=f10e12755]: Normal
+        - generic [ref=f10e12756]: 2029-01-15
+        - button "Open project" [ref=f10e12757] [cursor=pointer]
+      - generic [ref=f10e12758]:
+        - generic [ref=f10e12759]: Range completed
+        - generic [ref=f10e12760]: task-021 Range intersections
+        - generic [ref=f10e12761]: Open
+        - generic [ref=f10e12762]: Low
+        - generic [ref=f10e12763]: 2029-01-15
+        - button "Open project" [ref=f10e12764] [cursor=pointer]
+      - generic [ref=f10e12765]:
+        - generic [ref=f10e12766]: Range undated
+        - generic [ref=f10e12767]: task-021 Range intersections
+        - generic [ref=f10e12768]: Open
+        - generic [ref=f10e12769]: High
+        - button "Open project" [ref=f10e12770] [cursor=pointer]
+      - generic [ref=f10e12771]:
+        - generic [ref=f10e12772]: Valid member
+        - generic [ref=f10e12773]: task-021 Range validation
+        - generic [ref=f10e12774]: Open
+        - generic [ref=f10e12775]: Normal
+        - generic [ref=f10e12776]: 2028-06-15
+        - button "Open project" [ref=f10e12777] [cursor=pointer]
+      - generic [ref=f10e12778]:
+        - generic [ref=f10e12779]: Undated outsider
+        - generic [ref=f10e12780]: task-021 Range validation
+        - generic [ref=f10e12781]: Open
+        - generic [ref=f10e12782]: Normal
+        - button "Open project" [ref=f10e12783] [cursor=pointer]
+      - generic [ref=f10e12784]:
+        - generic [ref=f10e12785]: Archived date renamed
+        - generic [ref=f10e12786]: task-021 Range archival
+        - generic [ref=f10e12787]: Open
+        - generic [ref=f10e12788]: Normal
+        - generic [ref=f10e12789]: 2030-01-01
+        - button "Open project" [ref=f10e12790] [cursor=pointer]
+      - generic [ref=f10e12791]:
+        - generic [ref=f10e12792]: Archived undated outsider
+        - generic [ref=f10e12793]: task-021 Range archival
+        - generic [ref=f10e12794]: Open
+        - generic [ref=f10e12795]: Normal
+        - button "Open project" [ref=f10e12796] [cursor=pointer]
+      - generic [ref=f10e12797]:
+        - generic [ref=f10e12798]: Retained range member
+        - generic [ref=f10e12799]: task-021 Range owner renamed
+        - generic [ref=f10e12800]: Open
+        - generic [ref=f10e12801]: High
+        - generic [ref=f10e12802]: 2031-03-01
+        - button "Open project" [ref=f10e12803] [cursor=pointer]
+      - generic [ref=f10e12804]:
+        - generic [ref=f10e12805]: Retained undated outsider
+        - generic [ref=f10e12806]: task-021 Range owner renamed
+        - generic [ref=f10e12807]: Open
+        - generic [ref=f10e12808]: Normal
+        - button "Open project" [ref=f10e12809] [cursor=pointer]
+      - generic [ref=f10e12810]:
+        - generic [ref=f10e12811]: Created outside range
+        - generic [ref=f10e12812]: task-021 Range owner renamed
+        - generic [ref=f10e12813]: Open
+        - generic [ref=f10e12814]: Low
+        - button "Open project" [ref=f10e12815] [cursor=pointer]
+      - generic [ref=f10e12816]:
+        - generic [ref=f10e12817]: Must not export
+        - generic [ref=f10e12818]: task-021 Export foreign
+        - generic [ref=f10e12819]: Open
+        - generic [ref=f10e12820]: Normal
+        - button "Open project" [ref=f10e12821] [cursor=pointer]
+      - generic [ref=f10e12822]:
+        - generic [ref=f10e12823]: Export before
+        - generic [ref=f10e12824]: task-021 Export full Ω
+        - generic [ref=f10e12825]: Open
+        - generic [ref=f10e12826]: Normal
+        - button "Open project" [ref=f10e12827] [cursor=pointer]
+      - generic [ref=f10e12828]:
+        - generic [ref=f10e12829]: Export after
+        - generic [ref=f10e12830]: task-021 Export full Ω
+        - generic [ref=f10e12831]: Open
+        - generic [ref=f10e12832]: Normal
+        - button "Open project" [ref=f10e12833] [cursor=pointer]
+      - generic [ref=f10e12834]:
+        - generic [ref=f10e12835]: Imported before
+        - generic [ref=f10e12836]: task-021 Import origin
+        - generic [ref=f10e12837]: Open
+        - generic [ref=f10e12838]: Normal
+        - button "Open project" [ref=f10e12839] [cursor=pointer]
+      - generic [ref=f10e12840]:
+        - generic [ref=f10e12841]: Imported after
+        - generic [ref=f10e12842]: task-021 Import origin
+        - generic [ref=f10e12843]: Open
+        - generic [ref=f10e12844]: Normal
+        - button "Open project" [ref=f10e12845] [cursor=pointer]
+      - generic [ref=f10e12846]:
+        - generic [ref=f10e12847]: Imported before
+        - generic [ref=f10e12848]: task-021 Import copy
+        - generic [ref=f10e12849]: Open
+        - generic [ref=f10e12850]: Normal
+        - button "Open project" [ref=f10e12851] [cursor=pointer]
+      - generic [ref=f10e12852]:
+        - generic [ref=f10e12853]: Imported reserved
+        - generic [ref=f10e12854]: task-021 Import copy
+        - generic [ref=f10e12855]: Completed
+        - generic [ref=f10e12856]: High
+        - generic [ref=f10e12857]: 2040-02-29
+        - generic [ref=f10e12858]: Changed only copy
+        - button "Open project" [ref=f10e12859] [cursor=pointer]
+      - generic [ref=f10e12860]:
+        - generic [ref=f10e12861]: Imported after
+        - generic [ref=f10e12862]: task-021 Import copy
+        - generic [ref=f10e12863]: Open
+        - generic [ref=f10e12864]: Normal
+        - button "Open project" [ref=f10e12865] [cursor=pointer]
+      - generic [ref=f10e12866]:
+        - generic [ref=f10e12867]: Imported arrival
+        - generic [ref=f10e12868]: task-021 Import copy
+        - generic [ref=f10e12869]: Open
+        - generic [ref=f10e12870]: Low
+        - button "Open project" [ref=f10e12871] [cursor=pointer]
+      - generic [ref=f10e12872]:
+        - generic [ref=f10e12873]: Guard retained
+        - generic [ref=f10e12874]: task-021 Parse guard existing
+        - generic [ref=f10e12875]: Open
+        - generic [ref=f10e12876]: Normal
+        - button "Open project" [ref=f10e12877] [cursor=pointer]
+      - generic [ref=f10e12878]:
+        - generic [ref=f10e12879]: Guard retained
+        - generic [ref=f10e12880]: task-021 Task guard existing
+        - generic [ref=f10e12881]: Open
+        - generic [ref=f10e12882]: Normal
+        - button "Open project" [ref=f10e12883] [cursor=pointer]
+      - generic [ref=f10e12884]:
+        - generic [ref=f10e12885]: Imported live
+        - generic [ref=f10e12886]: task-021 Import restart
+        - generic [ref=f10e12887]: Open
+        - generic [ref=f10e12888]: Low
+        - generic [ref=f10e12889]: 2044-02-29
+        - generic [ref=f10e12890]: Live import
+        - button "Open project" [ref=f10e12891] [cursor=pointer]
+      - generic [ref=f10e12892]:
+        - generic [ref=f10e12893]: Target first
+        - generic [ref=f10e12894]: task-021 Transfer target
+        - generic [ref=f10e12895]: Open
+        - generic [ref=f10e12896]: Normal
+        - button "Open project" [ref=f10e12897] [cursor=pointer]
+      - generic [ref=f10e12898]:
+        - generic [ref=f10e12899]: Target second
+        - generic [ref=f10e12900]: task-021 Transfer target
+        - generic [ref=f10e12901]: Open
+        - generic [ref=f10e12902]: Normal
+        - button "Open project" [ref=f10e12903] [cursor=pointer]
+      - generic [ref=f10e12904]:
+        - generic [ref=f10e12905]: Transferred complete
+        - generic [ref=f10e12906]: task-021 Transfer target
+        - generic [ref=f10e12907]: Completed
+        - generic [ref=f10e12908]: High
+        - generic [ref=f10e12909]: 2032-02-29
+        - button "Open project" [ref=f10e12910] [cursor=pointer]
+      - generic [ref=f10e12911]:
+        - generic [ref=f10e12912]: Source remaining
+        - generic [ref=f10e12913]: task-021 Transfer source
+        - generic [ref=f10e12914]: Open
+        - generic [ref=f10e12915]: Normal
+        - button "Open project" [ref=f10e12916] [cursor=pointer]
+      - generic [ref=f10e12917]:
+        - generic [ref=f10e12918]: Filtered target sentinel
+        - generic [ref=f10e12919]: task-021 Filtered transfer target
+        - generic [ref=f10e12920]: Open
+        - generic [ref=f10e12921]: Normal
+        - button "Open project" [ref=f10e12922] [cursor=pointer]
+      - generic [ref=f10e12923]:
+        - generic [ref=f10e12924]: Filtered moving
+        - generic [ref=f10e12925]: task-021 Filtered transfer target
+        - generic [ref=f10e12926]: Open
+        - generic [ref=f10e12927]: High
+        - generic [ref=f10e12928]: 2033-01-01
+        - button "Open project" [ref=f10e12929] [cursor=pointer]
+      - generic [ref=f10e12930]:
+        - generic [ref=f10e12931]: Filtered first
+        - generic [ref=f10e12932]: task-021 Filtered transfer source
+        - generic [ref=f10e12933]: Open
+        - generic [ref=f10e12934]: High
+        - generic [ref=f10e12935]: 2033-01-01
+        - button "Open project" [ref=f10e12936] [cursor=pointer]
+      - generic [ref=f10e12937]:
+        - generic [ref=f10e12938]: Filtered last
+        - generic [ref=f10e12939]: task-021 Filtered transfer source
+        - generic [ref=f10e12940]: Open
+        - generic [ref=f10e12941]: High
+        - generic [ref=f10e12942]: 2033-01-01
+        - button "Open project" [ref=f10e12943] [cursor=pointer]
+      - generic [ref=f10e12944]:
+        - generic [ref=f10e12945]: Filtered outside range
+        - generic [ref=f10e12946]: task-021 Filtered transfer source
+        - generic [ref=f10e12947]: Open
+        - generic [ref=f10e12948]: High
+        - generic [ref=f10e12949]: 2034-01-01
+        - button "Open project" [ref=f10e12950] [cursor=pointer]
+      - generic [ref=f10e12951]:
+        - generic [ref=f10e12952]: Filtered completed guard
+        - generic [ref=f10e12953]: task-021 Filtered transfer source
+        - generic [ref=f10e12954]: Completed
+        - generic [ref=f10e12955]: High
+        - button "Open project" [ref=f10e12956] [cursor=pointer]
+      - generic [ref=f10e12957]:
+        - generic [ref=f10e12958]: Filtered normal guard
+        - generic [ref=f10e12959]: task-021 Filtered transfer source
+        - generic [ref=f10e12960]: Open
+        - generic [ref=f10e12961]: Normal
+        - button "Open project" [ref=f10e12962] [cursor=pointer]
+      - generic [ref=f10e12963]:
+        - generic [ref=f10e12964]: Options task
+        - generic [ref=f10e12965]: task-021 Options owner
+        - generic [ref=f10e12966]: Open
+        - generic [ref=f10e12967]: Normal
+        - button "Open project" [ref=f10e12968] [cursor=pointer]
+      - generic [ref=f10e12969]:
+        - generic [ref=f10e12970]: Undated target sentinel
+        - generic [ref=f10e12971]: task-021 Read-only transfer target
+        - generic [ref=f10e12972]: Open
+        - generic [ref=f10e12973]: Normal
+        - button "Open project" [ref=f10e12974] [cursor=pointer]
+      - generic [ref=f10e12975]:
+        - generic [ref=f10e12976]: Undated transfer
+        - generic [ref=f10e12977]: task-021 Read-only transfer owner
+        - generic [ref=f10e12978]: Open
+        - generic [ref=f10e12979]: Normal
+        - button "Open project" [ref=f10e12980] [cursor=pointer]
+      - generic [ref=f10e12981]:
+        - generic [ref=f10e12982]: Undated owner sentinel
+        - generic [ref=f10e12983]: task-021 Read-only transfer owner
+        - generic [ref=f10e12984]: Open
+        - generic [ref=f10e12985]: Normal
+        - button "Open project" [ref=f10e12986] [cursor=pointer]
+      - generic [ref=f10e12987]:
+        - generic [ref=f10e12988]: Notes identity
+        - generic [ref=f10e12989]: task-021 Notes values
+        - generic [ref=f10e12990]: Open
+        - generic [ref=f10e12991]: High
+        - generic [ref=f10e12992]: 2035-01-01
+        - generic [ref=f10e12993]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e12994] [cursor=pointer]
+      - generic [ref=f10e12995]:
+        - generic [ref=f10e12996]: Only in notes title sentinel
+        - generic [ref=f10e12997]: task-021 Notes values
+        - generic [ref=f10e12998]: Open
+        - generic [ref=f10e12999]: Normal
+        - button "Open project" [ref=f10e13000] [cursor=pointer]
+      - generic [ref=f10e13001]:
+        - generic [ref=f10e13002]: Notes target existing
+        - generic [ref=f10e13003]: task-021 Notes target
+        - generic [ref=f10e13004]: Open
+        - generic [ref=f10e13005]: Normal
+        - button "Open project" [ref=f10e13006] [cursor=pointer]
+      - generic [ref=f10e13007]:
+        - generic [ref=f10e13008]: Notes before
+        - generic [ref=f10e13009]: task-021 Notes owner
+        - generic [ref=f10e13010]: Open
+        - generic [ref=f10e13011]: Normal
+        - button "Open project" [ref=f10e13012] [cursor=pointer]
+      - generic [ref=f10e13013]:
+        - generic [ref=f10e13014]: Notes travelling
+        - generic [ref=f10e13015]: task-021 Notes owner
+        - generic [ref=f10e13016]: Open
+        - generic [ref=f10e13017]: Normal
+        - generic [ref=f10e13018]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e13019] [cursor=pointer]
+      - generic [ref=f10e13020]:
+        - generic [ref=f10e13021]: Notes after
+        - generic [ref=f10e13022]: task-021 Notes owner
+        - generic [ref=f10e13023]: Open
+        - generic [ref=f10e13024]: Normal
+        - button "Open project" [ref=f10e13025] [cursor=pointer]
+      - generic [ref=f10e13026]:
+        - generic [ref=f10e13027]: High open first
+        - generic [ref=f10e13028]: task-021 Priority intersection
+        - generic [ref=f10e13029]: Open
+        - generic [ref=f10e13030]: High
+        - button "Open project" [ref=f10e13031] [cursor=pointer]
+      - generic [ref=f10e13032]:
+        - generic [ref=f10e13033]: Low open
+        - generic [ref=f10e13034]: task-021 Priority intersection
+        - generic [ref=f10e13035]: Open
+        - generic [ref=f10e13036]: Low
+        - button "Open project" [ref=f10e13037] [cursor=pointer]
+      - generic [ref=f10e13038]:
+        - generic [ref=f10e13039]: High completed
+        - generic [ref=f10e13040]: task-021 Priority intersection
+        - generic [ref=f10e13041]: Completed
+        - generic [ref=f10e13042]: High
+        - button "Open project" [ref=f10e13043] [cursor=pointer]
+      - generic [ref=f10e13044]:
+        - generic [ref=f10e13045]: High open last
+        - generic [ref=f10e13046]: task-021 Priority intersection
+        - generic [ref=f10e13047]: Open
+        - generic [ref=f10e13048]: High
+        - button "Open project" [ref=f10e13049] [cursor=pointer]
+      - generic [ref=f10e13050]:
+        - generic [ref=f10e13051]: Leaving priority
+        - generic [ref=f10e13052]: task-021 Priority live filters
+        - generic [ref=f10e13053]: Open
+        - generic [ref=f10e13054]: Low
+        - button "Open project" [ref=f10e13055] [cursor=pointer]
+      - generic [ref=f10e13056]:
+        - generic [ref=f10e13057]: Leaving completion
+        - generic [ref=f10e13058]: task-021 Priority live filters
+        - generic [ref=f10e13059]: Open
+        - generic [ref=f10e13060]: High
+        - button "Open project" [ref=f10e13061] [cursor=pointer]
+      - generic [ref=f10e13062]:
+        - generic [ref=f10e13063]: Completed high guard
+        - generic [ref=f10e13064]: task-021 Priority live filters
+        - generic [ref=f10e13065]: Completed
+        - generic [ref=f10e13066]: High
+        - button "Open project" [ref=f10e13067] [cursor=pointer]
+      - generic [ref=f10e13068]:
+        - generic [ref=f10e13069]: Open normal guard
+        - generic [ref=f10e13070]: task-021 Priority live filters
+        - generic [ref=f10e13071]: Open
+        - generic [ref=f10e13072]: Normal
+        - button "Open project" [ref=f10e13073] [cursor=pointer]
+      - generic [ref=f10e13074]:
+        - generic [ref=f10e13075]: Filtered new title
+        - generic [ref=f10e13076]: task-021 Priority rename filters
+        - generic [ref=f10e13077]: Open
+        - generic [ref=f10e13078]: Low
+        - button "Open project" [ref=f10e13079] [cursor=pointer]
+      - generic [ref=f10e13080]:
+        - generic [ref=f10e13081]: Unmatched normal task
+        - generic [ref=f10e13082]: task-021 Priority rename filters
+        - generic [ref=f10e13083]: Open
+        - generic [ref=f10e13084]: Normal
+        - button "Open project" [ref=f10e13085] [cursor=pointer]
+      - generic [ref=f10e13086]:
+        - generic [ref=f10e13087]: Completed low guard
+        - generic [ref=f10e13088]: task-021 Priority rename filters
+        - generic [ref=f10e13089]: Completed
+        - generic [ref=f10e13090]: Low
+        - button "Open project" [ref=f10e13091] [cursor=pointer]
+      - generic [ref=f10e13092]:
+        - generic [ref=f10e13093]: Archived high open
+        - generic [ref=f10e13094]: task-021 Archived combined filters
+        - generic [ref=f10e13095]: Open
+        - generic [ref=f10e13096]: High
+        - button "Open project" [ref=f10e13097] [cursor=pointer]
+      - generic [ref=f10e13098]:
+        - generic [ref=f10e13099]: Archived normal completed
+        - generic [ref=f10e13100]: task-021 Archived combined filters
+        - generic [ref=f10e13101]: Completed
+        - generic [ref=f10e13102]: Normal
+        - button "Open project" [ref=f10e13103] [cursor=pointer]
+      - generic [ref=f10e13104]:
+        - generic [ref=f10e13105]: Priority renamed
+        - generic [ref=f10e13106]: task-021 Priority ownership
+        - generic [ref=f10e13107]: Open
+        - generic [ref=f10e13108]: High
+        - button "Open project" [ref=f10e13109] [cursor=pointer]
+      - generic [ref=f10e13110]:
+        - generic [ref=f10e13111]: Priority second
+        - generic [ref=f10e13112]: task-021 Priority ownership
+        - generic [ref=f10e13113]: Open
+        - generic [ref=f10e13114]: Low
+        - button "Open project" [ref=f10e13115] [cursor=pointer]
+      - generic [ref=f10e13116]:
+        - generic [ref=f10e13117]: Priority other task
+        - generic [ref=f10e13118]: task-021 Priority other owner
+        - generic [ref=f10e13119]: Open
+        - generic [ref=f10e13120]: Normal
+        - button "Open project" [ref=f10e13121] [cursor=pointer]
+      - generic [ref=f10e13122]:
+        - generic [ref=f10e13123]: Priority completed
+        - generic [ref=f10e13124]: task-021 Priority completion
+        - generic [ref=f10e13125]: Completed
+        - generic [ref=f10e13126]: Low
+        - button "Open project" [ref=f10e13127] [cursor=pointer]
+      - generic [ref=f10e13128]:
+        - generic [ref=f10e13129]: Priority open
+        - generic [ref=f10e13130]: task-021 Priority completion
+        - generic [ref=f10e13131]: Open
+        - generic [ref=f10e13132]: High
+        - button "Open project" [ref=f10e13133] [cursor=pointer]
+      - generic [ref=f10e13134]:
+        - generic [ref=f10e13135]: Priority retained
+        - generic [ref=f10e13136]: task-021 Priority archive
+        - generic [ref=f10e13137]: Open
+        - generic [ref=f10e13138]: Normal
+        - button "Open project" [ref=f10e13139] [cursor=pointer]
+      - generic [ref=f10e13140]:
+        - generic [ref=f10e13141]: Return first
+        - generic [ref=f10e13142]: task-021 Return owner
+        - generic [ref=f10e13143]: Open
+        - generic [ref=f10e13144]: Normal
+        - button "Open project" [ref=f10e13145] [cursor=pointer]
+      - generic [ref=f10e13146]:
+        - generic [ref=f10e13147]: Return second
+        - generic [ref=f10e13148]: task-021 Return owner
+        - generic [ref=f10e13149]: Completed
+        - generic [ref=f10e13150]: High
+        - button "Open project" [ref=f10e13151] [cursor=pointer]
+      - generic [ref=f10e13152]:
+        - generic [ref=f10e13153]: Return third
+        - generic [ref=f10e13154]: task-021 Return owner
+        - generic [ref=f10e13155]: Open
+        - generic [ref=f10e13156]: Normal
+        - button "Open project" [ref=f10e13157] [cursor=pointer]
+      - generic [ref=f10e13158]:
+        - generic [ref=f10e13159]: Return fourth
+        - generic [ref=f10e13160]: task-021 Return owner
+        - generic [ref=f10e13161]: Open
+        - generic [ref=f10e13162]: Normal
+        - button "Open project" [ref=f10e13163] [cursor=pointer]
+      - generic [ref=f10e13164]:
+        - generic [ref=f10e13165]: Identity before
+        - generic [ref=f10e13166]: task-021 Returned owner renamed
+        - generic [ref=f10e13167]: Open
+        - generic [ref=f10e13168]: Normal
+        - button "Open project" [ref=f10e13169] [cursor=pointer]
+      - generic [ref=f10e13170]:
+        - generic [ref=f10e13171]: Identity returning
+        - generic [ref=f10e13172]: task-021 Returned owner renamed
+        - generic [ref=f10e13173]: Open
+        - generic [ref=f10e13174]: Normal
+        - button "Open project" [ref=f10e13175] [cursor=pointer]
+      - generic [ref=f10e13176]:
+        - generic [ref=f10e13177]: Identity after
+        - generic [ref=f10e13178]: task-021 Returned owner renamed
+        - generic [ref=f10e13179]: Open
+        - generic [ref=f10e13180]: Normal
+        - button "Open project" [ref=f10e13181] [cursor=pointer]
+      - generic [ref=f10e13182]:
+        - generic [ref=f10e13183]: Second existing
+        - generic [ref=f10e13184]: task-021 Position second owner
+        - generic [ref=f10e13185]: Open
+        - generic [ref=f10e13186]: Normal
+        - button "Open project" [ref=f10e13187] [cursor=pointer]
+      - generic [ref=f10e13188]:
+        - generic [ref=f10e13189]: Second newly created
+        - generic [ref=f10e13190]: task-021 Position second owner
+        - generic [ref=f10e13191]: Open
+        - generic [ref=f10e13192]: Normal
+        - button "Open project" [ref=f10e13193] [cursor=pointer]
+      - generic [ref=f10e13194]:
+        - generic [ref=f10e13195]: First existing
+        - generic [ref=f10e13196]: task-021 Position first owner
+        - generic [ref=f10e13197]: Open
+        - generic [ref=f10e13198]: Normal
+        - button "Open project" [ref=f10e13199] [cursor=pointer]
+      - generic [ref=f10e13200]:
+        - generic [ref=f10e13201]: Position travelling
+        - generic [ref=f10e13202]: task-021 Position first owner
+        - generic [ref=f10e13203]: Open
+        - generic [ref=f10e13204]: Normal
+        - button "Open project" [ref=f10e13205] [cursor=pointer]
+      - generic [ref=f10e13206]:
+        - generic [ref=f10e13207]: First later
+        - generic [ref=f10e13208]: task-021 Position first owner
+        - generic [ref=f10e13209]: Open
+        - generic [ref=f10e13210]: Normal
+        - button "Open project" [ref=f10e13211] [cursor=pointer]
+      - generic [ref=f10e13212]:
+        - generic [ref=f10e13213]: First newly created
+        - generic [ref=f10e13214]: task-021 Position first owner
+        - generic [ref=f10e13215]: Open
+        - generic [ref=f10e13216]: Normal
+        - button "Open project" [ref=f10e13217] [cursor=pointer]
+      - generic [ref=f10e13218]:
+        - generic [ref=f10e13219]: Original task gap
+        - generic [ref=f10e13220]: task-021 Whitespace retained owner
+        - generic [ref=f10e13221]: Open
+        - generic [ref=f10e13222]: High
+        - button "Open project" [ref=f10e13223] [cursor=pointer]
+      - generic [ref=f10e13224]:
+        - generic [ref=f10e13225]: Other task gap
+        - generic [ref=f10e13226]: task-021 Whitespace retained owner
+        - generic [ref=f10e13227]: Open
+        - generic [ref=f10e13228]: High
+        - button "Open project" [ref=f10e13229] [cursor=pointer]
+      - generic [ref=f10e13230]:
+        - generic [ref=f10e13231]: Mixed first
+        - generic [ref=f10e13232]: task-021 Search task intersections
+        - generic [ref=f10e13233]: Open
+        - generic [ref=f10e13234]: High
+        - generic [ref=f10e13235]: 2034-01-01
+        - button "Open project" [ref=f10e13236] [cursor=pointer]
+      - generic [ref=f10e13237]:
+        - generic [ref=f10e13238]: Other high
+        - generic [ref=f10e13239]: task-021 Search task intersections
+        - generic [ref=f10e13240]: Open
+        - generic [ref=f10e13241]: High
+        - generic [ref=f10e13242]: 2034-01-01
+        - button "Open project" [ref=f10e13243] [cursor=pointer]
+      - generic [ref=f10e13244]:
+        - generic [ref=f10e13245]: MIXED completed
+        - generic [ref=f10e13246]: task-021 Search task intersections
+        - generic [ref=f10e13247]: Completed
+        - generic [ref=f10e13248]: High
+        - generic [ref=f10e13249]: 2034-01-01
+        - button "Open project" [ref=f10e13250] [cursor=pointer]
+      - generic [ref=f10e13251]:
+        - generic [ref=f10e13252]: Mixed undated
+        - generic [ref=f10e13253]: task-021 Search task intersections
+        - generic [ref=f10e13254]: Open
+        - generic [ref=f10e13255]: High
+        - button "Open project" [ref=f10e13256] [cursor=pointer]
+      - generic [ref=f10e13257]:
+        - generic [ref=f10e13258]: mixed last
+        - generic [ref=f10e13259]: task-021 Search task intersections
+        - generic [ref=f10e13260]: Open
+        - generic [ref=f10e13261]: High
+        - generic [ref=f10e13262]: 2034-01-01
+        - button "Open project" [ref=f10e13263] [cursor=pointer]
+      - generic [ref=f10e13264]:
+        - generic [ref=f10e13265]: Other normal guard
+        - generic [ref=f10e13266]: task-021 Search task intersections
+        - generic [ref=f10e13267]: Open
+        - generic [ref=f10e13268]: Normal
+        - button "Open project" [ref=f10e13269] [cursor=pointer]
+      - generic [ref=f10e13270]:
+        - generic [ref=f10e13271]: Two spaces
+        - generic [ref=f10e13272]: task-021 Search internal spacing
+        - generic [ref=f10e13273]: Open
+        - generic [ref=f10e13274]: Normal
+        - button "Open project" [ref=f10e13275] [cursor=pointer]
+      - generic [ref=f10e13276]:
+        - generic [ref=f10e13277]: Two spaces sentinel
+        - generic [ref=f10e13278]: task-021 Search internal spacing
+        - generic [ref=f10e13279]: Open
+        - generic [ref=f10e13280]: Normal
+        - button "Open project" [ref=f10e13281] [cursor=pointer]
+      - generic [ref=f10e13282]:
+        - generic [ref=f10e13283]: Task preserved
+        - generic [ref=f10e13284]: task-021 Task reload
+        - generic [ref=f10e13285]: Open
+        - generic [ref=f10e13286]: Normal
+        - button "Open project" [ref=f10e13287] [cursor=pointer]
+      - generic [ref=f10e13288]:
+        - generic [ref=f10e13289]: Private to owner
+        - generic [ref=f10e13290]: task-021 Task owner
+        - generic [ref=f10e13291]: Open
+        - generic [ref=f10e13292]: Normal
+        - button "Open project" [ref=f10e13293] [cursor=pointer]
+      - generic [ref=f10e13294]:
+        - generic [ref=f10e13295]: Done task
+        - generic [ref=f10e13296]: task-021 Task filters
+        - generic [ref=f10e13297]: Open
+        - generic [ref=f10e13298]: Normal
+        - button "Open project" [ref=f10e13299] [cursor=pointer]
+      - generic [ref=f10e13300]:
+        - generic [ref=f10e13301]: Open task
+        - generic [ref=f10e13302]: task-021 Task filters
+        - generic [ref=f10e13303]: Open
+        - generic [ref=f10e13304]: Normal
+        - button "Open project" [ref=f10e13305] [cursor=pointer]
+      - generic [ref=f10e13306]:
+        - generic [ref=f10e13307]: Retained task
+        - generic [ref=f10e13308]: task-021 Archive tasks
+        - generic [ref=f10e13309]: Completed
+        - generic [ref=f10e13310]: Normal
+        - button "Open project" [ref=f10e13311] [cursor=pointer]
+      - generic [ref=f10e13312]:
+        - generic [ref=f10e13313]: Summary one
+        - generic [ref=f10e13314]: task-021 Summary project
+        - generic [ref=f10e13315]: Completed
+        - generic [ref=f10e13316]: Normal
+        - button "Open project" [ref=f10e13317] [cursor=pointer]
+      - generic [ref=f10e13318]:
+        - generic [ref=f10e13319]: Summary two
+        - generic [ref=f10e13320]: task-021 Summary project
+        - generic [ref=f10e13321]: Open
+        - generic [ref=f10e13322]: Normal
+        - button "Open project" [ref=f10e13323] [cursor=pointer]
+      - generic [ref=f10e13324]:
+        - generic [ref=f10e13325]: Identity task
+        - generic [ref=f10e13326]: task-021 Identity updated
+        - generic [ref=f10e13327]: Completed
+        - generic [ref=f10e13328]: Normal
+        - button "Open project" [ref=f10e13329] [cursor=pointer]
+      - generic [ref=f10e13330]:
+        - generic [ref=f10e13331]: Name updated
+        - generic [ref=f10e13332]: task-021 Task rename identity
+        - generic [ref=f10e13333]: Completed
+        - generic [ref=f10e13334]: Normal
+        - button "Open project" [ref=f10e13335] [cursor=pointer]
+      - generic [ref=f10e13336]:
+        - generic [ref=f10e13337]: Name second
+        - generic [ref=f10e13338]: task-021 Task rename identity
+        - generic [ref=f10e13339]: Open
+        - generic [ref=f10e13340]: Normal
+        - button "Open project" [ref=f10e13341] [cursor=pointer]
+      - generic [ref=f10e13342]:
+        - generic [ref=f10e13343]: Kept title
+        - generic [ref=f10e13344]: task-021 Task rename invalid
+        - generic [ref=f10e13345]: Open
+        - generic [ref=f10e13346]: Normal
+        - button "Open project" [ref=f10e13347] [cursor=pointer]
+      - generic [ref=f10e13348]:
+        - generic [ref=f10e13349]: Archived title
+        - generic [ref=f10e13350]: task-021 Task rename archive
+        - generic [ref=f10e13351]: Open
+        - generic [ref=f10e13352]: Normal
+        - button "Open project" [ref=f10e13353] [cursor=pointer]
+      - generic [ref=f10e13354]:
+        - generic [ref=f10e13355]: task-022 Bulk match first
+        - generic [ref=f10e13356]: task-022 Bulk first owner
+        - generic [ref=f10e13357]: Open
+        - generic [ref=f10e13358]: High
+        - generic [ref=f10e13359]: 2050-01-01
+        - generic [ref=f10e13360]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e13361] [cursor=pointer]
+      - generic [ref=f10e13362]:
+        - generic [ref=f10e13363]: task-022 Bulk match low
+        - generic [ref=f10e13364]: task-022 Bulk first owner
+        - generic [ref=f10e13365]: Open
+        - generic [ref=f10e13366]: Low
+        - generic [ref=f10e13367]: 2050-01-01
+        - button "Open project" [ref=f10e13368] [cursor=pointer]
+      - generic [ref=f10e13369]:
+        - generic [ref=f10e13370]: task-022 Bulk match done
+        - generic [ref=f10e13371]: task-022 Bulk first owner
+        - generic [ref=f10e13372]: Open
+        - generic [ref=f10e13373]: High
+        - generic [ref=f10e13374]: 2050-01-01
+        - button "Open project" [ref=f10e13375] [cursor=pointer]
+      - generic [ref=f10e13376]:
+        - generic [ref=f10e13377]: task-022 Bulk other title
+        - generic [ref=f10e13378]: task-022 Bulk first owner
+        - generic [ref=f10e13379]: Open
+        - generic [ref=f10e13380]: High
+        - generic [ref=f10e13381]: 2050-01-01
+        - button "Open project" [ref=f10e13382] [cursor=pointer]
+      - generic [ref=f10e13383]:
+        - generic [ref=f10e13384]: task-022 Bulk match later
+        - generic [ref=f10e13385]: task-022 Bulk first owner
+        - generic [ref=f10e13386]: Open
+        - generic [ref=f10e13387]: High
+        - generic [ref=f10e13388]: 2050-01-02
+        - button "Open project" [ref=f10e13389] [cursor=pointer]
+      - generic [ref=f10e13390]:
+        - generic [ref=f10e13391]: task-022 Bulk match second
+        - generic [ref=f10e13392]: task-022 Bulk first owner
+        - generic [ref=f10e13393]: Open
+        - generic [ref=f10e13394]: High
+        - generic [ref=f10e13395]: 2050-01-01
+        - generic [ref=f10e13396]: Second original note
+        - button "Open project" [ref=f10e13397] [cursor=pointer]
+      - generic [ref=f10e13398]:
+        - generic [ref=f10e13399]: Bulk later reservation sentinel
+        - generic [ref=f10e13400]: task-022 Bulk first owner
+        - generic [ref=f10e13401]: Open
+        - generic [ref=f10e13402]: Normal
+        - button "Open project" [ref=f10e13403] [cursor=pointer]
+      - generic [ref=f10e13404]:
+        - generic [ref=f10e13405]: task-022 Bulk match second done
+        - generic [ref=f10e13406]: task-022 Bulk second owner
+        - generic [ref=f10e13407]: Open
+        - generic [ref=f10e13408]: High
+        - generic [ref=f10e13409]: 2050-01-01
+        - button "Open project" [ref=f10e13410] [cursor=pointer]
+      - generic [ref=f10e13411]:
+        - generic [ref=f10e13412]: task-022 Bulk match undated
+        - generic [ref=f10e13413]: task-022 Bulk second owner
+        - generic [ref=f10e13414]: Open
+        - generic [ref=f10e13415]: High
+        - button "Open project" [ref=f10e13416] [cursor=pointer]
+      - generic [ref=f10e13417]:
+        - generic [ref=f10e13418]: task-022 Protected live
+        - generic [ref=f10e13419]: task-022 Bulk protected
+        - generic [ref=f10e13420]: Completed
+        - generic [ref=f10e13421]: Low
+        - generic [ref=f10e13422]: 2051-01-01
+        - button "Open project" [ref=f10e13423] [cursor=pointer]
+      - generic [ref=f10e13424]:
+        - generic [ref=f10e13425]: task-022 Bulk restart record Bulk restart first
+        - generic [ref=f10e13426]: task-022 Bulk restart first
+        - generic [ref=f10e13427]: Completed
+        - generic [ref=f10e13428]: High
+        - generic [ref=f10e13429]: 2052-02-29
+        - generic [ref=f10e13430]: Bulk restart Ω original
+        - button "Open project" [ref=f10e13431] [cursor=pointer]
+      - generic [ref=f10e13432]:
+        - generic [ref=f10e13433]: task-022 Bulk restart record Bulk restart second
+        - generic [ref=f10e13434]: task-022 Bulk restart second
+        - generic [ref=f10e13435]: Completed
+        - generic [ref=f10e13436]: High
+        - generic [ref=f10e13437]: 2052-02-29
+        - generic [ref=f10e13438]: Bulk restart Ω original
+        - button "Open project" [ref=f10e13439] [cursor=pointer]
+      - generic [ref=f10e13440]:
+        - generic [ref=f10e13441]: Independent normal
+        - generic [ref=f10e13442]: task-022 Defaults independent
+        - generic [ref=f10e13443]: Open
+        - generic [ref=f10e13444]: Normal
+        - button "Open project" [ref=f10e13445] [cursor=pointer]
+      - generic [ref=f10e13446]:
+        - generic [ref=f10e13447]: Before default change
+        - generic [ref=f10e13448]: task-022 Defaults inheritance
+        - generic [ref=f10e13449]: Completed
+        - generic [ref=f10e13450]: Normal
+        - button "Open project" [ref=f10e13451] [cursor=pointer]
+      - generic [ref=f10e13452]:
+        - generic [ref=f10e13453]: Inherited high
+        - generic [ref=f10e13454]: task-022 Defaults inheritance
+        - generic [ref=f10e13455]: Open
+        - generic [ref=f10e13456]: High
+        - button "Open project" [ref=f10e13457] [cursor=pointer]
+      - generic [ref=f10e13458]:
+        - generic [ref=f10e13459]: Inherited low
+        - generic [ref=f10e13460]: task-022 Defaults inheritance
+        - generic [ref=f10e13461]: Open
+        - generic [ref=f10e13462]: Low
+        - button "Open project" [ref=f10e13463] [cursor=pointer]
+      - generic [ref=f10e13464]:
+        - generic [ref=f10e13465]: Inherited normal
+        - generic [ref=f10e13466]: task-022 Defaults inheritance
+        - generic [ref=f10e13467]: Open
+        - generic [ref=f10e13468]: Normal
+        - button "Open project" [ref=f10e13469] [cursor=pointer]
+      - generic [ref=f10e13470]:
+        - generic [ref=f10e13471]: Lifecycle task
+        - generic [ref=f10e13472]: task-022 Defaults renamed
+        - generic [ref=f10e13473]: Open
+        - generic [ref=f10e13474]: Low
+        - button "Open project" [ref=f10e13475] [cursor=pointer]
+      - generic [ref=f10e13476]:
+        - generic [ref=f10e13477]: Restored inherits
+        - generic [ref=f10e13478]: task-022 Defaults renamed
+        - generic [ref=f10e13479]: Open
+        - generic [ref=f10e13480]: Low
+        - button "Open project" [ref=f10e13481] [cursor=pointer]
+      - generic [ref=f10e13482]:
+        - generic [ref=f10e13483]: Live before
+        - generic [ref=f10e13484]: task-022 Deletion fields
+        - generic [ref=f10e13485]: Open
+        - generic [ref=f10e13486]: Normal
+        - button "Open project" [ref=f10e13487] [cursor=pointer]
+      - generic [ref=f10e13488]:
+        - generic [ref=f10e13489]: Live after
+        - generic [ref=f10e13490]: task-022 Deletion fields
+        - generic [ref=f10e13491]: Open
+        - generic [ref=f10e13492]: Normal
+        - button "Open project" [ref=f10e13493] [cursor=pointer]
+      - generic [ref=f10e13494]:
+        - generic [ref=f10e13495]: Completed remove sentinel
+        - generic [ref=f10e13496]: task-022 Deletion fields
+        - generic [ref=f10e13497]: Completed
+        - generic [ref=f10e13498]: High
+        - generic [ref=f10e13499]: 2036-02-29
+        - button "Open project" [ref=f10e13500] [cursor=pointer]
+      - generic [ref=f10e13501]:
+        - generic [ref=f10e13502]: Completed remove outside
+        - generic [ref=f10e13503]: task-022 Deletion fields
+        - generic [ref=f10e13504]: Completed
+        - generic [ref=f10e13505]: High
+        - generic [ref=f10e13506]: 2037-01-01
+        - button "Open project" [ref=f10e13507] [cursor=pointer]
+      - generic [ref=f10e13508]:
+        - generic [ref=f10e13509]: Completed normal exclusion
+        - generic [ref=f10e13510]: task-022 Deletion fields
+        - generic [ref=f10e13511]: Completed
+        - generic [ref=f10e13512]: Normal
+        - button "Open project" [ref=f10e13513] [cursor=pointer]
+      - generic [ref=f10e13514]:
+        - generic [ref=f10e13515]: Completed unrelated high
+        - generic [ref=f10e13516]: task-022 Deletion fields
+        - generic [ref=f10e13517]: Completed
+        - generic [ref=f10e13518]: High
+        - button "Open project" [ref=f10e13519] [cursor=pointer]
+      - generic [ref=f10e13520]:
+        - generic [ref=f10e13521]: Target first
+        - generic [ref=f10e13522]: task-022 Deletion target
+        - generic [ref=f10e13523]: Open
+        - generic [ref=f10e13524]: Normal
+        - button "Open project" [ref=f10e13525] [cursor=pointer]
+      - generic [ref=f10e13526]:
+        - generic [ref=f10e13527]: Reserved
+        - generic [ref=f10e13528]: task-022 Deletion target
+        - generic [ref=f10e13529]: Completed
+        - generic [ref=f10e13530]: High
+        - generic [ref=f10e13531]: 2037-01-01
+        - generic [ref=f10e13532]: Restore original note
+        - button "Open project" [ref=f10e13533] [cursor=pointer]
+      - generic [ref=f10e13534]:
+        - generic [ref=f10e13535]: Target later
+        - generic [ref=f10e13536]: task-022 Deletion target
+        - generic [ref=f10e13537]: Open
+        - generic [ref=f10e13538]: Normal
+        - button "Open project" [ref=f10e13539] [cursor=pointer]
+      - generic [ref=f10e13540]:
+        - generic [ref=f10e13541]: Before
+        - generic [ref=f10e13542]: task-022 Deletion order
+        - generic [ref=f10e13543]: Open
+        - generic [ref=f10e13544]: Normal
+        - button "Open project" [ref=f10e13545] [cursor=pointer]
+      - generic [ref=f10e13546]:
+        - generic [ref=f10e13547]: After
+        - generic [ref=f10e13548]: task-022 Deletion order
+        - generic [ref=f10e13549]: Open
+        - generic [ref=f10e13550]: Normal
+        - button "Open project" [ref=f10e13551] [cursor=pointer]
+      - generic [ref=f10e13552]:
+        - generic [ref=f10e13553]: New arrival
+        - generic [ref=f10e13554]: task-022 Deletion order
+        - generic [ref=f10e13555]: Open
+        - generic [ref=f10e13556]: Normal
+        - button "Open project" [ref=f10e13557] [cursor=pointer]
+      - generic [ref=f10e13558]:
+        - generic [ref=f10e13559]: task-022 Order stable zulu
+        - generic [ref=f10e13560]: task-022 Ordering Zulu owner
+        - generic [ref=f10e13561]: Open
+        - generic [ref=f10e13562]: High
+        - generic [ref=f10e13563]: 2053-02-01
+        - button "Open project" [ref=f10e13564] [cursor=pointer]
+      - generic [ref=f10e13565]:
+        - generic [ref=f10e13566]: task-022 Order stable bravo
+        - generic [ref=f10e13567]: task-022 Ordering Zulu owner
+        - generic [ref=f10e13568]: Open
+        - generic [ref=f10e13569]: Low
+        - button "Open project" [ref=f10e13570] [cursor=pointer]
+      - generic [ref=f10e13571]:
+        - generic [ref=f10e13572]: task-022 Order stable Alpha
+        - generic [ref=f10e13573]: task-022 Ordering Zulu owner
+        - generic [ref=f10e13574]: Open
+        - generic [ref=f10e13575]: Normal
+        - generic [ref=f10e13576]: 2053-01-01
+        - button "Open project" [ref=f10e13577] [cursor=pointer]
+      - generic [ref=f10e13578]:
+        - generic [ref=f10e13579]: task-022 Order stable ALPHA
+        - generic [ref=f10e13580]: task-022 Ordering Alpha owner
+        - generic [ref=f10e13581]: Open
+        - generic [ref=f10e13582]: Normal
+        - generic [ref=f10e13583]: 2053-01-01
+        - button "Open project" [ref=f10e13584] [cursor=pointer]
+      - generic [ref=f10e13585]:
+        - generic [ref=f10e13586]: task-022 Order stable bravo
+        - generic [ref=f10e13587]: task-022 Ordering Alpha owner
+        - generic [ref=f10e13588]: Open
+        - generic [ref=f10e13589]: High
+        - generic [ref=f10e13590]: 2053-02-01
+        - button "Open project" [ref=f10e13591] [cursor=pointer]
+      - generic [ref=f10e13592]:
+        - generic [ref=f10e13593]: task-022 Order action alpha
+        - generic [ref=f10e13594]: task-022 Ordering actions owner
+        - generic [ref=f10e13595]: Completed
+        - generic [ref=f10e13596]: High
+        - generic [ref=f10e13597]: 2054-02-01
+        - button "Open project" [ref=f10e13598] [cursor=pointer]
+      - generic [ref=f10e13599]:
+        - generic [ref=f10e13600]: task-022 Order action zulu
+        - generic [ref=f10e13601]: task-022 Ordering actions owner
+        - generic [ref=f10e13602]: Completed
+        - generic [ref=f10e13603]: High
+        - generic [ref=f10e13604]: 2054-01-01
+        - button "Open project" [ref=f10e13605] [cursor=pointer]
+      - generic [ref=f10e13606]:
+        - generic [ref=f10e13607]: task-022 Order action middle
+        - generic [ref=f10e13608]: task-022 Ordering actions owner
+        - generic [ref=f10e13609]: Open
+        - generic [ref=f10e13610]: High
+        - button "Open project" [ref=f10e13611] [cursor=pointer]
+      - generic [ref=f10e13612]:
+        - generic [ref=f10e13613]: task-022 Order action low
+        - generic [ref=f10e13614]: task-022 Ordering actions owner
+        - generic [ref=f10e13615]: Open
+        - generic [ref=f10e13616]: Low
+        - generic [ref=f10e13617]: 2054-01-01
+        - button "Open project" [ref=f10e13618] [cursor=pointer]
+      - generic [ref=f10e13619]:
+        - generic [ref=f10e13620]: task-022 Order action done
+        - generic [ref=f10e13621]: task-022 Ordering actions owner
+        - generic [ref=f10e13622]: Completed
+        - generic [ref=f10e13623]: High
+        - generic [ref=f10e13624]: 2054-01-01
+        - button "Open project" [ref=f10e13625] [cursor=pointer]
+      - generic [ref=f10e13626]:
+        - generic [ref=f10e13627]: task-022 Order protected active guard
+        - generic [ref=f10e13628]: task-022 Ordering active guard owner
+        - generic [ref=f10e13629]: Open
+        - generic [ref=f10e13630]: Normal
+        - button "Open project" [ref=f10e13631] [cursor=pointer]
+      - generic [ref=f10e13632]:
+        - generic [ref=f10e13633]: task-022 Order Unicode å
+        - generic [ref=f10e13634]: task-022 Ordering Unicode owner
+        - generic [ref=f10e13635]: Open
+        - generic [ref=f10e13636]: Normal
+        - button "Open project" [ref=f10e13637] [cursor=pointer]
+      - generic [ref=f10e13638]:
+        - generic [ref=f10e13639]: task-022 Order Unicode Å
+        - generic [ref=f10e13640]: task-022 Ordering Unicode owner
+        - generic [ref=f10e13641]: Open
+        - generic [ref=f10e13642]: Normal
+        - button "Open project" [ref=f10e13643] [cursor=pointer]
+      - generic [ref=f10e13644]:
+        - generic [ref=f10e13645]: task-022 Order Unicode 🙂
+        - generic [ref=f10e13646]: task-022 Ordering Unicode owner
+        - generic [ref=f10e13647]: Open
+        - generic [ref=f10e13648]: Normal
+        - button "Open project" [ref=f10e13649] [cursor=pointer]
+      - generic [ref=f10e13650]:
+        - generic [ref=f10e13651]: task-022 Order Unicode 
+        - generic [ref=f10e13652]: task-022 Ordering Unicode owner
+        - generic [ref=f10e13653]: Open
+        - generic [ref=f10e13654]: Normal
+        - button "Open project" [ref=f10e13655] [cursor=pointer]
+      - generic [ref=f10e13656]:
+        - generic [ref=f10e13657]: task-022 Summary record zulu hit
+        - generic [ref=f10e13658]: task-022 Summary first owner
+        - generic [ref=f10e13659]: Open
+        - generic [ref=f10e13660]: High
+        - generic [ref=f10e13661]: 2056-01-01
+        - button "Open project" [ref=f10e13662] [cursor=pointer]
+      - generic [ref=f10e13663]:
+        - generic [ref=f10e13664]: task-022 Summary record gamma done
+        - generic [ref=f10e13665]: task-022 Summary first owner
+        - generic [ref=f10e13666]: Open
+        - generic [ref=f10e13667]: High
+        - generic [ref=f10e13668]: 2056-01-01
+        - button "Open project" [ref=f10e13669] [cursor=pointer]
+      - generic [ref=f10e13670]:
+        - generic [ref=f10e13671]: task-022 Summary record low live
+        - generic [ref=f10e13672]: task-022 Summary first owner
+        - generic [ref=f10e13673]: Open
+        - generic [ref=f10e13674]: Low
+        - button "Open project" [ref=f10e13675] [cursor=pointer]
+      - generic [ref=f10e13676]:
+        - generic [ref=f10e13677]: task-022 Summary record other done
+        - generic [ref=f10e13678]: task-022 Summary first owner
+        - generic [ref=f10e13679]: Completed
+        - generic [ref=f10e13680]: Normal
+        - generic [ref=f10e13681]: 2056-02-01
+        - button "Open project" [ref=f10e13682] [cursor=pointer]
+      - generic [ref=f10e13683]:
+        - generic [ref=f10e13684]: task-022 Summary record alpha hit
+        - generic [ref=f10e13685]: task-022 Summary second owner
+        - generic [ref=f10e13686]: Open
+        - generic [ref=f10e13687]: High
+        - generic [ref=f10e13688]: 2056-01-01
+        - button "Open project" [ref=f10e13689] [cursor=pointer]
+      - generic [ref=f10e13690]:
+        - generic [ref=f10e13691]: task-022 Summary record outside done
+        - generic [ref=f10e13692]: task-022 Summary second owner
+        - generic [ref=f10e13693]: Completed
+        - generic [ref=f10e13694]: High
+        - generic [ref=f10e13695]: 2056-02-01
+        - button "Open project" [ref=f10e13696] [cursor=pointer]
+      - generic [ref=f10e13697]:
+        - generic [ref=f10e13698]: task-022 Summary empty record
+        - generic [ref=f10e13699]: task-022 Summary empty owner
+        - generic [ref=f10e13700]: Completed
+        - generic [ref=f10e13701]: High
+        - generic [ref=f10e13702]: 2057-01-01
+        - button "Open project" [ref=f10e13703] [cursor=pointer]
+      - generic [ref=f10e13704]:
+        - generic [ref=f10e13705]: task-022 Directory Zulu
+        - generic [ref=f10e13706]: task-022 Directory Zulu owner
+        - generic [ref=f10e13707]: Open
+        - generic [ref=f10e13708]: High
+        - generic [ref=f10e13709]: 2045-01-01
+        - generic [ref=f10e13710]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e13711] [cursor=pointer]
+      - generic [ref=f10e13712]:
+        - generic [ref=f10e13713]: task-022 Directory Alpha
+        - generic [ref=f10e13714]: task-022 Directory Zulu owner
+        - generic [ref=f10e13715]: Completed
+        - generic [ref=f10e13716]: Low
+        - button "Open project" [ref=f10e13717] [cursor=pointer]
+      - generic [ref=f10e13718]:
+        - generic [ref=f10e13719]: Foreign directory title
+        - generic [ref=f10e13720]: task-022 Directory Zulu owner
+        - generic [ref=f10e13721]: Open
+        - generic [ref=f10e13722]: Normal
+        - generic [ref=f10e13723]: task-022 Directory notes only
+        - button "Open project" [ref=f10e13724] [cursor=pointer]
+      - generic [ref=f10e13725]:
+        - generic [ref=f10e13726]: task-022 Directory Mid
+        - generic [ref=f10e13727]: task-022 Directory Alpha owner
+        - generic [ref=f10e13728]: Open
+        - generic [ref=f10e13729]: Normal
+        - button "Open project" [ref=f10e13730] [cursor=pointer]
+      - generic [ref=f10e13731]:
+        - generic [ref=f10e13732]: task-022 Filter hit
+        - generic [ref=f10e13733]: task-022 Directory filter owner
+        - generic [ref=f10e13734]: Open
+        - generic [ref=f10e13735]: High
+        - generic [ref=f10e13736]: 2046-03-01
+        - button "Open project" [ref=f10e13737] [cursor=pointer]
+      - generic [ref=f10e13738]:
+        - generic [ref=f10e13739]: task-022 Filter done
+        - generic [ref=f10e13740]: task-022 Directory filter owner
+        - generic [ref=f10e13741]: Completed
+        - generic [ref=f10e13742]: High
+        - generic [ref=f10e13743]: 2046-03-01
+        - button "Open project" [ref=f10e13744] [cursor=pointer]
+      - generic [ref=f10e13745]:
+        - generic [ref=f10e13746]: task-022 Filter low
+        - generic [ref=f10e13747]: task-022 Directory filter owner
+        - generic [ref=f10e13748]: Open
+        - generic [ref=f10e13749]: Low
+        - generic [ref=f10e13750]: 2046-03-01
+        - button "Open project" [ref=f10e13751] [cursor=pointer]
+      - generic [ref=f10e13752]:
+        - generic [ref=f10e13753]: task-022 Filter undated
+        - generic [ref=f10e13754]: task-022 Directory filter owner
+        - generic [ref=f10e13755]: Open
+        - generic [ref=f10e13756]: High
+        - button "Open project" [ref=f10e13757] [cursor=pointer]
+      - generic [ref=f10e13758]:
+        - generic [ref=f10e13759]: task-022 Filter outside
+        - generic [ref=f10e13760]: task-022 Directory filter owner
+        - generic [ref=f10e13761]: Open
+        - generic [ref=f10e13762]: High
+        - generic [ref=f10e13763]: 2046-04-01
+        - button "Open project" [ref=f10e13764] [cursor=pointer]
+      - generic [ref=f10e13765]:
+        - generic [ref=f10e13766]: task-022 Gap task
+        - generic [ref=f10e13767]: task-022 Directory whitespace
+        - generic [ref=f10e13768]: Open
+        - generic [ref=f10e13769]: Normal
+        - button "Open project" [ref=f10e13770] [cursor=pointer]
+      - generic [ref=f10e13771]:
+        - generic [ref=f10e13772]: Calendar renamed
+        - generic [ref=f10e13773]: task-022 Calendar persistence
+        - generic [ref=f10e13774]: Open
+        - generic [ref=f10e13775]: Normal
+        - button "Open project" [ref=f10e13776] [cursor=pointer]
+      - generic [ref=f10e13777]:
+        - generic [ref=f10e13778]: Calendar valid
+        - generic [ref=f10e13779]: task-022 Calendar validation
+        - generic [ref=f10e13780]: Open
+        - generic [ref=f10e13781]: Normal
+        - generic [ref=f10e13782]: 2028-04-30
+        - button "Open project" [ref=f10e13783] [cursor=pointer]
+      - generic [ref=f10e13784]:
+        - generic [ref=f10e13785]: Dated first
+        - generic [ref=f10e13786]: task-022 Calendar independence
+        - generic [ref=f10e13787]: Completed
+        - generic [ref=f10e13788]: High
+        - generic [ref=f10e13789]: 2029-01-01
+        - button "Open project" [ref=f10e13790] [cursor=pointer]
+      - generic [ref=f10e13791]:
+        - generic [ref=f10e13792]: Undated second
+        - generic [ref=f10e13793]: task-022 Calendar independence
+        - generic [ref=f10e13794]: Open
+        - generic [ref=f10e13795]: Normal
+        - button "Open project" [ref=f10e13796] [cursor=pointer]
+      - generic [ref=f10e13797]:
+        - generic [ref=f10e13798]: Completed normal guard
+        - generic [ref=f10e13799]: task-022 Calendar independence
+        - generic [ref=f10e13800]: Completed
+        - generic [ref=f10e13801]: Normal
+        - button "Open project" [ref=f10e13802] [cursor=pointer]
+      - generic [ref=f10e13803]:
+        - generic [ref=f10e13804]: Owner task
+        - generic [ref=f10e13805]: task-022 Calendar second owner
+        - generic [ref=f10e13806]: Open
+        - generic [ref=f10e13807]: Normal
+        - button "Open project" [ref=f10e13808] [cursor=pointer]
+      - generic [ref=f10e13809]:
+        - generic [ref=f10e13810]: Archive dated
+        - generic [ref=f10e13811]: task-022 Calendar archival
+        - generic [ref=f10e13812]: Open
+        - generic [ref=f10e13813]: Normal
+        - generic [ref=f10e13814]: 2030-12-31
+        - button "Open project" [ref=f10e13815] [cursor=pointer]
+      - generic [ref=f10e13816]:
+        - generic [ref=f10e13817]: Before range
+        - generic [ref=f10e13818]: task-022 Range boundaries
+        - generic [ref=f10e13819]: Open
+        - generic [ref=f10e13820]: Normal
+        - generic [ref=f10e13821]: 2028-02-28
+        - button "Open project" [ref=f10e13822] [cursor=pointer]
+      - generic [ref=f10e13823]:
+        - generic [ref=f10e13824]: Range first
+        - generic [ref=f10e13825]: task-022 Range boundaries
+        - generic [ref=f10e13826]: Open
+        - generic [ref=f10e13827]: Normal
+        - generic [ref=f10e13828]: 2028-02-29
+        - button "Open project" [ref=f10e13829] [cursor=pointer]
+      - generic [ref=f10e13830]:
+        - generic [ref=f10e13831]: No calendar date
+        - generic [ref=f10e13832]: task-022 Range boundaries
+        - generic [ref=f10e13833]: Open
+        - generic [ref=f10e13834]: Normal
+        - button "Open project" [ref=f10e13835] [cursor=pointer]
+      - generic [ref=f10e13836]:
+        - generic [ref=f10e13837]: Range last
+        - generic [ref=f10e13838]: task-022 Range boundaries
+        - generic [ref=f10e13839]: Open
+        - generic [ref=f10e13840]: Normal
+        - generic [ref=f10e13841]: 2028-03-02
+        - button "Open project" [ref=f10e13842] [cursor=pointer]
+      - generic [ref=f10e13843]:
+        - generic [ref=f10e13844]: After range
+        - generic [ref=f10e13845]: task-022 Range boundaries
+        - generic [ref=f10e13846]: Open
+        - generic [ref=f10e13847]: Normal
+        - generic [ref=f10e13848]: 2028-03-03
+        - button "Open project" [ref=f10e13849] [cursor=pointer]
+      - generic [ref=f10e13850]:
+        - generic [ref=f10e13851]: Range matching
+        - generic [ref=f10e13852]: task-022 Range intersections
+        - generic [ref=f10e13853]: Open
+        - generic [ref=f10e13854]: High
+        - generic [ref=f10e13855]: 2029-02-01
+        - button "Open project" [ref=f10e13856] [cursor=pointer]
+      - generic [ref=f10e13857]:
+        - generic [ref=f10e13858]: Range low
+        - generic [ref=f10e13859]: task-022 Range intersections
+        - generic [ref=f10e13860]: Open
+        - generic [ref=f10e13861]: Normal
+        - generic [ref=f10e13862]: 2029-01-15
+        - button "Open project" [ref=f10e13863] [cursor=pointer]
+      - generic [ref=f10e13864]:
+        - generic [ref=f10e13865]: Range completed
+        - generic [ref=f10e13866]: task-022 Range intersections
+        - generic [ref=f10e13867]: Open
+        - generic [ref=f10e13868]: Low
+        - generic [ref=f10e13869]: 2029-01-15
+        - button "Open project" [ref=f10e13870] [cursor=pointer]
+      - generic [ref=f10e13871]:
+        - generic [ref=f10e13872]: Range undated
+        - generic [ref=f10e13873]: task-022 Range intersections
+        - generic [ref=f10e13874]: Open
+        - generic [ref=f10e13875]: High
+        - button "Open project" [ref=f10e13876] [cursor=pointer]
+      - generic [ref=f10e13877]:
+        - generic [ref=f10e13878]: Valid member
+        - generic [ref=f10e13879]: task-022 Range validation
+        - generic [ref=f10e13880]: Open
+        - generic [ref=f10e13881]: Normal
+        - generic [ref=f10e13882]: 2028-06-15
+        - button "Open project" [ref=f10e13883] [cursor=pointer]
+      - generic [ref=f10e13884]:
+        - generic [ref=f10e13885]: Undated outsider
+        - generic [ref=f10e13886]: task-022 Range validation
+        - generic [ref=f10e13887]: Open
+        - generic [ref=f10e13888]: Normal
+        - button "Open project" [ref=f10e13889] [cursor=pointer]
+      - generic [ref=f10e13890]:
+        - generic [ref=f10e13891]: Archived date renamed
+        - generic [ref=f10e13892]: task-022 Range archival
+        - generic [ref=f10e13893]: Open
+        - generic [ref=f10e13894]: Normal
+        - generic [ref=f10e13895]: 2030-01-01
+        - button "Open project" [ref=f10e13896] [cursor=pointer]
+      - generic [ref=f10e13897]:
+        - generic [ref=f10e13898]: Archived undated outsider
+        - generic [ref=f10e13899]: task-022 Range archival
+        - generic [ref=f10e13900]: Open
+        - generic [ref=f10e13901]: Normal
+        - button "Open project" [ref=f10e13902] [cursor=pointer]
+      - generic [ref=f10e13903]:
+        - generic [ref=f10e13904]: Retained range member
+        - generic [ref=f10e13905]: task-022 Range owner renamed
+        - generic [ref=f10e13906]: Open
+        - generic [ref=f10e13907]: High
+        - generic [ref=f10e13908]: 2031-03-01
+        - button "Open project" [ref=f10e13909] [cursor=pointer]
+      - generic [ref=f10e13910]:
+        - generic [ref=f10e13911]: Retained undated outsider
+        - generic [ref=f10e13912]: task-022 Range owner renamed
+        - generic [ref=f10e13913]: Open
+        - generic [ref=f10e13914]: Normal
+        - button "Open project" [ref=f10e13915] [cursor=pointer]
+      - generic [ref=f10e13916]:
+        - generic [ref=f10e13917]: Created outside range
+        - generic [ref=f10e13918]: task-022 Range owner renamed
+        - generic [ref=f10e13919]: Open
+        - generic [ref=f10e13920]: Low
+        - button "Open project" [ref=f10e13921] [cursor=pointer]
+      - generic [ref=f10e13922]:
+        - generic [ref=f10e13923]: Must not export
+        - generic [ref=f10e13924]: task-022 Export foreign
+        - generic [ref=f10e13925]: Open
+        - generic [ref=f10e13926]: Normal
+        - button "Open project" [ref=f10e13927] [cursor=pointer]
+      - generic [ref=f10e13928]:
+        - generic [ref=f10e13929]: Export before
+        - generic [ref=f10e13930]: task-022 Export full Ω
+        - generic [ref=f10e13931]: Open
+        - generic [ref=f10e13932]: Normal
+        - button "Open project" [ref=f10e13933] [cursor=pointer]
+      - generic [ref=f10e13934]:
+        - generic [ref=f10e13935]: Export after
+        - generic [ref=f10e13936]: task-022 Export full Ω
+        - generic [ref=f10e13937]: Open
+        - generic [ref=f10e13938]: Normal
+        - button "Open project" [ref=f10e13939] [cursor=pointer]
+      - generic [ref=f10e13940]:
+        - generic [ref=f10e13941]: Imported before
+        - generic [ref=f10e13942]: task-022 Import origin
+        - generic [ref=f10e13943]: Open
+        - generic [ref=f10e13944]: Normal
+        - button "Open project" [ref=f10e13945] [cursor=pointer]
+      - generic [ref=f10e13946]:
+        - generic [ref=f10e13947]: Imported after
+        - generic [ref=f10e13948]: task-022 Import origin
+        - generic [ref=f10e13949]: Open
+        - generic [ref=f10e13950]: Normal
+        - button "Open project" [ref=f10e13951] [cursor=pointer]
+      - generic [ref=f10e13952]:
+        - generic [ref=f10e13953]: Imported before
+        - generic [ref=f10e13954]: task-022 Import copy
+        - generic [ref=f10e13955]: Open
+        - generic [ref=f10e13956]: Normal
+        - button "Open project" [ref=f10e13957] [cursor=pointer]
+      - generic [ref=f10e13958]:
+        - generic [ref=f10e13959]: Imported reserved
+        - generic [ref=f10e13960]: task-022 Import copy
+        - generic [ref=f10e13961]: Completed
+        - generic [ref=f10e13962]: High
+        - generic [ref=f10e13963]: 2040-02-29
+        - generic [ref=f10e13964]: Changed only copy
+        - button "Open project" [ref=f10e13965] [cursor=pointer]
+      - generic [ref=f10e13966]:
+        - generic [ref=f10e13967]: Imported after
+        - generic [ref=f10e13968]: task-022 Import copy
+        - generic [ref=f10e13969]: Open
+        - generic [ref=f10e13970]: Normal
+        - button "Open project" [ref=f10e13971] [cursor=pointer]
+      - generic [ref=f10e13972]:
+        - generic [ref=f10e13973]: Imported arrival
+        - generic [ref=f10e13974]: task-022 Import copy
+        - generic [ref=f10e13975]: Open
+        - generic [ref=f10e13976]: Low
+        - button "Open project" [ref=f10e13977] [cursor=pointer]
+      - generic [ref=f10e13978]:
+        - generic [ref=f10e13979]: Guard retained
+        - generic [ref=f10e13980]: task-022 Parse guard existing
+        - generic [ref=f10e13981]: Open
+        - generic [ref=f10e13982]: Normal
+        - button "Open project" [ref=f10e13983] [cursor=pointer]
+      - generic [ref=f10e13984]:
+        - generic [ref=f10e13985]: Guard retained
+        - generic [ref=f10e13986]: task-022 Task guard existing
+        - generic [ref=f10e13987]: Open
+        - generic [ref=f10e13988]: Normal
+        - button "Open project" [ref=f10e13989] [cursor=pointer]
+      - generic [ref=f10e13990]:
+        - generic [ref=f10e13991]: Imported live
+        - generic [ref=f10e13992]: task-022 Import restart
+        - generic [ref=f10e13993]: Open
+        - generic [ref=f10e13994]: Low
+        - generic [ref=f10e13995]: 2044-02-29
+        - generic [ref=f10e13996]: Live import
+        - button "Open project" [ref=f10e13997] [cursor=pointer]
+      - generic [ref=f10e13998]:
+        - generic [ref=f10e13999]: Target first
+        - generic [ref=f10e14000]: task-022 Transfer target
+        - generic [ref=f10e14001]: Open
+        - generic [ref=f10e14002]: Normal
+        - button "Open project" [ref=f10e14003] [cursor=pointer]
+      - generic [ref=f10e14004]:
+        - generic [ref=f10e14005]: Target second
+        - generic [ref=f10e14006]: task-022 Transfer target
+        - generic [ref=f10e14007]: Open
+        - generic [ref=f10e14008]: Normal
+        - button "Open project" [ref=f10e14009] [cursor=pointer]
+      - generic [ref=f10e14010]:
+        - generic [ref=f10e14011]: Transferred complete
+        - generic [ref=f10e14012]: task-022 Transfer target
+        - generic [ref=f10e14013]: Completed
+        - generic [ref=f10e14014]: High
+        - generic [ref=f10e14015]: 2032-02-29
+        - button "Open project" [ref=f10e14016] [cursor=pointer]
+      - generic [ref=f10e14017]:
+        - generic [ref=f10e14018]: Source remaining
+        - generic [ref=f10e14019]: task-022 Transfer source
+        - generic [ref=f10e14020]: Open
+        - generic [ref=f10e14021]: Normal
+        - button "Open project" [ref=f10e14022] [cursor=pointer]
+      - generic [ref=f10e14023]:
+        - generic [ref=f10e14024]: Filtered target sentinel
+        - generic [ref=f10e14025]: task-022 Filtered transfer target
+        - generic [ref=f10e14026]: Open
+        - generic [ref=f10e14027]: Normal
+        - button "Open project" [ref=f10e14028] [cursor=pointer]
+      - generic [ref=f10e14029]:
+        - generic [ref=f10e14030]: Filtered moving
+        - generic [ref=f10e14031]: task-022 Filtered transfer target
+        - generic [ref=f10e14032]: Open
+        - generic [ref=f10e14033]: High
+        - generic [ref=f10e14034]: 2033-01-01
+        - button "Open project" [ref=f10e14035] [cursor=pointer]
+      - generic [ref=f10e14036]:
+        - generic [ref=f10e14037]: Filtered first
+        - generic [ref=f10e14038]: task-022 Filtered transfer source
+        - generic [ref=f10e14039]: Open
+        - generic [ref=f10e14040]: High
+        - generic [ref=f10e14041]: 2033-01-01
+        - button "Open project" [ref=f10e14042] [cursor=pointer]
+      - generic [ref=f10e14043]:
+        - generic [ref=f10e14044]: Filtered last
+        - generic [ref=f10e14045]: task-022 Filtered transfer source
+        - generic [ref=f10e14046]: Open
+        - generic [ref=f10e14047]: High
+        - generic [ref=f10e14048]: 2033-01-01
+        - button "Open project" [ref=f10e14049] [cursor=pointer]
+      - generic [ref=f10e14050]:
+        - generic [ref=f10e14051]: Filtered outside range
+        - generic [ref=f10e14052]: task-022 Filtered transfer source
+        - generic [ref=f10e14053]: Open
+        - generic [ref=f10e14054]: High
+        - generic [ref=f10e14055]: 2034-01-01
+        - button "Open project" [ref=f10e14056] [cursor=pointer]
+      - generic [ref=f10e14057]:
+        - generic [ref=f10e14058]: Filtered completed guard
+        - generic [ref=f10e14059]: task-022 Filtered transfer source
+        - generic [ref=f10e14060]: Completed
+        - generic [ref=f10e14061]: High
+        - button "Open project" [ref=f10e14062] [cursor=pointer]
+      - generic [ref=f10e14063]:
+        - generic [ref=f10e14064]: Filtered normal guard
+        - generic [ref=f10e14065]: task-022 Filtered transfer source
+        - generic [ref=f10e14066]: Open
+        - generic [ref=f10e14067]: Normal
+        - button "Open project" [ref=f10e14068] [cursor=pointer]
+      - generic [ref=f10e14069]:
+        - generic [ref=f10e14070]: Options task
+        - generic [ref=f10e14071]: task-022 Options owner
+        - generic [ref=f10e14072]: Open
+        - generic [ref=f10e14073]: Normal
+        - button "Open project" [ref=f10e14074] [cursor=pointer]
+      - generic [ref=f10e14075]:
+        - generic [ref=f10e14076]: Undated target sentinel
+        - generic [ref=f10e14077]: task-022 Read-only transfer target
+        - generic [ref=f10e14078]: Open
+        - generic [ref=f10e14079]: Normal
+        - button "Open project" [ref=f10e14080] [cursor=pointer]
+      - generic [ref=f10e14081]:
+        - generic [ref=f10e14082]: Undated transfer
+        - generic [ref=f10e14083]: task-022 Read-only transfer owner
+        - generic [ref=f10e14084]: Open
+        - generic [ref=f10e14085]: Normal
+        - button "Open project" [ref=f10e14086] [cursor=pointer]
+      - generic [ref=f10e14087]:
+        - generic [ref=f10e14088]: Undated owner sentinel
+        - generic [ref=f10e14089]: task-022 Read-only transfer owner
+        - generic [ref=f10e14090]: Open
+        - generic [ref=f10e14091]: Normal
+        - button "Open project" [ref=f10e14092] [cursor=pointer]
+      - generic [ref=f10e14093]:
+        - generic [ref=f10e14094]: Notes identity
+        - generic [ref=f10e14095]: task-022 Notes values
+        - generic [ref=f10e14096]: Open
+        - generic [ref=f10e14097]: High
+        - generic [ref=f10e14098]: 2035-01-01
+        - generic [ref=f10e14099]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e14100] [cursor=pointer]
+      - generic [ref=f10e14101]:
+        - generic [ref=f10e14102]: Only in notes title sentinel
+        - generic [ref=f10e14103]: task-022 Notes values
+        - generic [ref=f10e14104]: Open
+        - generic [ref=f10e14105]: Normal
+        - button "Open project" [ref=f10e14106] [cursor=pointer]
+      - generic [ref=f10e14107]:
+        - generic [ref=f10e14108]: Notes target existing
+        - generic [ref=f10e14109]: task-022 Notes target
+        - generic [ref=f10e14110]: Open
+        - generic [ref=f10e14111]: Normal
+        - button "Open project" [ref=f10e14112] [cursor=pointer]
+      - generic [ref=f10e14113]:
+        - generic [ref=f10e14114]: Notes before
+        - generic [ref=f10e14115]: task-022 Notes owner
+        - generic [ref=f10e14116]: Open
+        - generic [ref=f10e14117]: Normal
+        - button "Open project" [ref=f10e14118] [cursor=pointer]
+      - generic [ref=f10e14119]:
+        - generic [ref=f10e14120]: Notes travelling
+        - generic [ref=f10e14121]: task-022 Notes owner
+        - generic [ref=f10e14122]: Open
+        - generic [ref=f10e14123]: Normal
+        - generic [ref=f10e14124]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e14125] [cursor=pointer]
+      - generic [ref=f10e14126]:
+        - generic [ref=f10e14127]: Notes after
+        - generic [ref=f10e14128]: task-022 Notes owner
+        - generic [ref=f10e14129]: Open
+        - generic [ref=f10e14130]: Normal
+        - button "Open project" [ref=f10e14131] [cursor=pointer]
+      - generic [ref=f10e14132]:
+        - generic [ref=f10e14133]: High open first
+        - generic [ref=f10e14134]: task-022 Priority intersection
+        - generic [ref=f10e14135]: Open
+        - generic [ref=f10e14136]: High
+        - button "Open project" [ref=f10e14137] [cursor=pointer]
+      - generic [ref=f10e14138]:
+        - generic [ref=f10e14139]: Low open
+        - generic [ref=f10e14140]: task-022 Priority intersection
+        - generic [ref=f10e14141]: Open
+        - generic [ref=f10e14142]: Low
+        - button "Open project" [ref=f10e14143] [cursor=pointer]
+      - generic [ref=f10e14144]:
+        - generic [ref=f10e14145]: High completed
+        - generic [ref=f10e14146]: task-022 Priority intersection
+        - generic [ref=f10e14147]: Completed
+        - generic [ref=f10e14148]: High
+        - button "Open project" [ref=f10e14149] [cursor=pointer]
+      - generic [ref=f10e14150]:
+        - generic [ref=f10e14151]: High open last
+        - generic [ref=f10e14152]: task-022 Priority intersection
+        - generic [ref=f10e14153]: Open
+        - generic [ref=f10e14154]: High
+        - button "Open project" [ref=f10e14155] [cursor=pointer]
+      - generic [ref=f10e14156]:
+        - generic [ref=f10e14157]: Leaving priority
+        - generic [ref=f10e14158]: task-022 Priority live filters
+        - generic [ref=f10e14159]: Open
+        - generic [ref=f10e14160]: Low
+        - button "Open project" [ref=f10e14161] [cursor=pointer]
+      - generic [ref=f10e14162]:
+        - generic [ref=f10e14163]: Leaving completion
+        - generic [ref=f10e14164]: task-022 Priority live filters
+        - generic [ref=f10e14165]: Open
+        - generic [ref=f10e14166]: High
+        - button "Open project" [ref=f10e14167] [cursor=pointer]
+      - generic [ref=f10e14168]:
+        - generic [ref=f10e14169]: Completed high guard
+        - generic [ref=f10e14170]: task-022 Priority live filters
+        - generic [ref=f10e14171]: Completed
+        - generic [ref=f10e14172]: High
+        - button "Open project" [ref=f10e14173] [cursor=pointer]
+      - generic [ref=f10e14174]:
+        - generic [ref=f10e14175]: Open normal guard
+        - generic [ref=f10e14176]: task-022 Priority live filters
+        - generic [ref=f10e14177]: Open
+        - generic [ref=f10e14178]: Normal
+        - button "Open project" [ref=f10e14179] [cursor=pointer]
+      - generic [ref=f10e14180]:
+        - generic [ref=f10e14181]: Filtered new title
+        - generic [ref=f10e14182]: task-022 Priority rename filters
+        - generic [ref=f10e14183]: Open
+        - generic [ref=f10e14184]: Low
+        - button "Open project" [ref=f10e14185] [cursor=pointer]
+      - generic [ref=f10e14186]:
+        - generic [ref=f10e14187]: Unmatched normal task
+        - generic [ref=f10e14188]: task-022 Priority rename filters
+        - generic [ref=f10e14189]: Open
+        - generic [ref=f10e14190]: Normal
+        - button "Open project" [ref=f10e14191] [cursor=pointer]
+      - generic [ref=f10e14192]:
+        - generic [ref=f10e14193]: Completed low guard
+        - generic [ref=f10e14194]: task-022 Priority rename filters
+        - generic [ref=f10e14195]: Completed
+        - generic [ref=f10e14196]: Low
+        - button "Open project" [ref=f10e14197] [cursor=pointer]
+      - generic [ref=f10e14198]:
+        - generic [ref=f10e14199]: Archived high open
+        - generic [ref=f10e14200]: task-022 Archived combined filters
+        - generic [ref=f10e14201]: Open
+        - generic [ref=f10e14202]: High
+        - button "Open project" [ref=f10e14203] [cursor=pointer]
+      - generic [ref=f10e14204]:
+        - generic [ref=f10e14205]: Archived normal completed
+        - generic [ref=f10e14206]: task-022 Archived combined filters
+        - generic [ref=f10e14207]: Completed
+        - generic [ref=f10e14208]: Normal
+        - button "Open project" [ref=f10e14209] [cursor=pointer]
+      - generic [ref=f10e14210]:
+        - generic [ref=f10e14211]: Priority renamed
+        - generic [ref=f10e14212]: task-022 Priority ownership
+        - generic [ref=f10e14213]: Open
+        - generic [ref=f10e14214]: High
+        - button "Open project" [ref=f10e14215] [cursor=pointer]
+      - generic [ref=f10e14216]:
+        - generic [ref=f10e14217]: Priority second
+        - generic [ref=f10e14218]: task-022 Priority ownership
+        - generic [ref=f10e14219]: Open
+        - generic [ref=f10e14220]: Low
+        - button "Open project" [ref=f10e14221] [cursor=pointer]
+      - generic [ref=f10e14222]:
+        - generic [ref=f10e14223]: Priority other task
+        - generic [ref=f10e14224]: task-022 Priority other owner
+        - generic [ref=f10e14225]: Open
+        - generic [ref=f10e14226]: Normal
+        - button "Open project" [ref=f10e14227] [cursor=pointer]
+      - generic [ref=f10e14228]:
+        - generic [ref=f10e14229]: Priority completed
+        - generic [ref=f10e14230]: task-022 Priority completion
+        - generic [ref=f10e14231]: Completed
+        - generic [ref=f10e14232]: Low
+        - button "Open project" [ref=f10e14233] [cursor=pointer]
+      - generic [ref=f10e14234]:
+        - generic [ref=f10e14235]: Priority open
+        - generic [ref=f10e14236]: task-022 Priority completion
+        - generic [ref=f10e14237]: Open
+        - generic [ref=f10e14238]: High
+        - button "Open project" [ref=f10e14239] [cursor=pointer]
+      - generic [ref=f10e14240]:
+        - generic [ref=f10e14241]: Priority retained
+        - generic [ref=f10e14242]: task-022 Priority archive
+        - generic [ref=f10e14243]: Open
+        - generic [ref=f10e14244]: Normal
+        - button "Open project" [ref=f10e14245] [cursor=pointer]
+      - generic [ref=f10e14246]:
+        - generic [ref=f10e14247]: Return first
+        - generic [ref=f10e14248]: task-022 Return owner
+        - generic [ref=f10e14249]: Open
+        - generic [ref=f10e14250]: Normal
+        - button "Open project" [ref=f10e14251] [cursor=pointer]
+      - generic [ref=f10e14252]:
+        - generic [ref=f10e14253]: Return second
+        - generic [ref=f10e14254]: task-022 Return owner
+        - generic [ref=f10e14255]: Completed
+        - generic [ref=f10e14256]: High
+        - button "Open project" [ref=f10e14257] [cursor=pointer]
+      - generic [ref=f10e14258]:
+        - generic [ref=f10e14259]: Return third
+        - generic [ref=f10e14260]: task-022 Return owner
+        - generic [ref=f10e14261]: Open
+        - generic [ref=f10e14262]: Normal
+        - button "Open project" [ref=f10e14263] [cursor=pointer]
+      - generic [ref=f10e14264]:
+        - generic [ref=f10e14265]: Return fourth
+        - generic [ref=f10e14266]: task-022 Return owner
+        - generic [ref=f10e14267]: Open
+        - generic [ref=f10e14268]: Normal
+        - button "Open project" [ref=f10e14269] [cursor=pointer]
+      - generic [ref=f10e14270]:
+        - generic [ref=f10e14271]: Identity before
+        - generic [ref=f10e14272]: task-022 Returned owner renamed
+        - generic [ref=f10e14273]: Open
+        - generic [ref=f10e14274]: Normal
+        - button "Open project" [ref=f10e14275] [cursor=pointer]
+      - generic [ref=f10e14276]:
+        - generic [ref=f10e14277]: Identity returning
+        - generic [ref=f10e14278]: task-022 Returned owner renamed
+        - generic [ref=f10e14279]: Open
+        - generic [ref=f10e14280]: Normal
+        - button "Open project" [ref=f10e14281] [cursor=pointer]
+      - generic [ref=f10e14282]:
+        - generic [ref=f10e14283]: Identity after
+        - generic [ref=f10e14284]: task-022 Returned owner renamed
+        - generic [ref=f10e14285]: Open
+        - generic [ref=f10e14286]: Normal
+        - button "Open project" [ref=f10e14287] [cursor=pointer]
+      - generic [ref=f10e14288]:
+        - generic [ref=f10e14289]: Second existing
+        - generic [ref=f10e14290]: task-022 Position second owner
+        - generic [ref=f10e14291]: Open
+        - generic [ref=f10e14292]: Normal
+        - button "Open project" [ref=f10e14293] [cursor=pointer]
+      - generic [ref=f10e14294]:
+        - generic [ref=f10e14295]: Second newly created
+        - generic [ref=f10e14296]: task-022 Position second owner
+        - generic [ref=f10e14297]: Open
+        - generic [ref=f10e14298]: Normal
+        - button "Open project" [ref=f10e14299] [cursor=pointer]
+      - generic [ref=f10e14300]:
+        - generic [ref=f10e14301]: First existing
+        - generic [ref=f10e14302]: task-022 Position first owner
+        - generic [ref=f10e14303]: Open
+        - generic [ref=f10e14304]: Normal
+        - button "Open project" [ref=f10e14305] [cursor=pointer]
+      - generic [ref=f10e14306]:
+        - generic [ref=f10e14307]: Position travelling
+        - generic [ref=f10e14308]: task-022 Position first owner
+        - generic [ref=f10e14309]: Open
+        - generic [ref=f10e14310]: Normal
+        - button "Open project" [ref=f10e14311] [cursor=pointer]
+      - generic [ref=f10e14312]:
+        - generic [ref=f10e14313]: First later
+        - generic [ref=f10e14314]: task-022 Position first owner
+        - generic [ref=f10e14315]: Open
+        - generic [ref=f10e14316]: Normal
+        - button "Open project" [ref=f10e14317] [cursor=pointer]
+      - generic [ref=f10e14318]:
+        - generic [ref=f10e14319]: First newly created
+        - generic [ref=f10e14320]: task-022 Position first owner
+        - generic [ref=f10e14321]: Open
+        - generic [ref=f10e14322]: Normal
+        - button "Open project" [ref=f10e14323] [cursor=pointer]
+      - generic [ref=f10e14324]:
+        - generic [ref=f10e14325]: Original task gap
+        - generic [ref=f10e14326]: task-022 Whitespace retained owner
+        - generic [ref=f10e14327]: Open
+        - generic [ref=f10e14328]: High
+        - button "Open project" [ref=f10e14329] [cursor=pointer]
+      - generic [ref=f10e14330]:
+        - generic [ref=f10e14331]: Other task gap
+        - generic [ref=f10e14332]: task-022 Whitespace retained owner
+        - generic [ref=f10e14333]: Open
+        - generic [ref=f10e14334]: High
+        - button "Open project" [ref=f10e14335] [cursor=pointer]
+      - generic [ref=f10e14336]:
+        - generic [ref=f10e14337]: Mixed first
+        - generic [ref=f10e14338]: task-022 Search task intersections
+        - generic [ref=f10e14339]: Open
+        - generic [ref=f10e14340]: High
+        - generic [ref=f10e14341]: 2034-01-01
+        - button "Open project" [ref=f10e14342] [cursor=pointer]
+      - generic [ref=f10e14343]:
+        - generic [ref=f10e14344]: Other high
+        - generic [ref=f10e14345]: task-022 Search task intersections
+        - generic [ref=f10e14346]: Open
+        - generic [ref=f10e14347]: High
+        - generic [ref=f10e14348]: 2034-01-01
+        - button "Open project" [ref=f10e14349] [cursor=pointer]
+      - generic [ref=f10e14350]:
+        - generic [ref=f10e14351]: MIXED completed
+        - generic [ref=f10e14352]: task-022 Search task intersections
+        - generic [ref=f10e14353]: Completed
+        - generic [ref=f10e14354]: High
+        - generic [ref=f10e14355]: 2034-01-01
+        - button "Open project" [ref=f10e14356] [cursor=pointer]
+      - generic [ref=f10e14357]:
+        - generic [ref=f10e14358]: Mixed undated
+        - generic [ref=f10e14359]: task-022 Search task intersections
+        - generic [ref=f10e14360]: Open
+        - generic [ref=f10e14361]: High
+        - button "Open project" [ref=f10e14362] [cursor=pointer]
+      - generic [ref=f10e14363]:
+        - generic [ref=f10e14364]: mixed last
+        - generic [ref=f10e14365]: task-022 Search task intersections
+        - generic [ref=f10e14366]: Open
+        - generic [ref=f10e14367]: High
+        - generic [ref=f10e14368]: 2034-01-01
+        - button "Open project" [ref=f10e14369] [cursor=pointer]
+      - generic [ref=f10e14370]:
+        - generic [ref=f10e14371]: Other normal guard
+        - generic [ref=f10e14372]: task-022 Search task intersections
+        - generic [ref=f10e14373]: Open
+        - generic [ref=f10e14374]: Normal
+        - button "Open project" [ref=f10e14375] [cursor=pointer]
+      - generic [ref=f10e14376]:
+        - generic [ref=f10e14377]: Two spaces
+        - generic [ref=f10e14378]: task-022 Search internal spacing
+        - generic [ref=f10e14379]: Open
+        - generic [ref=f10e14380]: Normal
+        - button "Open project" [ref=f10e14381] [cursor=pointer]
+      - generic [ref=f10e14382]:
+        - generic [ref=f10e14383]: Two spaces sentinel
+        - generic [ref=f10e14384]: task-022 Search internal spacing
+        - generic [ref=f10e14385]: Open
+        - generic [ref=f10e14386]: Normal
+        - button "Open project" [ref=f10e14387] [cursor=pointer]
+      - generic [ref=f10e14388]:
+        - generic [ref=f10e14389]: Task preserved
+        - generic [ref=f10e14390]: task-022 Task reload
+        - generic [ref=f10e14391]: Open
+        - generic [ref=f10e14392]: Normal
+        - button "Open project" [ref=f10e14393] [cursor=pointer]
+      - generic [ref=f10e14394]:
+        - generic [ref=f10e14395]: Private to owner
+        - generic [ref=f10e14396]: task-022 Task owner
+        - generic [ref=f10e14397]: Open
+        - generic [ref=f10e14398]: Normal
+        - button "Open project" [ref=f10e14399] [cursor=pointer]
+      - generic [ref=f10e14400]:
+        - generic [ref=f10e14401]: Done task
+        - generic [ref=f10e14402]: task-022 Task filters
+        - generic [ref=f10e14403]: Open
+        - generic [ref=f10e14404]: Normal
+        - button "Open project" [ref=f10e14405] [cursor=pointer]
+      - generic [ref=f10e14406]:
+        - generic [ref=f10e14407]: Open task
+        - generic [ref=f10e14408]: task-022 Task filters
+        - generic [ref=f10e14409]: Open
+        - generic [ref=f10e14410]: Normal
+        - button "Open project" [ref=f10e14411] [cursor=pointer]
+      - generic [ref=f10e14412]:
+        - generic [ref=f10e14413]: Retained task
+        - generic [ref=f10e14414]: task-022 Archive tasks
+        - generic [ref=f10e14415]: Completed
+        - generic [ref=f10e14416]: Normal
+        - button "Open project" [ref=f10e14417] [cursor=pointer]
+      - generic [ref=f10e14418]:
+        - generic [ref=f10e14419]: Summary one
+        - generic [ref=f10e14420]: task-022 Summary project
+        - generic [ref=f10e14421]: Completed
+        - generic [ref=f10e14422]: Normal
+        - button "Open project" [ref=f10e14423] [cursor=pointer]
+      - generic [ref=f10e14424]:
+        - generic [ref=f10e14425]: Summary two
+        - generic [ref=f10e14426]: task-022 Summary project
+        - generic [ref=f10e14427]: Open
+        - generic [ref=f10e14428]: Normal
+        - button "Open project" [ref=f10e14429] [cursor=pointer]
+      - generic [ref=f10e14430]:
+        - generic [ref=f10e14431]: Identity task
+        - generic [ref=f10e14432]: task-022 Identity updated
+        - generic [ref=f10e14433]: Completed
+        - generic [ref=f10e14434]: Normal
+        - button "Open project" [ref=f10e14435] [cursor=pointer]
+      - generic [ref=f10e14436]:
+        - generic [ref=f10e14437]: Name updated
+        - generic [ref=f10e14438]: task-022 Task rename identity
+        - generic [ref=f10e14439]: Completed
+        - generic [ref=f10e14440]: Normal
+        - button "Open project" [ref=f10e14441] [cursor=pointer]
+      - generic [ref=f10e14442]:
+        - generic [ref=f10e14443]: Name second
+        - generic [ref=f10e14444]: task-022 Task rename identity
+        - generic [ref=f10e14445]: Open
+        - generic [ref=f10e14446]: Normal
+        - button "Open project" [ref=f10e14447] [cursor=pointer]
+      - generic [ref=f10e14448]:
+        - generic [ref=f10e14449]: Kept title
+        - generic [ref=f10e14450]: task-022 Task rename invalid
+        - generic [ref=f10e14451]: Open
+        - generic [ref=f10e14452]: Normal
+        - button "Open project" [ref=f10e14453] [cursor=pointer]
+      - generic [ref=f10e14454]:
+        - generic [ref=f10e14455]: Archived title
+        - generic [ref=f10e14456]: task-022 Task rename archive
+        - generic [ref=f10e14457]: Open
+        - generic [ref=f10e14458]: Normal
+        - button "Open project" [ref=f10e14459] [cursor=pointer]
+      - generic [ref=f10e14460]:
+        - generic [ref=f10e14461]: task-023 Bulk match first
+        - generic [ref=f10e14462]: task-023 Bulk first owner
+        - generic [ref=f10e14463]: Open
+        - generic [ref=f10e14464]: High
+        - generic [ref=f10e14465]: 2050-01-01
+        - generic [ref=f10e14466]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e14467] [cursor=pointer]
+      - generic [ref=f10e14468]:
+        - generic [ref=f10e14469]: task-023 Bulk match low
+        - generic [ref=f10e14470]: task-023 Bulk first owner
+        - generic [ref=f10e14471]: Open
+        - generic [ref=f10e14472]: Low
+        - generic [ref=f10e14473]: 2050-01-01
+        - button "Open project" [ref=f10e14474] [cursor=pointer]
+      - generic [ref=f10e14475]:
+        - generic [ref=f10e14476]: task-023 Bulk match done
+        - generic [ref=f10e14477]: task-023 Bulk first owner
+        - generic [ref=f10e14478]: Open
+        - generic [ref=f10e14479]: High
+        - generic [ref=f10e14480]: 2050-01-01
+        - button "Open project" [ref=f10e14481] [cursor=pointer]
+      - generic [ref=f10e14482]:
+        - generic [ref=f10e14483]: task-023 Bulk other title
+        - generic [ref=f10e14484]: task-023 Bulk first owner
+        - generic [ref=f10e14485]: Open
+        - generic [ref=f10e14486]: High
+        - generic [ref=f10e14487]: 2050-01-01
+        - button "Open project" [ref=f10e14488] [cursor=pointer]
+      - generic [ref=f10e14489]:
+        - generic [ref=f10e14490]: task-023 Bulk match later
+        - generic [ref=f10e14491]: task-023 Bulk first owner
+        - generic [ref=f10e14492]: Open
+        - generic [ref=f10e14493]: High
+        - generic [ref=f10e14494]: 2050-01-02
+        - button "Open project" [ref=f10e14495] [cursor=pointer]
+      - generic [ref=f10e14496]:
+        - generic [ref=f10e14497]: task-023 Bulk match second
+        - generic [ref=f10e14498]: task-023 Bulk first owner
+        - generic [ref=f10e14499]: Open
+        - generic [ref=f10e14500]: High
+        - generic [ref=f10e14501]: 2050-01-01
+        - generic [ref=f10e14502]: Second original note
+        - button "Open project" [ref=f10e14503] [cursor=pointer]
+      - generic [ref=f10e14504]:
+        - generic [ref=f10e14505]: Bulk later reservation sentinel
+        - generic [ref=f10e14506]: task-023 Bulk first owner
+        - generic [ref=f10e14507]: Open
+        - generic [ref=f10e14508]: Normal
+        - button "Open project" [ref=f10e14509] [cursor=pointer]
+      - generic [ref=f10e14510]:
+        - generic [ref=f10e14511]: task-023 Bulk match second done
+        - generic [ref=f10e14512]: task-023 Bulk second owner
+        - generic [ref=f10e14513]: Open
+        - generic [ref=f10e14514]: High
+        - generic [ref=f10e14515]: 2050-01-01
+        - button "Open project" [ref=f10e14516] [cursor=pointer]
+      - generic [ref=f10e14517]:
+        - generic [ref=f10e14518]: task-023 Bulk match undated
+        - generic [ref=f10e14519]: task-023 Bulk second owner
+        - generic [ref=f10e14520]: Open
+        - generic [ref=f10e14521]: High
+        - button "Open project" [ref=f10e14522] [cursor=pointer]
+      - generic [ref=f10e14523]:
+        - generic [ref=f10e14524]: task-023 Protected live
+        - generic [ref=f10e14525]: task-023 Bulk protected
+        - generic [ref=f10e14526]: Completed
+        - generic [ref=f10e14527]: Low
+        - generic [ref=f10e14528]: 2051-01-01
+        - button "Open project" [ref=f10e14529] [cursor=pointer]
+      - generic [ref=f10e14530]:
+        - generic [ref=f10e14531]: task-023 Bulk restart record Bulk restart first
+        - generic [ref=f10e14532]: task-023 Bulk restart first
+        - generic [ref=f10e14533]: Completed
+        - generic [ref=f10e14534]: High
+        - generic [ref=f10e14535]: 2052-02-29
+        - generic [ref=f10e14536]: Bulk restart Ω original
+        - button "Open project" [ref=f10e14537] [cursor=pointer]
+      - generic [ref=f10e14538]:
+        - generic [ref=f10e14539]: task-023 Bulk restart record Bulk restart second
+        - generic [ref=f10e14540]: task-023 Bulk restart second
+        - generic [ref=f10e14541]: Completed
+        - generic [ref=f10e14542]: High
+        - generic [ref=f10e14543]: 2052-02-29
+        - generic [ref=f10e14544]: Bulk restart Ω original
+        - button "Open project" [ref=f10e14545] [cursor=pointer]
+      - generic [ref=f10e14546]:
+        - generic [ref=f10e14547]: Independent normal
+        - generic [ref=f10e14548]: task-023 Defaults independent
+        - generic [ref=f10e14549]: Open
+        - generic [ref=f10e14550]: Normal
+        - button "Open project" [ref=f10e14551] [cursor=pointer]
+      - generic [ref=f10e14552]:
+        - generic [ref=f10e14553]: Before default change
+        - generic [ref=f10e14554]: task-023 Defaults inheritance
+        - generic [ref=f10e14555]: Completed
+        - generic [ref=f10e14556]: Normal
+        - button "Open project" [ref=f10e14557] [cursor=pointer]
+      - generic [ref=f10e14558]:
+        - generic [ref=f10e14559]: Inherited high
+        - generic [ref=f10e14560]: task-023 Defaults inheritance
+        - generic [ref=f10e14561]: Open
+        - generic [ref=f10e14562]: High
+        - button "Open project" [ref=f10e14563] [cursor=pointer]
+      - generic [ref=f10e14564]:
+        - generic [ref=f10e14565]: Inherited low
+        - generic [ref=f10e14566]: task-023 Defaults inheritance
+        - generic [ref=f10e14567]: Open
+        - generic [ref=f10e14568]: Low
+        - button "Open project" [ref=f10e14569] [cursor=pointer]
+      - generic [ref=f10e14570]:
+        - generic [ref=f10e14571]: Inherited normal
+        - generic [ref=f10e14572]: task-023 Defaults inheritance
+        - generic [ref=f10e14573]: Open
+        - generic [ref=f10e14574]: Normal
+        - button "Open project" [ref=f10e14575] [cursor=pointer]
+      - generic [ref=f10e14576]:
+        - generic [ref=f10e14577]: Lifecycle task
+        - generic [ref=f10e14578]: task-023 Defaults renamed
+        - generic [ref=f10e14579]: Open
+        - generic [ref=f10e14580]: Low
+        - button "Open project" [ref=f10e14581] [cursor=pointer]
+      - generic [ref=f10e14582]:
+        - generic [ref=f10e14583]: Restored inherits
+        - generic [ref=f10e14584]: task-023 Defaults renamed
+        - generic [ref=f10e14585]: Open
+        - generic [ref=f10e14586]: Low
+        - button "Open project" [ref=f10e14587] [cursor=pointer]
+      - generic [ref=f10e14588]:
+        - generic [ref=f10e14589]: Live before
+        - generic [ref=f10e14590]: task-023 Deletion fields
+        - generic [ref=f10e14591]: Open
+        - generic [ref=f10e14592]: Normal
+        - button "Open project" [ref=f10e14593] [cursor=pointer]
+      - generic [ref=f10e14594]:
+        - generic [ref=f10e14595]: Live after
+        - generic [ref=f10e14596]: task-023 Deletion fields
+        - generic [ref=f10e14597]: Open
+        - generic [ref=f10e14598]: Normal
+        - button "Open project" [ref=f10e14599] [cursor=pointer]
+      - generic [ref=f10e14600]:
+        - generic [ref=f10e14601]: Completed remove sentinel
+        - generic [ref=f10e14602]: task-023 Deletion fields
+        - generic [ref=f10e14603]: Completed
+        - generic [ref=f10e14604]: High
+        - generic [ref=f10e14605]: 2036-02-29
+        - button "Open project" [ref=f10e14606] [cursor=pointer]
+      - generic [ref=f10e14607]:
+        - generic [ref=f10e14608]: Completed remove outside
+        - generic [ref=f10e14609]: task-023 Deletion fields
+        - generic [ref=f10e14610]: Completed
+        - generic [ref=f10e14611]: High
+        - generic [ref=f10e14612]: 2037-01-01
+        - button "Open project" [ref=f10e14613] [cursor=pointer]
+      - generic [ref=f10e14614]:
+        - generic [ref=f10e14615]: Completed normal exclusion
+        - generic [ref=f10e14616]: task-023 Deletion fields
+        - generic [ref=f10e14617]: Completed
+        - generic [ref=f10e14618]: Normal
+        - button "Open project" [ref=f10e14619] [cursor=pointer]
+      - generic [ref=f10e14620]:
+        - generic [ref=f10e14621]: Completed unrelated high
+        - generic [ref=f10e14622]: task-023 Deletion fields
+        - generic [ref=f10e14623]: Completed
+        - generic [ref=f10e14624]: High
+        - button "Open project" [ref=f10e14625] [cursor=pointer]
+      - generic [ref=f10e14626]:
+        - generic [ref=f10e14627]: Target first
+        - generic [ref=f10e14628]: task-023 Deletion target
+        - generic [ref=f10e14629]: Open
+        - generic [ref=f10e14630]: Normal
+        - button "Open project" [ref=f10e14631] [cursor=pointer]
+      - generic [ref=f10e14632]:
+        - generic [ref=f10e14633]: Reserved
+        - generic [ref=f10e14634]: task-023 Deletion target
+        - generic [ref=f10e14635]: Completed
+        - generic [ref=f10e14636]: High
+        - generic [ref=f10e14637]: 2037-01-01
+        - generic [ref=f10e14638]: Restore original note
+        - button "Open project" [ref=f10e14639] [cursor=pointer]
+      - generic [ref=f10e14640]:
+        - generic [ref=f10e14641]: Target later
+        - generic [ref=f10e14642]: task-023 Deletion target
+        - generic [ref=f10e14643]: Open
+        - generic [ref=f10e14644]: Normal
+        - button "Open project" [ref=f10e14645] [cursor=pointer]
+      - generic [ref=f10e14646]:
+        - generic [ref=f10e14647]: Before
+        - generic [ref=f10e14648]: task-023 Deletion order
+        - generic [ref=f10e14649]: Open
+        - generic [ref=f10e14650]: Normal
+        - button "Open project" [ref=f10e14651] [cursor=pointer]
+      - generic [ref=f10e14652]:
+        - generic [ref=f10e14653]: After
+        - generic [ref=f10e14654]: task-023 Deletion order
+        - generic [ref=f10e14655]: Open
+        - generic [ref=f10e14656]: Normal
+        - button "Open project" [ref=f10e14657] [cursor=pointer]
+      - generic [ref=f10e14658]:
+        - generic [ref=f10e14659]: New arrival
+        - generic [ref=f10e14660]: task-023 Deletion order
+        - generic [ref=f10e14661]: Open
+        - generic [ref=f10e14662]: Normal
+        - button "Open project" [ref=f10e14663] [cursor=pointer]
+      - generic [ref=f10e14664]:
+        - generic [ref=f10e14665]: task-023 Order stable zulu
+        - generic [ref=f10e14666]: task-023 Ordering Zulu owner
+        - generic [ref=f10e14667]: Open
+        - generic [ref=f10e14668]: High
+        - generic [ref=f10e14669]: 2053-02-01
+        - button "Open project" [ref=f10e14670] [cursor=pointer]
+      - generic [ref=f10e14671]:
+        - generic [ref=f10e14672]: task-023 Order stable bravo
+        - generic [ref=f10e14673]: task-023 Ordering Zulu owner
+        - generic [ref=f10e14674]: Open
+        - generic [ref=f10e14675]: Low
+        - button "Open project" [ref=f10e14676] [cursor=pointer]
+      - generic [ref=f10e14677]:
+        - generic [ref=f10e14678]: task-023 Order stable Alpha
+        - generic [ref=f10e14679]: task-023 Ordering Zulu owner
+        - generic [ref=f10e14680]: Open
+        - generic [ref=f10e14681]: Normal
+        - generic [ref=f10e14682]: 2053-01-01
+        - button "Open project" [ref=f10e14683] [cursor=pointer]
+      - generic [ref=f10e14684]:
+        - generic [ref=f10e14685]: task-023 Order stable ALPHA
+        - generic [ref=f10e14686]: task-023 Ordering Alpha owner
+        - generic [ref=f10e14687]: Open
+        - generic [ref=f10e14688]: Normal
+        - generic [ref=f10e14689]: 2053-01-01
+        - button "Open project" [ref=f10e14690] [cursor=pointer]
+      - generic [ref=f10e14691]:
+        - generic [ref=f10e14692]: task-023 Order stable bravo
+        - generic [ref=f10e14693]: task-023 Ordering Alpha owner
+        - generic [ref=f10e14694]: Open
+        - generic [ref=f10e14695]: High
+        - generic [ref=f10e14696]: 2053-02-01
+        - button "Open project" [ref=f10e14697] [cursor=pointer]
+      - generic [ref=f10e14698]:
+        - generic [ref=f10e14699]: task-023 Order action alpha
+        - generic [ref=f10e14700]: task-023 Ordering actions owner
+        - generic [ref=f10e14701]: Completed
+        - generic [ref=f10e14702]: High
+        - generic [ref=f10e14703]: 2054-02-01
+        - button "Open project" [ref=f10e14704] [cursor=pointer]
+      - generic [ref=f10e14705]:
+        - generic [ref=f10e14706]: task-023 Order action zulu
+        - generic [ref=f10e14707]: task-023 Ordering actions owner
+        - generic [ref=f10e14708]: Completed
+        - generic [ref=f10e14709]: High
+        - generic [ref=f10e14710]: 2054-01-01
+        - button "Open project" [ref=f10e14711] [cursor=pointer]
+      - generic [ref=f10e14712]:
+        - generic [ref=f10e14713]: task-023 Order action middle
+        - generic [ref=f10e14714]: task-023 Ordering actions owner
+        - generic [ref=f10e14715]: Open
+        - generic [ref=f10e14716]: High
+        - button "Open project" [ref=f10e14717] [cursor=pointer]
+      - generic [ref=f10e14718]:
+        - generic [ref=f10e14719]: task-023 Order action low
+        - generic [ref=f10e14720]: task-023 Ordering actions owner
+        - generic [ref=f10e14721]: Open
+        - generic [ref=f10e14722]: Low
+        - generic [ref=f10e14723]: 2054-01-01
+        - button "Open project" [ref=f10e14724] [cursor=pointer]
+      - generic [ref=f10e14725]:
+        - generic [ref=f10e14726]: task-023 Order action done
+        - generic [ref=f10e14727]: task-023 Ordering actions owner
+        - generic [ref=f10e14728]: Completed
+        - generic [ref=f10e14729]: High
+        - generic [ref=f10e14730]: 2054-01-01
+        - button "Open project" [ref=f10e14731] [cursor=pointer]
+      - generic [ref=f10e14732]:
+        - generic [ref=f10e14733]: task-023 Order protected active guard
+        - generic [ref=f10e14734]: task-023 Ordering active guard owner
+        - generic [ref=f10e14735]: Open
+        - generic [ref=f10e14736]: Normal
+        - button "Open project" [ref=f10e14737] [cursor=pointer]
+      - generic [ref=f10e14738]:
+        - generic [ref=f10e14739]: task-023 Order Unicode å
+        - generic [ref=f10e14740]: task-023 Ordering Unicode owner
+        - generic [ref=f10e14741]: Open
+        - generic [ref=f10e14742]: Normal
+        - button "Open project" [ref=f10e14743] [cursor=pointer]
+      - generic [ref=f10e14744]:
+        - generic [ref=f10e14745]: task-023 Order Unicode Å
+        - generic [ref=f10e14746]: task-023 Ordering Unicode owner
+        - generic [ref=f10e14747]: Open
+        - generic [ref=f10e14748]: Normal
+        - button "Open project" [ref=f10e14749] [cursor=pointer]
+      - generic [ref=f10e14750]:
+        - generic [ref=f10e14751]: task-023 Order Unicode 🙂
+        - generic [ref=f10e14752]: task-023 Ordering Unicode owner
+        - generic [ref=f10e14753]: Open
+        - generic [ref=f10e14754]: Normal
+        - button "Open project" [ref=f10e14755] [cursor=pointer]
+      - generic [ref=f10e14756]:
+        - generic [ref=f10e14757]: task-023 Order Unicode 
+        - generic [ref=f10e14758]: task-023 Ordering Unicode owner
+        - generic [ref=f10e14759]: Open
+        - generic [ref=f10e14760]: Normal
+        - button "Open project" [ref=f10e14761] [cursor=pointer]
+      - generic [ref=f10e14762]:
+        - generic [ref=f10e14763]: task-023 Owner totals record zulu live
+        - generic [ref=f10e14764]: task-023 Owner totals zulu first
+        - generic [ref=f10e14765]: Open
+        - generic [ref=f10e14766]: Normal
+        - generic [ref=f10e14767]: 2060-01-01
+        - button "Open project" [ref=f10e14768] [cursor=pointer]
+      - generic [ref=f10e14769]:
+        - generic [ref=f10e14770]: task-023 Owner totals record middle completed
+        - generic [ref=f10e14771]: task-023 Owner totals zulu first
+        - generic [ref=f10e14772]: Completed
+        - generic [ref=f10e14773]: High
+        - generic [ref=f10e14774]: 2060-02-01
+        - button "Open project" [ref=f10e14775] [cursor=pointer]
+      - generic [ref=f10e14776]:
+        - generic [ref=f10e14777]: task-023 Owner totals record alpha live
+        - generic [ref=f10e14778]: task-023 Owner totals alpha second
+        - generic [ref=f10e14779]: Completed
+        - generic [ref=f10e14780]: High
+        - generic [ref=f10e14781]: 2060-01-01
+        - button "Open project" [ref=f10e14782] [cursor=pointer]
+      - generic [ref=f10e14783]:
+        - generic [ref=f10e14784]: task-023 Duplicate record zulu first
+        - generic [ref=f10e14785]: task-023 Duplicate owner first
+        - generic [ref=f10e14786]: Open
+        - generic [ref=f10e14787]: Normal
+        - button "Open project" [ref=f10e14788] [cursor=pointer]
+      - generic [ref=f10e14789]:
+        - generic [ref=f10e14790]: task-023 Duplicate record alpha second
+        - generic [ref=f10e14791]: task-023 Duplicate owner first
+        - generic [ref=f10e14792]: Completed
+        - generic [ref=f10e14793]: Normal
+        - button "Open project" [ref=f10e14794] [cursor=pointer]
+      - generic [ref=f10e14795]:
+        - generic [ref=f10e14796]: task-023 Duplicate record middle third
+        - generic [ref=f10e14797]: task-023 Duplicate owner first
+        - generic [ref=f10e14798]: Open
+        - generic [ref=f10e14799]: Normal
+        - button "Open project" [ref=f10e14800] [cursor=pointer]
+      - generic [ref=f10e14801]:
+        - generic [ref=f10e14802]: task-023 Summary record zulu hit
+        - generic [ref=f10e14803]: task-023 Summary first owner
+        - generic [ref=f10e14804]: Open
+        - generic [ref=f10e14805]: High
+        - generic [ref=f10e14806]: 2056-01-01
+        - button "Open project" [ref=f10e14807] [cursor=pointer]
+      - generic [ref=f10e14808]:
+        - generic [ref=f10e14809]: task-023 Summary record gamma done
+        - generic [ref=f10e14810]: task-023 Summary first owner
+        - generic [ref=f10e14811]: Open
+        - generic [ref=f10e14812]: High
+        - generic [ref=f10e14813]: 2056-01-01
+        - button "Open project" [ref=f10e14814] [cursor=pointer]
+      - generic [ref=f10e14815]:
+        - generic [ref=f10e14816]: task-023 Summary record low live
+        - generic [ref=f10e14817]: task-023 Summary first owner
+        - generic [ref=f10e14818]: Open
+        - generic [ref=f10e14819]: Low
+        - button "Open project" [ref=f10e14820] [cursor=pointer]
+      - generic [ref=f10e14821]:
+        - generic [ref=f10e14822]: task-023 Summary record other done
+        - generic [ref=f10e14823]: task-023 Summary first owner
+        - generic [ref=f10e14824]: Completed
+        - generic [ref=f10e14825]: Normal
+        - generic [ref=f10e14826]: 2056-02-01
+        - button "Open project" [ref=f10e14827] [cursor=pointer]
+      - generic [ref=f10e14828]:
+        - generic [ref=f10e14829]: task-023 Summary record alpha hit
+        - generic [ref=f10e14830]: task-023 Summary second owner
+        - generic [ref=f10e14831]: Open
+        - generic [ref=f10e14832]: High
+        - generic [ref=f10e14833]: 2056-01-01
+        - button "Open project" [ref=f10e14834] [cursor=pointer]
+      - generic [ref=f10e14835]:
+        - generic [ref=f10e14836]: task-023 Summary record outside done
+        - generic [ref=f10e14837]: task-023 Summary second owner
+        - generic [ref=f10e14838]: Completed
+        - generic [ref=f10e14839]: High
+        - generic [ref=f10e14840]: 2056-02-01
+        - button "Open project" [ref=f10e14841] [cursor=pointer]
+      - generic [ref=f10e14842]:
+        - generic [ref=f10e14843]: task-023 Summary empty record
+        - generic [ref=f10e14844]: task-023 Summary empty owner
+        - generic [ref=f10e14845]: Completed
+        - generic [ref=f10e14846]: High
+        - generic [ref=f10e14847]: 2057-01-01
+        - button "Open project" [ref=f10e14848] [cursor=pointer]
+      - generic [ref=f10e14849]:
+        - generic [ref=f10e14850]: task-023 Directory Zulu
+        - generic [ref=f10e14851]: task-023 Directory Zulu owner
+        - generic [ref=f10e14852]: Open
+        - generic [ref=f10e14853]: High
+        - generic [ref=f10e14854]: 2045-01-01
+        - generic [ref=f10e14855]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e14856] [cursor=pointer]
+      - generic [ref=f10e14857]:
+        - generic [ref=f10e14858]: task-023 Directory Alpha
+        - generic [ref=f10e14859]: task-023 Directory Zulu owner
+        - generic [ref=f10e14860]: Completed
+        - generic [ref=f10e14861]: Low
+        - button "Open project" [ref=f10e14862] [cursor=pointer]
+      - generic [ref=f10e14863]:
+        - generic [ref=f10e14864]: Foreign directory title
+        - generic [ref=f10e14865]: task-023 Directory Zulu owner
+        - generic [ref=f10e14866]: Open
+        - generic [ref=f10e14867]: Normal
+        - generic [ref=f10e14868]: task-023 Directory notes only
+        - button "Open project" [ref=f10e14869] [cursor=pointer]
+      - generic [ref=f10e14870]:
+        - generic [ref=f10e14871]: task-023 Directory Mid
+        - generic [ref=f10e14872]: task-023 Directory Alpha owner
+        - generic [ref=f10e14873]: Open
+        - generic [ref=f10e14874]: Normal
+        - button "Open project" [ref=f10e14875] [cursor=pointer]
+      - generic [ref=f10e14876]:
+        - generic [ref=f10e14877]: task-023 Filter hit
+        - generic [ref=f10e14878]: task-023 Directory filter owner
+        - generic [ref=f10e14879]: Open
+        - generic [ref=f10e14880]: High
+        - generic [ref=f10e14881]: 2046-03-01
+        - button "Open project" [ref=f10e14882] [cursor=pointer]
+      - generic [ref=f10e14883]:
+        - generic [ref=f10e14884]: task-023 Filter done
+        - generic [ref=f10e14885]: task-023 Directory filter owner
+        - generic [ref=f10e14886]: Completed
+        - generic [ref=f10e14887]: High
+        - generic [ref=f10e14888]: 2046-03-01
+        - button "Open project" [ref=f10e14889] [cursor=pointer]
+      - generic [ref=f10e14890]:
+        - generic [ref=f10e14891]: task-023 Filter low
+        - generic [ref=f10e14892]: task-023 Directory filter owner
+        - generic [ref=f10e14893]: Open
+        - generic [ref=f10e14894]: Low
+        - generic [ref=f10e14895]: 2046-03-01
+        - button "Open project" [ref=f10e14896] [cursor=pointer]
+      - generic [ref=f10e14897]:
+        - generic [ref=f10e14898]: task-023 Filter undated
+        - generic [ref=f10e14899]: task-023 Directory filter owner
+        - generic [ref=f10e14900]: Open
+        - generic [ref=f10e14901]: High
+        - button "Open project" [ref=f10e14902] [cursor=pointer]
+      - generic [ref=f10e14903]:
+        - generic [ref=f10e14904]: task-023 Filter outside
+        - generic [ref=f10e14905]: task-023 Directory filter owner
+        - generic [ref=f10e14906]: Open
+        - generic [ref=f10e14907]: High
+        - generic [ref=f10e14908]: 2046-04-01
+        - button "Open project" [ref=f10e14909] [cursor=pointer]
+      - generic [ref=f10e14910]:
+        - generic [ref=f10e14911]: task-023 Gap task
+        - generic [ref=f10e14912]: task-023 Directory whitespace
+        - generic [ref=f10e14913]: Open
+        - generic [ref=f10e14914]: Normal
+        - button "Open project" [ref=f10e14915] [cursor=pointer]
+      - generic [ref=f10e14916]:
+        - generic [ref=f10e14917]: Calendar renamed
+        - generic [ref=f10e14918]: task-023 Calendar persistence
+        - generic [ref=f10e14919]: Open
+        - generic [ref=f10e14920]: Normal
+        - button "Open project" [ref=f10e14921] [cursor=pointer]
+      - generic [ref=f10e14922]:
+        - generic [ref=f10e14923]: Calendar valid
+        - generic [ref=f10e14924]: task-023 Calendar validation
+        - generic [ref=f10e14925]: Open
+        - generic [ref=f10e14926]: Normal
+        - generic [ref=f10e14927]: 2028-04-30
+        - button "Open project" [ref=f10e14928] [cursor=pointer]
+      - generic [ref=f10e14929]:
+        - generic [ref=f10e14930]: Dated first
+        - generic [ref=f10e14931]: task-023 Calendar independence
+        - generic [ref=f10e14932]: Completed
+        - generic [ref=f10e14933]: High
+        - generic [ref=f10e14934]: 2029-01-01
+        - button "Open project" [ref=f10e14935] [cursor=pointer]
+      - generic [ref=f10e14936]:
+        - generic [ref=f10e14937]: Undated second
+        - generic [ref=f10e14938]: task-023 Calendar independence
+        - generic [ref=f10e14939]: Open
+        - generic [ref=f10e14940]: Normal
+        - button "Open project" [ref=f10e14941] [cursor=pointer]
+      - generic [ref=f10e14942]:
+        - generic [ref=f10e14943]: Completed normal guard
+        - generic [ref=f10e14944]: task-023 Calendar independence
+        - generic [ref=f10e14945]: Completed
+        - generic [ref=f10e14946]: Normal
+        - button "Open project" [ref=f10e14947] [cursor=pointer]
+      - generic [ref=f10e14948]:
+        - generic [ref=f10e14949]: Owner task
+        - generic [ref=f10e14950]: task-023 Calendar second owner
+        - generic [ref=f10e14951]: Open
+        - generic [ref=f10e14952]: Normal
+        - button "Open project" [ref=f10e14953] [cursor=pointer]
+      - generic [ref=f10e14954]:
+        - generic [ref=f10e14955]: Archive dated
+        - generic [ref=f10e14956]: task-023 Calendar archival
+        - generic [ref=f10e14957]: Open
+        - generic [ref=f10e14958]: Normal
+        - generic [ref=f10e14959]: 2030-12-31
+        - button "Open project" [ref=f10e14960] [cursor=pointer]
+      - generic [ref=f10e14961]:
+        - generic [ref=f10e14962]: Before range
+        - generic [ref=f10e14963]: task-023 Range boundaries
+        - generic [ref=f10e14964]: Open
+        - generic [ref=f10e14965]: Normal
+        - generic [ref=f10e14966]: 2028-02-28
+        - button "Open project" [ref=f10e14967] [cursor=pointer]
+      - generic [ref=f10e14968]:
+        - generic [ref=f10e14969]: Range first
+        - generic [ref=f10e14970]: task-023 Range boundaries
+        - generic [ref=f10e14971]: Open
+        - generic [ref=f10e14972]: Normal
+        - generic [ref=f10e14973]: 2028-02-29
+        - button "Open project" [ref=f10e14974] [cursor=pointer]
+      - generic [ref=f10e14975]:
+        - generic [ref=f10e14976]: No calendar date
+        - generic [ref=f10e14977]: task-023 Range boundaries
+        - generic [ref=f10e14978]: Open
+        - generic [ref=f10e14979]: Normal
+        - button "Open project" [ref=f10e14980] [cursor=pointer]
+      - generic [ref=f10e14981]:
+        - generic [ref=f10e14982]: Range last
+        - generic [ref=f10e14983]: task-023 Range boundaries
+        - generic [ref=f10e14984]: Open
+        - generic [ref=f10e14985]: Normal
+        - generic [ref=f10e14986]: 2028-03-02
+        - button "Open project" [ref=f10e14987] [cursor=pointer]
+      - generic [ref=f10e14988]:
+        - generic [ref=f10e14989]: After range
+        - generic [ref=f10e14990]: task-023 Range boundaries
+        - generic [ref=f10e14991]: Open
+        - generic [ref=f10e14992]: Normal
+        - generic [ref=f10e14993]: 2028-03-03
+        - button "Open project" [ref=f10e14994] [cursor=pointer]
+      - generic [ref=f10e14995]:
+        - generic [ref=f10e14996]: Range matching
+        - generic [ref=f10e14997]: task-023 Range intersections
+        - generic [ref=f10e14998]: Open
+        - generic [ref=f10e14999]: High
+        - generic [ref=f10e15000]: 2029-02-01
+        - button "Open project" [ref=f10e15001] [cursor=pointer]
+      - generic [ref=f10e15002]:
+        - generic [ref=f10e15003]: Range low
+        - generic [ref=f10e15004]: task-023 Range intersections
+        - generic [ref=f10e15005]: Open
+        - generic [ref=f10e15006]: Normal
+        - generic [ref=f10e15007]: 2029-01-15
+        - button "Open project" [ref=f10e15008] [cursor=pointer]
+      - generic [ref=f10e15009]:
+        - generic [ref=f10e15010]: Range completed
+        - generic [ref=f10e15011]: task-023 Range intersections
+        - generic [ref=f10e15012]: Open
+        - generic [ref=f10e15013]: Low
+        - generic [ref=f10e15014]: 2029-01-15
+        - button "Open project" [ref=f10e15015] [cursor=pointer]
+      - generic [ref=f10e15016]:
+        - generic [ref=f10e15017]: Range undated
+        - generic [ref=f10e15018]: task-023 Range intersections
+        - generic [ref=f10e15019]: Open
+        - generic [ref=f10e15020]: High
+        - button "Open project" [ref=f10e15021] [cursor=pointer]
+      - generic [ref=f10e15022]:
+        - generic [ref=f10e15023]: Valid member
+        - generic [ref=f10e15024]: task-023 Range validation
+        - generic [ref=f10e15025]: Open
+        - generic [ref=f10e15026]: Normal
+        - generic [ref=f10e15027]: 2028-06-15
+        - button "Open project" [ref=f10e15028] [cursor=pointer]
+      - generic [ref=f10e15029]:
+        - generic [ref=f10e15030]: Undated outsider
+        - generic [ref=f10e15031]: task-023 Range validation
+        - generic [ref=f10e15032]: Open
+        - generic [ref=f10e15033]: Normal
+        - button "Open project" [ref=f10e15034] [cursor=pointer]
+      - generic [ref=f10e15035]:
+        - generic [ref=f10e15036]: Archived date renamed
+        - generic [ref=f10e15037]: task-023 Range archival
+        - generic [ref=f10e15038]: Open
+        - generic [ref=f10e15039]: Normal
+        - generic [ref=f10e15040]: 2030-01-01
+        - button "Open project" [ref=f10e15041] [cursor=pointer]
+      - generic [ref=f10e15042]:
+        - generic [ref=f10e15043]: Archived undated outsider
+        - generic [ref=f10e15044]: task-023 Range archival
+        - generic [ref=f10e15045]: Open
+        - generic [ref=f10e15046]: Normal
+        - button "Open project" [ref=f10e15047] [cursor=pointer]
+      - generic [ref=f10e15048]:
+        - generic [ref=f10e15049]: Retained range member
+        - generic [ref=f10e15050]: task-023 Range owner renamed
+        - generic [ref=f10e15051]: Open
+        - generic [ref=f10e15052]: High
+        - generic [ref=f10e15053]: 2031-03-01
+        - button "Open project" [ref=f10e15054] [cursor=pointer]
+      - generic [ref=f10e15055]:
+        - generic [ref=f10e15056]: Retained undated outsider
+        - generic [ref=f10e15057]: task-023 Range owner renamed
+        - generic [ref=f10e15058]: Open
+        - generic [ref=f10e15059]: Normal
+        - button "Open project" [ref=f10e15060] [cursor=pointer]
+      - generic [ref=f10e15061]:
+        - generic [ref=f10e15062]: Created outside range
+        - generic [ref=f10e15063]: task-023 Range owner renamed
+        - generic [ref=f10e15064]: Open
+        - generic [ref=f10e15065]: Low
+        - button "Open project" [ref=f10e15066] [cursor=pointer]
+      - generic [ref=f10e15067]:
+        - generic [ref=f10e15068]: Must not export
+        - generic [ref=f10e15069]: task-023 Export foreign
+        - generic [ref=f10e15070]: Open
+        - generic [ref=f10e15071]: Normal
+        - button "Open project" [ref=f10e15072] [cursor=pointer]
+      - generic [ref=f10e15073]:
+        - generic [ref=f10e15074]: Export before
+        - generic [ref=f10e15075]: task-023 Export full Ω
+        - generic [ref=f10e15076]: Open
+        - generic [ref=f10e15077]: Normal
+        - button "Open project" [ref=f10e15078] [cursor=pointer]
+      - generic [ref=f10e15079]:
+        - generic [ref=f10e15080]: Export after
+        - generic [ref=f10e15081]: task-023 Export full Ω
+        - generic [ref=f10e15082]: Open
+        - generic [ref=f10e15083]: Normal
+        - button "Open project" [ref=f10e15084] [cursor=pointer]
+      - generic [ref=f10e15085]:
+        - generic [ref=f10e15086]: Imported before
+        - generic [ref=f10e15087]: task-023 Import origin
+        - generic [ref=f10e15088]: Open
+        - generic [ref=f10e15089]: Normal
+        - button "Open project" [ref=f10e15090] [cursor=pointer]
+      - generic [ref=f10e15091]:
+        - generic [ref=f10e15092]: Imported after
+        - generic [ref=f10e15093]: task-023 Import origin
+        - generic [ref=f10e15094]: Open
+        - generic [ref=f10e15095]: Normal
+        - button "Open project" [ref=f10e15096] [cursor=pointer]
+      - generic [ref=f10e15097]:
+        - generic [ref=f10e15098]: Imported before
+        - generic [ref=f10e15099]: task-023 Import copy
+        - generic [ref=f10e15100]: Open
+        - generic [ref=f10e15101]: Normal
+        - button "Open project" [ref=f10e15102] [cursor=pointer]
+      - generic [ref=f10e15103]:
+        - generic [ref=f10e15104]: Imported reserved
+        - generic [ref=f10e15105]: task-023 Import copy
+        - generic [ref=f10e15106]: Completed
+        - generic [ref=f10e15107]: High
+        - generic [ref=f10e15108]: 2040-02-29
+        - generic [ref=f10e15109]: Changed only copy
+        - button "Open project" [ref=f10e15110] [cursor=pointer]
+      - generic [ref=f10e15111]:
+        - generic [ref=f10e15112]: Imported after
+        - generic [ref=f10e15113]: task-023 Import copy
+        - generic [ref=f10e15114]: Open
+        - generic [ref=f10e15115]: Normal
+        - button "Open project" [ref=f10e15116] [cursor=pointer]
+      - generic [ref=f10e15117]:
+        - generic [ref=f10e15118]: Imported arrival
+        - generic [ref=f10e15119]: task-023 Import copy
+        - generic [ref=f10e15120]: Open
+        - generic [ref=f10e15121]: Low
+        - button "Open project" [ref=f10e15122] [cursor=pointer]
+      - generic [ref=f10e15123]:
+        - generic [ref=f10e15124]: Guard retained
+        - generic [ref=f10e15125]: task-023 Parse guard existing
+        - generic [ref=f10e15126]: Open
+        - generic [ref=f10e15127]: Normal
+        - button "Open project" [ref=f10e15128] [cursor=pointer]
+      - generic [ref=f10e15129]:
+        - generic [ref=f10e15130]: Guard retained
+        - generic [ref=f10e15131]: task-023 Task guard existing
+        - generic [ref=f10e15132]: Open
+        - generic [ref=f10e15133]: Normal
+        - button "Open project" [ref=f10e15134] [cursor=pointer]
+      - generic [ref=f10e15135]:
+        - generic [ref=f10e15136]: Imported live
+        - generic [ref=f10e15137]: task-023 Import restart
+        - generic [ref=f10e15138]: Open
+        - generic [ref=f10e15139]: Low
+        - generic [ref=f10e15140]: 2044-02-29
+        - generic [ref=f10e15141]: Live import
+        - button "Open project" [ref=f10e15142] [cursor=pointer]
+      - generic [ref=f10e15143]:
+        - generic [ref=f10e15144]: Target first
+        - generic [ref=f10e15145]: task-023 Transfer target
+        - generic [ref=f10e15146]: Open
+        - generic [ref=f10e15147]: Normal
+        - button "Open project" [ref=f10e15148] [cursor=pointer]
+      - generic [ref=f10e15149]:
+        - generic [ref=f10e15150]: Target second
+        - generic [ref=f10e15151]: task-023 Transfer target
+        - generic [ref=f10e15152]: Open
+        - generic [ref=f10e15153]: Normal
+        - button "Open project" [ref=f10e15154] [cursor=pointer]
+      - generic [ref=f10e15155]:
+        - generic [ref=f10e15156]: Transferred complete
+        - generic [ref=f10e15157]: task-023 Transfer target
+        - generic [ref=f10e15158]: Completed
+        - generic [ref=f10e15159]: High
+        - generic [ref=f10e15160]: 2032-02-29
+        - button "Open project" [ref=f10e15161] [cursor=pointer]
+      - generic [ref=f10e15162]:
+        - generic [ref=f10e15163]: Source remaining
+        - generic [ref=f10e15164]: task-023 Transfer source
+        - generic [ref=f10e15165]: Open
+        - generic [ref=f10e15166]: Normal
+        - button "Open project" [ref=f10e15167] [cursor=pointer]
+      - generic [ref=f10e15168]:
+        - generic [ref=f10e15169]: Filtered target sentinel
+        - generic [ref=f10e15170]: task-023 Filtered transfer target
+        - generic [ref=f10e15171]: Open
+        - generic [ref=f10e15172]: Normal
+        - button "Open project" [ref=f10e15173] [cursor=pointer]
+      - generic [ref=f10e15174]:
+        - generic [ref=f10e15175]: Filtered moving
+        - generic [ref=f10e15176]: task-023 Filtered transfer target
+        - generic [ref=f10e15177]: Open
+        - generic [ref=f10e15178]: High
+        - generic [ref=f10e15179]: 2033-01-01
+        - button "Open project" [ref=f10e15180] [cursor=pointer]
+      - generic [ref=f10e15181]:
+        - generic [ref=f10e15182]: Filtered first
+        - generic [ref=f10e15183]: task-023 Filtered transfer source
+        - generic [ref=f10e15184]: Open
+        - generic [ref=f10e15185]: High
+        - generic [ref=f10e15186]: 2033-01-01
+        - button "Open project" [ref=f10e15187] [cursor=pointer]
+      - generic [ref=f10e15188]:
+        - generic [ref=f10e15189]: Filtered last
+        - generic [ref=f10e15190]: task-023 Filtered transfer source
+        - generic [ref=f10e15191]: Open
+        - generic [ref=f10e15192]: High
+        - generic [ref=f10e15193]: 2033-01-01
+        - button "Open project" [ref=f10e15194] [cursor=pointer]
+      - generic [ref=f10e15195]:
+        - generic [ref=f10e15196]: Filtered outside range
+        - generic [ref=f10e15197]: task-023 Filtered transfer source
+        - generic [ref=f10e15198]: Open
+        - generic [ref=f10e15199]: High
+        - generic [ref=f10e15200]: 2034-01-01
+        - button "Open project" [ref=f10e15201] [cursor=pointer]
+      - generic [ref=f10e15202]:
+        - generic [ref=f10e15203]: Filtered completed guard
+        - generic [ref=f10e15204]: task-023 Filtered transfer source
+        - generic [ref=f10e15205]: Completed
+        - generic [ref=f10e15206]: High
+        - button "Open project" [ref=f10e15207] [cursor=pointer]
+      - generic [ref=f10e15208]:
+        - generic [ref=f10e15209]: Filtered normal guard
+        - generic [ref=f10e15210]: task-023 Filtered transfer source
+        - generic [ref=f10e15211]: Open
+        - generic [ref=f10e15212]: Normal
+        - button "Open project" [ref=f10e15213] [cursor=pointer]
+      - generic [ref=f10e15214]:
+        - generic [ref=f10e15215]: Options task
+        - generic [ref=f10e15216]: task-023 Options owner
+        - generic [ref=f10e15217]: Open
+        - generic [ref=f10e15218]: Normal
+        - button "Open project" [ref=f10e15219] [cursor=pointer]
+      - generic [ref=f10e15220]:
+        - generic [ref=f10e15221]: Undated target sentinel
+        - generic [ref=f10e15222]: task-023 Read-only transfer target
+        - generic [ref=f10e15223]: Open
+        - generic [ref=f10e15224]: Normal
+        - button "Open project" [ref=f10e15225] [cursor=pointer]
+      - generic [ref=f10e15226]:
+        - generic [ref=f10e15227]: Undated transfer
+        - generic [ref=f10e15228]: task-023 Read-only transfer owner
+        - generic [ref=f10e15229]: Open
+        - generic [ref=f10e15230]: Normal
+        - button "Open project" [ref=f10e15231] [cursor=pointer]
+      - generic [ref=f10e15232]:
+        - generic [ref=f10e15233]: Undated owner sentinel
+        - generic [ref=f10e15234]: task-023 Read-only transfer owner
+        - generic [ref=f10e15235]: Open
+        - generic [ref=f10e15236]: Normal
+        - button "Open project" [ref=f10e15237] [cursor=pointer]
+      - generic [ref=f10e15238]:
+        - generic [ref=f10e15239]: Notes identity
+        - generic [ref=f10e15240]: task-023 Notes values
+        - generic [ref=f10e15241]: Open
+        - generic [ref=f10e15242]: High
+        - generic [ref=f10e15243]: 2035-01-01
+        - generic [ref=f10e15244]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e15245] [cursor=pointer]
+      - generic [ref=f10e15246]:
+        - generic [ref=f10e15247]: Only in notes title sentinel
+        - generic [ref=f10e15248]: task-023 Notes values
+        - generic [ref=f10e15249]: Open
+        - generic [ref=f10e15250]: Normal
+        - button "Open project" [ref=f10e15251] [cursor=pointer]
+      - generic [ref=f10e15252]:
+        - generic [ref=f10e15253]: Notes target existing
+        - generic [ref=f10e15254]: task-023 Notes target
+        - generic [ref=f10e15255]: Open
+        - generic [ref=f10e15256]: Normal
+        - button "Open project" [ref=f10e15257] [cursor=pointer]
+      - generic [ref=f10e15258]:
+        - generic [ref=f10e15259]: Notes before
+        - generic [ref=f10e15260]: task-023 Notes owner
+        - generic [ref=f10e15261]: Open
+        - generic [ref=f10e15262]: Normal
+        - button "Open project" [ref=f10e15263] [cursor=pointer]
+      - generic [ref=f10e15264]:
+        - generic [ref=f10e15265]: Notes travelling
+        - generic [ref=f10e15266]: task-023 Notes owner
+        - generic [ref=f10e15267]: Open
+        - generic [ref=f10e15268]: Normal
+        - generic [ref=f10e15269]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e15270] [cursor=pointer]
+      - generic [ref=f10e15271]:
+        - generic [ref=f10e15272]: Notes after
+        - generic [ref=f10e15273]: task-023 Notes owner
+        - generic [ref=f10e15274]: Open
+        - generic [ref=f10e15275]: Normal
+        - button "Open project" [ref=f10e15276] [cursor=pointer]
+      - generic [ref=f10e15277]:
+        - generic [ref=f10e15278]: High open first
+        - generic [ref=f10e15279]: task-023 Priority intersection
+        - generic [ref=f10e15280]: Open
+        - generic [ref=f10e15281]: High
+        - button "Open project" [ref=f10e15282] [cursor=pointer]
+      - generic [ref=f10e15283]:
+        - generic [ref=f10e15284]: Low open
+        - generic [ref=f10e15285]: task-023 Priority intersection
+        - generic [ref=f10e15286]: Open
+        - generic [ref=f10e15287]: Low
+        - button "Open project" [ref=f10e15288] [cursor=pointer]
+      - generic [ref=f10e15289]:
+        - generic [ref=f10e15290]: High completed
+        - generic [ref=f10e15291]: task-023 Priority intersection
+        - generic [ref=f10e15292]: Completed
+        - generic [ref=f10e15293]: High
+        - button "Open project" [ref=f10e15294] [cursor=pointer]
+      - generic [ref=f10e15295]:
+        - generic [ref=f10e15296]: High open last
+        - generic [ref=f10e15297]: task-023 Priority intersection
+        - generic [ref=f10e15298]: Open
+        - generic [ref=f10e15299]: High
+        - button "Open project" [ref=f10e15300] [cursor=pointer]
+      - generic [ref=f10e15301]:
+        - generic [ref=f10e15302]: Leaving priority
+        - generic [ref=f10e15303]: task-023 Priority live filters
+        - generic [ref=f10e15304]: Open
+        - generic [ref=f10e15305]: Low
+        - button "Open project" [ref=f10e15306] [cursor=pointer]
+      - generic [ref=f10e15307]:
+        - generic [ref=f10e15308]: Leaving completion
+        - generic [ref=f10e15309]: task-023 Priority live filters
+        - generic [ref=f10e15310]: Open
+        - generic [ref=f10e15311]: High
+        - button "Open project" [ref=f10e15312] [cursor=pointer]
+      - generic [ref=f10e15313]:
+        - generic [ref=f10e15314]: Completed high guard
+        - generic [ref=f10e15315]: task-023 Priority live filters
+        - generic [ref=f10e15316]: Completed
+        - generic [ref=f10e15317]: High
+        - button "Open project" [ref=f10e15318] [cursor=pointer]
+      - generic [ref=f10e15319]:
+        - generic [ref=f10e15320]: Open normal guard
+        - generic [ref=f10e15321]: task-023 Priority live filters
+        - generic [ref=f10e15322]: Open
+        - generic [ref=f10e15323]: Normal
+        - button "Open project" [ref=f10e15324] [cursor=pointer]
+      - generic [ref=f10e15325]:
+        - generic [ref=f10e15326]: Filtered new title
+        - generic [ref=f10e15327]: task-023 Priority rename filters
+        - generic [ref=f10e15328]: Open
+        - generic [ref=f10e15329]: Low
+        - button "Open project" [ref=f10e15330] [cursor=pointer]
+      - generic [ref=f10e15331]:
+        - generic [ref=f10e15332]: Unmatched normal task
+        - generic [ref=f10e15333]: task-023 Priority rename filters
+        - generic [ref=f10e15334]: Open
+        - generic [ref=f10e15335]: Normal
+        - button "Open project" [ref=f10e15336] [cursor=pointer]
+      - generic [ref=f10e15337]:
+        - generic [ref=f10e15338]: Completed low guard
+        - generic [ref=f10e15339]: task-023 Priority rename filters
+        - generic [ref=f10e15340]: Completed
+        - generic [ref=f10e15341]: Low
+        - button "Open project" [ref=f10e15342] [cursor=pointer]
+      - generic [ref=f10e15343]:
+        - generic [ref=f10e15344]: Archived high open
+        - generic [ref=f10e15345]: task-023 Archived combined filters
+        - generic [ref=f10e15346]: Open
+        - generic [ref=f10e15347]: High
+        - button "Open project" [ref=f10e15348] [cursor=pointer]
+      - generic [ref=f10e15349]:
+        - generic [ref=f10e15350]: Archived normal completed
+        - generic [ref=f10e15351]: task-023 Archived combined filters
+        - generic [ref=f10e15352]: Completed
+        - generic [ref=f10e15353]: Normal
+        - button "Open project" [ref=f10e15354] [cursor=pointer]
+      - generic [ref=f10e15355]:
+        - generic [ref=f10e15356]: Priority renamed
+        - generic [ref=f10e15357]: task-023 Priority ownership
+        - generic [ref=f10e15358]: Open
+        - generic [ref=f10e15359]: High
+        - button "Open project" [ref=f10e15360] [cursor=pointer]
+      - generic [ref=f10e15361]:
+        - generic [ref=f10e15362]: Priority second
+        - generic [ref=f10e15363]: task-023 Priority ownership
+        - generic [ref=f10e15364]: Open
+        - generic [ref=f10e15365]: Low
+        - button "Open project" [ref=f10e15366] [cursor=pointer]
+      - generic [ref=f10e15367]:
+        - generic [ref=f10e15368]: Priority other task
+        - generic [ref=f10e15369]: task-023 Priority other owner
+        - generic [ref=f10e15370]: Open
+        - generic [ref=f10e15371]: Normal
+        - button "Open project" [ref=f10e15372] [cursor=pointer]
+      - generic [ref=f10e15373]:
+        - generic [ref=f10e15374]: Priority completed
+        - generic [ref=f10e15375]: task-023 Priority completion
+        - generic [ref=f10e15376]: Completed
+        - generic [ref=f10e15377]: Low
+        - button "Open project" [ref=f10e15378] [cursor=pointer]
+      - generic [ref=f10e15379]:
+        - generic [ref=f10e15380]: Priority open
+        - generic [ref=f10e15381]: task-023 Priority completion
+        - generic [ref=f10e15382]: Open
+        - generic [ref=f10e15383]: High
+        - button "Open project" [ref=f10e15384] [cursor=pointer]
+      - generic [ref=f10e15385]:
+        - generic [ref=f10e15386]: Priority retained
+        - generic [ref=f10e15387]: task-023 Priority archive
+        - generic [ref=f10e15388]: Open
+        - generic [ref=f10e15389]: Normal
+        - button "Open project" [ref=f10e15390] [cursor=pointer]
+      - generic [ref=f10e15391]:
+        - generic [ref=f10e15392]: Return first
+        - generic [ref=f10e15393]: task-023 Return owner
+        - generic [ref=f10e15394]: Open
+        - generic [ref=f10e15395]: Normal
+        - button "Open project" [ref=f10e15396] [cursor=pointer]
+      - generic [ref=f10e15397]:
+        - generic [ref=f10e15398]: Return second
+        - generic [ref=f10e15399]: task-023 Return owner
+        - generic [ref=f10e15400]: Completed
+        - generic [ref=f10e15401]: High
+        - button "Open project" [ref=f10e15402] [cursor=pointer]
+      - generic [ref=f10e15403]:
+        - generic [ref=f10e15404]: Return third
+        - generic [ref=f10e15405]: task-023 Return owner
+        - generic [ref=f10e15406]: Open
+        - generic [ref=f10e15407]: Normal
+        - button "Open project" [ref=f10e15408] [cursor=pointer]
+      - generic [ref=f10e15409]:
+        - generic [ref=f10e15410]: Return fourth
+        - generic [ref=f10e15411]: task-023 Return owner
+        - generic [ref=f10e15412]: Open
+        - generic [ref=f10e15413]: Normal
+        - button "Open project" [ref=f10e15414] [cursor=pointer]
+      - generic [ref=f10e15415]:
+        - generic [ref=f10e15416]: Identity before
+        - generic [ref=f10e15417]: task-023 Returned owner renamed
+        - generic [ref=f10e15418]: Open
+        - generic [ref=f10e15419]: Normal
+        - button "Open project" [ref=f10e15420] [cursor=pointer]
+      - generic [ref=f10e15421]:
+        - generic [ref=f10e15422]: Identity returning
+        - generic [ref=f10e15423]: task-023 Returned owner renamed
+        - generic [ref=f10e15424]: Open
+        - generic [ref=f10e15425]: Normal
+        - button "Open project" [ref=f10e15426] [cursor=pointer]
+      - generic [ref=f10e15427]:
+        - generic [ref=f10e15428]: Identity after
+        - generic [ref=f10e15429]: task-023 Returned owner renamed
+        - generic [ref=f10e15430]: Open
+        - generic [ref=f10e15431]: Normal
+        - button "Open project" [ref=f10e15432] [cursor=pointer]
+      - generic [ref=f10e15433]:
+        - generic [ref=f10e15434]: Second existing
+        - generic [ref=f10e15435]: task-023 Position second owner
+        - generic [ref=f10e15436]: Open
+        - generic [ref=f10e15437]: Normal
+        - button "Open project" [ref=f10e15438] [cursor=pointer]
+      - generic [ref=f10e15439]:
+        - generic [ref=f10e15440]: Second newly created
+        - generic [ref=f10e15441]: task-023 Position second owner
+        - generic [ref=f10e15442]: Open
+        - generic [ref=f10e15443]: Normal
+        - button "Open project" [ref=f10e15444] [cursor=pointer]
+      - generic [ref=f10e15445]:
+        - generic [ref=f10e15446]: First existing
+        - generic [ref=f10e15447]: task-023 Position first owner
+        - generic [ref=f10e15448]: Open
+        - generic [ref=f10e15449]: Normal
+        - button "Open project" [ref=f10e15450] [cursor=pointer]
+      - generic [ref=f10e15451]:
+        - generic [ref=f10e15452]: Position travelling
+        - generic [ref=f10e15453]: task-023 Position first owner
+        - generic [ref=f10e15454]: Open
+        - generic [ref=f10e15455]: Normal
+        - button "Open project" [ref=f10e15456] [cursor=pointer]
+      - generic [ref=f10e15457]:
+        - generic [ref=f10e15458]: First later
+        - generic [ref=f10e15459]: task-023 Position first owner
+        - generic [ref=f10e15460]: Open
+        - generic [ref=f10e15461]: Normal
+        - button "Open project" [ref=f10e15462] [cursor=pointer]
+      - generic [ref=f10e15463]:
+        - generic [ref=f10e15464]: First newly created
+        - generic [ref=f10e15465]: task-023 Position first owner
+        - generic [ref=f10e15466]: Open
+        - generic [ref=f10e15467]: Normal
+        - button "Open project" [ref=f10e15468] [cursor=pointer]
+      - generic [ref=f10e15469]:
+        - generic [ref=f10e15470]: Original task gap
+        - generic [ref=f10e15471]: task-023 Whitespace retained owner
+        - generic [ref=f10e15472]: Open
+        - generic [ref=f10e15473]: High
+        - button "Open project" [ref=f10e15474] [cursor=pointer]
+      - generic [ref=f10e15475]:
+        - generic [ref=f10e15476]: Other task gap
+        - generic [ref=f10e15477]: task-023 Whitespace retained owner
+        - generic [ref=f10e15478]: Open
+        - generic [ref=f10e15479]: High
+        - button "Open project" [ref=f10e15480] [cursor=pointer]
+      - generic [ref=f10e15481]:
+        - generic [ref=f10e15482]: Mixed first
+        - generic [ref=f10e15483]: task-023 Search task intersections
+        - generic [ref=f10e15484]: Open
+        - generic [ref=f10e15485]: High
+        - generic [ref=f10e15486]: 2034-01-01
+        - button "Open project" [ref=f10e15487] [cursor=pointer]
+      - generic [ref=f10e15488]:
+        - generic [ref=f10e15489]: Other high
+        - generic [ref=f10e15490]: task-023 Search task intersections
+        - generic [ref=f10e15491]: Open
+        - generic [ref=f10e15492]: High
+        - generic [ref=f10e15493]: 2034-01-01
+        - button "Open project" [ref=f10e15494] [cursor=pointer]
+      - generic [ref=f10e15495]:
+        - generic [ref=f10e15496]: MIXED completed
+        - generic [ref=f10e15497]: task-023 Search task intersections
+        - generic [ref=f10e15498]: Completed
+        - generic [ref=f10e15499]: High
+        - generic [ref=f10e15500]: 2034-01-01
+        - button "Open project" [ref=f10e15501] [cursor=pointer]
+      - generic [ref=f10e15502]:
+        - generic [ref=f10e15503]: Mixed undated
+        - generic [ref=f10e15504]: task-023 Search task intersections
+        - generic [ref=f10e15505]: Open
+        - generic [ref=f10e15506]: High
+        - button "Open project" [ref=f10e15507] [cursor=pointer]
+      - generic [ref=f10e15508]:
+        - generic [ref=f10e15509]: mixed last
+        - generic [ref=f10e15510]: task-023 Search task intersections
+        - generic [ref=f10e15511]: Open
+        - generic [ref=f10e15512]: High
+        - generic [ref=f10e15513]: 2034-01-01
+        - button "Open project" [ref=f10e15514] [cursor=pointer]
+      - generic [ref=f10e15515]:
+        - generic [ref=f10e15516]: Other normal guard
+        - generic [ref=f10e15517]: task-023 Search task intersections
+        - generic [ref=f10e15518]: Open
+        - generic [ref=f10e15519]: Normal
+        - button "Open project" [ref=f10e15520] [cursor=pointer]
+      - generic [ref=f10e15521]:
+        - generic [ref=f10e15522]: Two spaces
+        - generic [ref=f10e15523]: task-023 Search internal spacing
+        - generic [ref=f10e15524]: Open
+        - generic [ref=f10e15525]: Normal
+        - button "Open project" [ref=f10e15526] [cursor=pointer]
+      - generic [ref=f10e15527]:
+        - generic [ref=f10e15528]: Two spaces sentinel
+        - generic [ref=f10e15529]: task-023 Search internal spacing
+        - generic [ref=f10e15530]: Open
+        - generic [ref=f10e15531]: Normal
+        - button "Open project" [ref=f10e15532] [cursor=pointer]
+      - generic [ref=f10e15533]:
+        - generic [ref=f10e15534]: Task preserved
+        - generic [ref=f10e15535]: task-023 Task reload
+        - generic [ref=f10e15536]: Open
+        - generic [ref=f10e15537]: Normal
+        - button "Open project" [ref=f10e15538] [cursor=pointer]
+      - generic [ref=f10e15539]:
+        - generic [ref=f10e15540]: Private to owner
+        - generic [ref=f10e15541]: task-023 Task owner
+        - generic [ref=f10e15542]: Open
+        - generic [ref=f10e15543]: Normal
+        - button "Open project" [ref=f10e15544] [cursor=pointer]
+      - generic [ref=f10e15545]:
+        - generic [ref=f10e15546]: Done task
+        - generic [ref=f10e15547]: task-023 Task filters
+        - generic [ref=f10e15548]: Open
+        - generic [ref=f10e15549]: Normal
+        - button "Open project" [ref=f10e15550] [cursor=pointer]
+      - generic [ref=f10e15551]:
+        - generic [ref=f10e15552]: Open task
+        - generic [ref=f10e15553]: task-023 Task filters
+        - generic [ref=f10e15554]: Open
+        - generic [ref=f10e15555]: Normal
+        - button "Open project" [ref=f10e15556] [cursor=pointer]
+      - generic [ref=f10e15557]:
+        - generic [ref=f10e15558]: Retained task
+        - generic [ref=f10e15559]: task-023 Archive tasks
+        - generic [ref=f10e15560]: Completed
+        - generic [ref=f10e15561]: Normal
+        - button "Open project" [ref=f10e15562] [cursor=pointer]
+      - generic [ref=f10e15563]:
+        - generic [ref=f10e15564]: Summary one
+        - generic [ref=f10e15565]: task-023 Summary project
+        - generic [ref=f10e15566]: Completed
+        - generic [ref=f10e15567]: Normal
+        - button "Open project" [ref=f10e15568] [cursor=pointer]
+      - generic [ref=f10e15569]:
+        - generic [ref=f10e15570]: Summary two
+        - generic [ref=f10e15571]: task-023 Summary project
+        - generic [ref=f10e15572]: Open
+        - generic [ref=f10e15573]: Normal
+        - button "Open project" [ref=f10e15574] [cursor=pointer]
+      - generic [ref=f10e15575]:
+        - generic [ref=f10e15576]: Identity task
+        - generic [ref=f10e15577]: task-023 Identity updated
+        - generic [ref=f10e15578]: Completed
+        - generic [ref=f10e15579]: Normal
+        - button "Open project" [ref=f10e15580] [cursor=pointer]
+      - generic [ref=f10e15581]:
+        - generic [ref=f10e15582]: Name updated
+        - generic [ref=f10e15583]: task-023 Task rename identity
+        - generic [ref=f10e15584]: Completed
+        - generic [ref=f10e15585]: Normal
+        - button "Open project" [ref=f10e15586] [cursor=pointer]
+      - generic [ref=f10e15587]:
+        - generic [ref=f10e15588]: Name second
+        - generic [ref=f10e15589]: task-023 Task rename identity
+        - generic [ref=f10e15590]: Open
+        - generic [ref=f10e15591]: Normal
+        - button "Open project" [ref=f10e15592] [cursor=pointer]
+      - generic [ref=f10e15593]:
+        - generic [ref=f10e15594]: Kept title
+        - generic [ref=f10e15595]: task-023 Task rename invalid
+        - generic [ref=f10e15596]: Open
+        - generic [ref=f10e15597]: Normal
+        - button "Open project" [ref=f10e15598] [cursor=pointer]
+      - generic [ref=f10e15599]:
+        - generic [ref=f10e15600]: Archived title
+        - generic [ref=f10e15601]: task-023 Task rename archive
+        - generic [ref=f10e15602]: Open
+        - generic [ref=f10e15603]: Normal
+        - button "Open project" [ref=f10e15604] [cursor=pointer]
+      - generic [ref=f10e15605]:
+        - generic [ref=f10e15606]: task-024 Bulk match first
+        - generic [ref=f10e15607]: task-024 Bulk first owner
+        - generic [ref=f10e15608]: Open
+        - generic [ref=f10e15609]: High
+        - generic [ref=f10e15610]: 2050-01-01
+        - generic [ref=f10e15611]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e15612] [cursor=pointer]
+      - generic [ref=f10e15613]:
+        - generic [ref=f10e15614]: task-024 Bulk match low
+        - generic [ref=f10e15615]: task-024 Bulk first owner
+        - generic [ref=f10e15616]: Open
+        - generic [ref=f10e15617]: Low
+        - generic [ref=f10e15618]: 2050-01-01
+        - button "Open project" [ref=f10e15619] [cursor=pointer]
+      - generic [ref=f10e15620]:
+        - generic [ref=f10e15621]: task-024 Bulk match done
+        - generic [ref=f10e15622]: task-024 Bulk first owner
+        - generic [ref=f10e15623]: Open
+        - generic [ref=f10e15624]: High
+        - generic [ref=f10e15625]: 2050-01-01
+        - button "Open project" [ref=f10e15626] [cursor=pointer]
+      - generic [ref=f10e15627]:
+        - generic [ref=f10e15628]: task-024 Bulk other title
+        - generic [ref=f10e15629]: task-024 Bulk first owner
+        - generic [ref=f10e15630]: Open
+        - generic [ref=f10e15631]: High
+        - generic [ref=f10e15632]: 2050-01-01
+        - button "Open project" [ref=f10e15633] [cursor=pointer]
+      - generic [ref=f10e15634]:
+        - generic [ref=f10e15635]: task-024 Bulk match later
+        - generic [ref=f10e15636]: task-024 Bulk first owner
+        - generic [ref=f10e15637]: Open
+        - generic [ref=f10e15638]: High
+        - generic [ref=f10e15639]: 2050-01-02
+        - button "Open project" [ref=f10e15640] [cursor=pointer]
+      - generic [ref=f10e15641]:
+        - generic [ref=f10e15642]: task-024 Bulk match second
+        - generic [ref=f10e15643]: task-024 Bulk first owner
+        - generic [ref=f10e15644]: Open
+        - generic [ref=f10e15645]: High
+        - generic [ref=f10e15646]: 2050-01-01
+        - generic [ref=f10e15647]: Second original note
+        - button "Open project" [ref=f10e15648] [cursor=pointer]
+      - generic [ref=f10e15649]:
+        - generic [ref=f10e15650]: Bulk later reservation sentinel
+        - generic [ref=f10e15651]: task-024 Bulk first owner
+        - generic [ref=f10e15652]: Open
+        - generic [ref=f10e15653]: Normal
+        - button "Open project" [ref=f10e15654] [cursor=pointer]
+      - generic [ref=f10e15655]:
+        - generic [ref=f10e15656]: task-024 Bulk match second done
+        - generic [ref=f10e15657]: task-024 Bulk second owner
+        - generic [ref=f10e15658]: Open
+        - generic [ref=f10e15659]: High
+        - generic [ref=f10e15660]: 2050-01-01
+        - button "Open project" [ref=f10e15661] [cursor=pointer]
+      - generic [ref=f10e15662]:
+        - generic [ref=f10e15663]: task-024 Bulk match undated
+        - generic [ref=f10e15664]: task-024 Bulk second owner
+        - generic [ref=f10e15665]: Open
+        - generic [ref=f10e15666]: High
+        - button "Open project" [ref=f10e15667] [cursor=pointer]
+      - generic [ref=f10e15668]:
+        - generic [ref=f10e15669]: task-024 Protected live
+        - generic [ref=f10e15670]: task-024 Bulk protected
+        - generic [ref=f10e15671]: Completed
+        - generic [ref=f10e15672]: Low
+        - generic [ref=f10e15673]: 2051-01-01
+        - button "Open project" [ref=f10e15674] [cursor=pointer]
+      - generic [ref=f10e15675]:
+        - generic [ref=f10e15676]: task-024 Bulk restart record Bulk restart first
+        - generic [ref=f10e15677]: task-024 Bulk restart first
+        - generic [ref=f10e15678]: Completed
+        - generic [ref=f10e15679]: High
+        - generic [ref=f10e15680]: 2052-02-29
+        - generic [ref=f10e15681]: Bulk restart Ω original
+        - button "Open project" [ref=f10e15682] [cursor=pointer]
+      - generic [ref=f10e15683]:
+        - generic [ref=f10e15684]: task-024 Bulk restart record Bulk restart second
+        - generic [ref=f10e15685]: task-024 Bulk restart second
+        - generic [ref=f10e15686]: Completed
+        - generic [ref=f10e15687]: High
+        - generic [ref=f10e15688]: 2052-02-29
+        - generic [ref=f10e15689]: Bulk restart Ω original
+        - button "Open project" [ref=f10e15690] [cursor=pointer]
+      - generic [ref=f10e15691]:
+        - generic [ref=f10e15692]: Independent normal
+        - generic [ref=f10e15693]: task-024 Defaults independent
+        - generic [ref=f10e15694]: Open
+        - generic [ref=f10e15695]: Normal
+        - button "Open project" [ref=f10e15696] [cursor=pointer]
+      - generic [ref=f10e15697]:
+        - generic [ref=f10e15698]: Before default change
+        - generic [ref=f10e15699]: task-024 Defaults inheritance
+        - generic [ref=f10e15700]: Completed
+        - generic [ref=f10e15701]: Normal
+        - button "Open project" [ref=f10e15702] [cursor=pointer]
+      - generic [ref=f10e15703]:
+        - generic [ref=f10e15704]: Inherited high
+        - generic [ref=f10e15705]: task-024 Defaults inheritance
+        - generic [ref=f10e15706]: Open
+        - generic [ref=f10e15707]: High
+        - button "Open project" [ref=f10e15708] [cursor=pointer]
+      - generic [ref=f10e15709]:
+        - generic [ref=f10e15710]: Inherited low
+        - generic [ref=f10e15711]: task-024 Defaults inheritance
+        - generic [ref=f10e15712]: Open
+        - generic [ref=f10e15713]: Low
+        - button "Open project" [ref=f10e15714] [cursor=pointer]
+      - generic [ref=f10e15715]:
+        - generic [ref=f10e15716]: Inherited normal
+        - generic [ref=f10e15717]: task-024 Defaults inheritance
+        - generic [ref=f10e15718]: Open
+        - generic [ref=f10e15719]: Normal
+        - button "Open project" [ref=f10e15720] [cursor=pointer]
+      - generic [ref=f10e15721]:
+        - generic [ref=f10e15722]: Lifecycle task
+        - generic [ref=f10e15723]: task-024 Defaults renamed
+        - generic [ref=f10e15724]: Open
+        - generic [ref=f10e15725]: Low
+        - button "Open project" [ref=f10e15726] [cursor=pointer]
+      - generic [ref=f10e15727]:
+        - generic [ref=f10e15728]: Restored inherits
+        - generic [ref=f10e15729]: task-024 Defaults renamed
+        - generic [ref=f10e15730]: Open
+        - generic [ref=f10e15731]: Low
+        - button "Open project" [ref=f10e15732] [cursor=pointer]
+      - generic [ref=f10e15733]:
+        - generic [ref=f10e15734]: Live before
+        - generic [ref=f10e15735]: task-024 Deletion fields
+        - generic [ref=f10e15736]: Open
+        - generic [ref=f10e15737]: Normal
+        - button "Open project" [ref=f10e15738] [cursor=pointer]
+      - generic [ref=f10e15739]:
+        - generic [ref=f10e15740]: Live after
+        - generic [ref=f10e15741]: task-024 Deletion fields
+        - generic [ref=f10e15742]: Open
+        - generic [ref=f10e15743]: Normal
+        - button "Open project" [ref=f10e15744] [cursor=pointer]
+      - generic [ref=f10e15745]:
+        - generic [ref=f10e15746]: Completed remove sentinel
+        - generic [ref=f10e15747]: task-024 Deletion fields
+        - generic [ref=f10e15748]: Completed
+        - generic [ref=f10e15749]: High
+        - generic [ref=f10e15750]: 2036-02-29
+        - button "Open project" [ref=f10e15751] [cursor=pointer]
+      - generic [ref=f10e15752]:
+        - generic [ref=f10e15753]: Completed remove outside
+        - generic [ref=f10e15754]: task-024 Deletion fields
+        - generic [ref=f10e15755]: Completed
+        - generic [ref=f10e15756]: High
+        - generic [ref=f10e15757]: 2037-01-01
+        - button "Open project" [ref=f10e15758] [cursor=pointer]
+      - generic [ref=f10e15759]:
+        - generic [ref=f10e15760]: Completed normal exclusion
+        - generic [ref=f10e15761]: task-024 Deletion fields
+        - generic [ref=f10e15762]: Completed
+        - generic [ref=f10e15763]: Normal
+        - button "Open project" [ref=f10e15764] [cursor=pointer]
+      - generic [ref=f10e15765]:
+        - generic [ref=f10e15766]: Completed unrelated high
+        - generic [ref=f10e15767]: task-024 Deletion fields
+        - generic [ref=f10e15768]: Completed
+        - generic [ref=f10e15769]: High
+        - button "Open project" [ref=f10e15770] [cursor=pointer]
+      - generic [ref=f10e15771]:
+        - generic [ref=f10e15772]: Target first
+        - generic [ref=f10e15773]: task-024 Deletion target
+        - generic [ref=f10e15774]: Open
+        - generic [ref=f10e15775]: Normal
+        - button "Open project" [ref=f10e15776] [cursor=pointer]
+      - generic [ref=f10e15777]:
+        - generic [ref=f10e15778]: Reserved
+        - generic [ref=f10e15779]: task-024 Deletion target
+        - generic [ref=f10e15780]: Completed
+        - generic [ref=f10e15781]: High
+        - generic [ref=f10e15782]: 2037-01-01
+        - generic [ref=f10e15783]: Restore original note
+        - button "Open project" [ref=f10e15784] [cursor=pointer]
+      - generic [ref=f10e15785]:
+        - generic [ref=f10e15786]: Target later
+        - generic [ref=f10e15787]: task-024 Deletion target
+        - generic [ref=f10e15788]: Open
+        - generic [ref=f10e15789]: Normal
+        - button "Open project" [ref=f10e15790] [cursor=pointer]
+      - generic [ref=f10e15791]:
+        - generic [ref=f10e15792]: Before
+        - generic [ref=f10e15793]: task-024 Deletion order
+        - generic [ref=f10e15794]: Open
+        - generic [ref=f10e15795]: Normal
+        - button "Open project" [ref=f10e15796] [cursor=pointer]
+      - generic [ref=f10e15797]:
+        - generic [ref=f10e15798]: After
+        - generic [ref=f10e15799]: task-024 Deletion order
+        - generic [ref=f10e15800]: Open
+        - generic [ref=f10e15801]: Normal
+        - button "Open project" [ref=f10e15802] [cursor=pointer]
+      - generic [ref=f10e15803]:
+        - generic [ref=f10e15804]: New arrival
+        - generic [ref=f10e15805]: task-024 Deletion order
+        - generic [ref=f10e15806]: Open
+        - generic [ref=f10e15807]: Normal
+        - button "Open project" [ref=f10e15808] [cursor=pointer]
+      - generic [ref=f10e15809]:
+        - generic [ref=f10e15810]: Bulk before A
+        - generic [ref=f10e15811]: task-024 Bulk position first
+        - generic [ref=f10e15812]: Open
+        - generic [ref=f10e15813]: Normal
+        - button "Open project" [ref=f10e15814] [cursor=pointer]
+      - generic [ref=f10e15815]:
+        - generic [ref=f10e15816]: task-024 Bulk position travelling
+        - generic [ref=f10e15817]: task-024 Bulk position first
+        - generic [ref=f10e15818]: Completed
+        - generic [ref=f10e15819]: Low
+        - generic [ref=f10e15820]: 2068-02-29
+        - generic [ref=f10e15821]: After deletion Ω new literal notes
+        - button "Open project" [ref=f10e15822] [cursor=pointer]
+      - generic [ref=f10e15823]:
+        - generic [ref=f10e15824]: Bulk after A
+        - generic [ref=f10e15825]: task-024 Bulk position first
+        - generic [ref=f10e15826]: Open
+        - generic [ref=f10e15827]: Normal
+        - button "Open project" [ref=f10e15828] [cursor=pointer]
+      - generic [ref=f10e15829]:
+        - generic [ref=f10e15830]: Bulk before B
+        - generic [ref=f10e15831]: task-024 Bulk position second
+        - generic [ref=f10e15832]: Open
+        - generic [ref=f10e15833]: Normal
+        - button "Open project" [ref=f10e15834] [cursor=pointer]
+      - generic [ref=f10e15835]:
+        - generic [ref=f10e15836]: Bulk later B
+        - generic [ref=f10e15837]: task-024 Bulk position second
+        - generic [ref=f10e15838]: Open
+        - generic [ref=f10e15839]: Normal
+        - button "Open project" [ref=f10e15840] [cursor=pointer]
+      - generic [ref=f10e15841]:
+        - generic [ref=f10e15842]: Bulk deletion before
+        - generic [ref=f10e15843]: task-024 Bulk deletion restart first
+        - generic [ref=f10e15844]: Open
+        - generic [ref=f10e15845]: Low
+        - button "Open project" [ref=f10e15846] [cursor=pointer]
+      - generic [ref=f10e15847]:
+        - generic [ref=f10e15848]: task-024 Bulk deletion restart record restored first
+        - generic [ref=f10e15849]: task-024 Bulk deletion restart first
+        - generic [ref=f10e15850]: Open
+        - generic [ref=f10e15851]: High
+        - generic [ref=f10e15852]: 2064-02-29
+        - generic [ref=f10e15853]: Restored restart Ω first literal
+        - button "Open project" [ref=f10e15854] [cursor=pointer]
+      - generic [ref=f10e15855]:
+        - generic [ref=f10e15856]: Bulk deletion after
+        - generic [ref=f10e15857]: task-024 Bulk deletion restart first
+        - generic [ref=f10e15858]: Open
+        - generic [ref=f10e15859]: Low
+        - button "Open project" [ref=f10e15860] [cursor=pointer]
+      - generic [ref=f10e15861]:
+        - generic [ref=f10e15862]: Bulk deletion holding before
+        - generic [ref=f10e15863]: task-024 Bulk deletion restart holding
+        - generic [ref=f10e15864]: Open
+        - generic [ref=f10e15865]: Normal
+        - button "Open project" [ref=f10e15866] [cursor=pointer]
+      - generic [ref=f10e15867]:
+        - generic [ref=f10e15868]: Bulk deletion holding after
+        - generic [ref=f10e15869]: task-024 Bulk deletion restart holding
+        - generic [ref=f10e15870]: Open
+        - generic [ref=f10e15871]: Normal
+        - button "Open project" [ref=f10e15872] [cursor=pointer]
+      - generic [ref=f10e15873]:
+        - generic [ref=f10e15874]: task-024 Batch record before first
+        - generic [ref=f10e15875]: task-024 Bulk delete first owner
+        - generic [ref=f10e15876]: Open
+        - generic [ref=f10e15877]: Normal
+        - button "Open project" [ref=f10e15878] [cursor=pointer]
+      - generic [ref=f10e15879]:
+        - generic [ref=f10e15880]: task-024 Batch record selected target zulu
+        - generic [ref=f10e15881]: task-024 Bulk delete first owner
+        - generic [ref=f10e15882]: Open
+        - generic [ref=f10e15883]: High
+        - generic [ref=f10e15884]: 2064-02-29
+        - generic [ref=f10e15885]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15886] [cursor=pointer]
+      - generic [ref=f10e15887]:
+        - generic [ref=f10e15888]: task-024 Batch record priority guard
+        - generic [ref=f10e15889]: task-024 Bulk delete first owner
+        - generic [ref=f10e15890]: Open
+        - generic [ref=f10e15891]: Low
+        - generic [ref=f10e15892]: 2064-02-29
+        - generic [ref=f10e15893]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15894] [cursor=pointer]
+      - generic [ref=f10e15895]:
+        - generic [ref=f10e15896]: task-024 Batch record date guard
+        - generic [ref=f10e15897]: task-024 Bulk delete first owner
+        - generic [ref=f10e15898]: Open
+        - generic [ref=f10e15899]: High
+        - generic [ref=f10e15900]: 2064-03-01
+        - generic [ref=f10e15901]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15902] [cursor=pointer]
+      - generic [ref=f10e15903]:
+        - generic [ref=f10e15904]: task-024 Batch record completion guard
+        - generic [ref=f10e15905]: task-024 Bulk delete first owner
+        - generic [ref=f10e15906]: Completed
+        - generic [ref=f10e15907]: High
+        - generic [ref=f10e15908]: 2064-02-29
+        - generic [ref=f10e15909]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15910] [cursor=pointer]
+      - generic [ref=f10e15911]:
+        - generic [ref=f10e15912]: task-024 Unrelated search guard
+        - generic [ref=f10e15913]: task-024 Bulk delete first owner
+        - generic [ref=f10e15914]: Open
+        - generic [ref=f10e15915]: High
+        - generic [ref=f10e15916]: 2064-02-29
+        - generic [ref=f10e15917]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15918] [cursor=pointer]
+      - generic [ref=f10e15919]:
+        - generic [ref=f10e15920]: task-024 Batch record before second
+        - generic [ref=f10e15921]: task-024 Bulk delete second owner
+        - generic [ref=f10e15922]: Open
+        - generic [ref=f10e15923]: Normal
+        - button "Open project" [ref=f10e15924] [cursor=pointer]
+      - generic [ref=f10e15925]:
+        - generic [ref=f10e15926]: task-024 Batch record selected target alpha
+        - generic [ref=f10e15927]: task-024 Bulk delete second owner
+        - generic [ref=f10e15928]: Open
+        - generic [ref=f10e15929]: High
+        - generic [ref=f10e15930]: 2064-02-29
+        - generic [ref=f10e15931]: Literal Ω retained notes
+        - button "Open project" [ref=f10e15932] [cursor=pointer]
+      - generic [ref=f10e15933]:
+        - generic [ref=f10e15934]: task-024 Batch record after second
+        - generic [ref=f10e15935]: task-024 Bulk delete second owner
+        - generic [ref=f10e15936]: Open
+        - generic [ref=f10e15937]: Normal
+        - button "Open project" [ref=f10e15938] [cursor=pointer]
+      - generic [ref=f10e15939]:
+        - generic [ref=f10e15940]: Duplicate before A
+        - generic [ref=f10e15941]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15942]: Open
+        - generic [ref=f10e15943]: Normal
+        - button "Open project" [ref=f10e15944] [cursor=pointer]
+      - generic [ref=f10e15945]:
+        - generic [ref=f10e15946]: task-024 Duplicate bulk target zulu first
+        - generic [ref=f10e15947]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15948]: Open
+        - generic [ref=f10e15949]: Normal
+        - button "Open project" [ref=f10e15950] [cursor=pointer]
+      - generic [ref=f10e15951]:
+        - generic [ref=f10e15952]: Duplicate after A
+        - generic [ref=f10e15953]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15954]: Open
+        - generic [ref=f10e15955]: Normal
+        - button "Open project" [ref=f10e15956] [cursor=pointer]
+      - generic [ref=f10e15957]:
+        - generic [ref=f10e15958]: Duplicate before B
+        - generic [ref=f10e15959]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15960]: Open
+        - generic [ref=f10e15961]: Normal
+        - button "Open project" [ref=f10e15962] [cursor=pointer]
+      - generic [ref=f10e15963]:
+        - generic [ref=f10e15964]: task-024 Duplicate bulk target alpha second
+        - generic [ref=f10e15965]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15966]: Completed
+        - generic [ref=f10e15967]: Normal
+        - button "Open project" [ref=f10e15968] [cursor=pointer]
+      - generic [ref=f10e15969]:
+        - generic [ref=f10e15970]: Duplicate after B
+        - generic [ref=f10e15971]: task-024 Bulk duplicate owner
+        - generic [ref=f10e15972]: Open
+        - generic [ref=f10e15973]: Normal
+        - button "Open project" [ref=f10e15974] [cursor=pointer]
+      - generic [ref=f10e15975]:
+        - generic [ref=f10e15976]: task-024 Order stable zulu
+        - generic [ref=f10e15977]: task-024 Ordering Zulu owner
+        - generic [ref=f10e15978]: Open
+        - generic [ref=f10e15979]: High
+        - generic [ref=f10e15980]: 2053-02-01
+        - button "Open project" [ref=f10e15981] [cursor=pointer]
+      - generic [ref=f10e15982]:
+        - generic [ref=f10e15983]: task-024 Order stable bravo
+        - generic [ref=f10e15984]: task-024 Ordering Zulu owner
+        - generic [ref=f10e15985]: Open
+        - generic [ref=f10e15986]: Low
+        - button "Open project" [ref=f10e15987] [cursor=pointer]
+      - generic [ref=f10e15988]:
+        - generic [ref=f10e15989]: task-024 Order stable Alpha
+        - generic [ref=f10e15990]: task-024 Ordering Zulu owner
+        - generic [ref=f10e15991]: Open
+        - generic [ref=f10e15992]: Normal
+        - generic [ref=f10e15993]: 2053-01-01
+        - button "Open project" [ref=f10e15994] [cursor=pointer]
+      - generic [ref=f10e15995]:
+        - generic [ref=f10e15996]: task-024 Order stable ALPHA
+        - generic [ref=f10e15997]: task-024 Ordering Alpha owner
+        - generic [ref=f10e15998]: Open
+        - generic [ref=f10e15999]: Normal
+        - generic [ref=f10e16000]: 2053-01-01
+        - button "Open project" [ref=f10e16001] [cursor=pointer]
+      - generic [ref=f10e16002]:
+        - generic [ref=f10e16003]: task-024 Order stable bravo
+        - generic [ref=f10e16004]: task-024 Ordering Alpha owner
+        - generic [ref=f10e16005]: Open
+        - generic [ref=f10e16006]: High
+        - generic [ref=f10e16007]: 2053-02-01
+        - button "Open project" [ref=f10e16008] [cursor=pointer]
+      - generic [ref=f10e16009]:
+        - generic [ref=f10e16010]: task-024 Order action alpha
+        - generic [ref=f10e16011]: task-024 Ordering actions owner
+        - generic [ref=f10e16012]: Completed
+        - generic [ref=f10e16013]: High
+        - generic [ref=f10e16014]: 2054-02-01
+        - button "Open project" [ref=f10e16015] [cursor=pointer]
+      - generic [ref=f10e16016]:
+        - generic [ref=f10e16017]: task-024 Order action zulu
+        - generic [ref=f10e16018]: task-024 Ordering actions owner
+        - generic [ref=f10e16019]: Completed
+        - generic [ref=f10e16020]: High
+        - generic [ref=f10e16021]: 2054-01-01
+        - button "Open project" [ref=f10e16022] [cursor=pointer]
+      - generic [ref=f10e16023]:
+        - generic [ref=f10e16024]: task-024 Order action middle
+        - generic [ref=f10e16025]: task-024 Ordering actions owner
+        - generic [ref=f10e16026]: Open
+        - generic [ref=f10e16027]: High
+        - button "Open project" [ref=f10e16028] [cursor=pointer]
+      - generic [ref=f10e16029]:
+        - generic [ref=f10e16030]: task-024 Order action low
+        - generic [ref=f10e16031]: task-024 Ordering actions owner
+        - generic [ref=f10e16032]: Open
+        - generic [ref=f10e16033]: Low
+        - generic [ref=f10e16034]: 2054-01-01
+        - button "Open project" [ref=f10e16035] [cursor=pointer]
+      - generic [ref=f10e16036]:
+        - generic [ref=f10e16037]: task-024 Order action done
+        - generic [ref=f10e16038]: task-024 Ordering actions owner
+        - generic [ref=f10e16039]: Completed
+        - generic [ref=f10e16040]: High
+        - generic [ref=f10e16041]: 2054-01-01
+        - button "Open project" [ref=f10e16042] [cursor=pointer]
+      - generic [ref=f10e16043]:
+        - generic [ref=f10e16044]: task-024 Order protected active guard
+        - generic [ref=f10e16045]: task-024 Ordering active guard owner
+        - generic [ref=f10e16046]: Open
+        - generic [ref=f10e16047]: Normal
+        - button "Open project" [ref=f10e16048] [cursor=pointer]
+      - generic [ref=f10e16049]:
+        - generic [ref=f10e16050]: task-024 Order Unicode å
+        - generic [ref=f10e16051]: task-024 Ordering Unicode owner
+        - generic [ref=f10e16052]: Open
+        - generic [ref=f10e16053]: Normal
+        - button "Open project" [ref=f10e16054] [cursor=pointer]
+      - generic [ref=f10e16055]:
+        - generic [ref=f10e16056]: task-024 Order Unicode Å
+        - generic [ref=f10e16057]: task-024 Ordering Unicode owner
+        - generic [ref=f10e16058]: Open
+        - generic [ref=f10e16059]: Normal
+        - button "Open project" [ref=f10e16060] [cursor=pointer]
+      - generic [ref=f10e16061]:
+        - generic [ref=f10e16062]: task-024 Order Unicode 🙂
+        - generic [ref=f10e16063]: task-024 Ordering Unicode owner
+        - generic [ref=f10e16064]: Open
+        - generic [ref=f10e16065]: Normal
+        - button "Open project" [ref=f10e16066] [cursor=pointer]
+      - generic [ref=f10e16067]:
+        - generic [ref=f10e16068]: task-024 Order Unicode 
+        - generic [ref=f10e16069]: task-024 Ordering Unicode owner
+        - generic [ref=f10e16070]: Open
+        - generic [ref=f10e16071]: Normal
+        - button "Open project" [ref=f10e16072] [cursor=pointer]
+      - generic [ref=f10e16073]:
+        - generic [ref=f10e16074]: task-024 Owner totals record zulu live
+        - generic [ref=f10e16075]: task-024 Owner totals zulu first
+        - generic [ref=f10e16076]: Open
+        - generic [ref=f10e16077]: Normal
+        - generic [ref=f10e16078]: 2060-01-01
+        - button "Open project" [ref=f10e16079] [cursor=pointer]
+      - generic [ref=f10e16080]:
+        - generic [ref=f10e16081]: task-024 Owner totals record middle completed
+        - generic [ref=f10e16082]: task-024 Owner totals zulu first
+        - generic [ref=f10e16083]: Completed
+        - generic [ref=f10e16084]: High
+        - generic [ref=f10e16085]: 2060-02-01
+        - button "Open project" [ref=f10e16086] [cursor=pointer]
+      - generic [ref=f10e16087]:
+        - generic [ref=f10e16088]: task-024 Owner totals record alpha live
+        - generic [ref=f10e16089]: task-024 Owner totals alpha second
+        - generic [ref=f10e16090]: Completed
+        - generic [ref=f10e16091]: High
+        - generic [ref=f10e16092]: 2060-01-01
+        - button "Open project" [ref=f10e16093] [cursor=pointer]
+      - generic [ref=f10e16094]:
+        - generic [ref=f10e16095]: task-024 Duplicate record zulu first
+        - generic [ref=f10e16096]: task-024 Duplicate owner first
+        - generic [ref=f10e16097]: Open
+        - generic [ref=f10e16098]: Normal
+        - button "Open project" [ref=f10e16099] [cursor=pointer]
+      - generic [ref=f10e16100]:
+        - generic [ref=f10e16101]: task-024 Duplicate record alpha second
+        - generic [ref=f10e16102]: task-024 Duplicate owner first
+        - generic [ref=f10e16103]: Completed
+        - generic [ref=f10e16104]: Normal
+        - button "Open project" [ref=f10e16105] [cursor=pointer]
+      - generic [ref=f10e16106]:
+        - generic [ref=f10e16107]: task-024 Duplicate record middle third
+        - generic [ref=f10e16108]: task-024 Duplicate owner first
+        - generic [ref=f10e16109]: Open
+        - generic [ref=f10e16110]: Normal
+        - button "Open project" [ref=f10e16111] [cursor=pointer]
+      - generic [ref=f10e16112]:
+        - generic [ref=f10e16113]: task-024 Summary record zulu hit
+        - generic [ref=f10e16114]: task-024 Summary first owner
+        - generic [ref=f10e16115]: Open
+        - generic [ref=f10e16116]: High
+        - generic [ref=f10e16117]: 2056-01-01
+        - button "Open project" [ref=f10e16118] [cursor=pointer]
+      - generic [ref=f10e16119]:
+        - generic [ref=f10e16120]: task-024 Summary record gamma done
+        - generic [ref=f10e16121]: task-024 Summary first owner
+        - generic [ref=f10e16122]: Open
+        - generic [ref=f10e16123]: High
+        - generic [ref=f10e16124]: 2056-01-01
+        - button "Open project" [ref=f10e16125] [cursor=pointer]
+      - generic [ref=f10e16126]:
+        - generic [ref=f10e16127]: task-024 Summary record low live
+        - generic [ref=f10e16128]: task-024 Summary first owner
+        - generic [ref=f10e16129]: Open
+        - generic [ref=f10e16130]: Low
+        - button "Open project" [ref=f10e16131] [cursor=pointer]
+      - generic [ref=f10e16132]:
+        - generic [ref=f10e16133]: task-024 Summary record other done
+        - generic [ref=f10e16134]: task-024 Summary first owner
+        - generic [ref=f10e16135]: Completed
+        - generic [ref=f10e16136]: Normal
+        - generic [ref=f10e16137]: 2056-02-01
+        - button "Open project" [ref=f10e16138] [cursor=pointer]
+      - generic [ref=f10e16139]:
+        - generic [ref=f10e16140]: task-024 Summary record alpha hit
+        - generic [ref=f10e16141]: task-024 Summary second owner
+        - generic [ref=f10e16142]: Open
+        - generic [ref=f10e16143]: High
+        - generic [ref=f10e16144]: 2056-01-01
+        - button "Open project" [ref=f10e16145] [cursor=pointer]
+      - generic [ref=f10e16146]:
+        - generic [ref=f10e16147]: task-024 Summary record outside done
+        - generic [ref=f10e16148]: task-024 Summary second owner
+        - generic [ref=f10e16149]: Completed
+        - generic [ref=f10e16150]: High
+        - generic [ref=f10e16151]: 2056-02-01
+        - button "Open project" [ref=f10e16152] [cursor=pointer]
+      - generic [ref=f10e16153]:
+        - generic [ref=f10e16154]: task-024 Summary empty record
+        - generic [ref=f10e16155]: task-024 Summary empty owner
+        - generic [ref=f10e16156]: Completed
+        - generic [ref=f10e16157]: High
+        - generic [ref=f10e16158]: 2057-01-01
+        - button "Open project" [ref=f10e16159] [cursor=pointer]
+      - generic [ref=f10e16160]:
+        - generic [ref=f10e16161]: task-024 Directory Zulu
+        - generic [ref=f10e16162]: task-024 Directory Zulu owner
+        - generic [ref=f10e16163]: Open
+        - generic [ref=f10e16164]: High
+        - generic [ref=f10e16165]: 2045-01-01
+        - generic [ref=f10e16166]: Directory <b>Ω</b> retained
+        - button "Open project" [ref=f10e16167] [cursor=pointer]
+      - generic [ref=f10e16168]:
+        - generic [ref=f10e16169]: task-024 Directory Alpha
+        - generic [ref=f10e16170]: task-024 Directory Zulu owner
+        - generic [ref=f10e16171]: Completed
+        - generic [ref=f10e16172]: Low
+        - button "Open project" [ref=f10e16173] [cursor=pointer]
+      - generic [ref=f10e16174]:
+        - generic [ref=f10e16175]: Foreign directory title
+        - generic [ref=f10e16176]: task-024 Directory Zulu owner
+        - generic [ref=f10e16177]: Open
+        - generic [ref=f10e16178]: Normal
+        - generic [ref=f10e16179]: task-024 Directory notes only
+        - button "Open project" [ref=f10e16180] [cursor=pointer]
+      - generic [ref=f10e16181]:
+        - generic [ref=f10e16182]: task-024 Directory Mid
+        - generic [ref=f10e16183]: task-024 Directory Alpha owner
+        - generic [ref=f10e16184]: Open
+        - generic [ref=f10e16185]: Normal
+        - button "Open project" [ref=f10e16186] [cursor=pointer]
+      - generic [ref=f10e16187]:
+        - generic [ref=f10e16188]: task-024 Filter hit
+        - generic [ref=f10e16189]: task-024 Directory filter owner
+        - generic [ref=f10e16190]: Open
+        - generic [ref=f10e16191]: High
+        - generic [ref=f10e16192]: 2046-03-01
+        - button "Open project" [ref=f10e16193] [cursor=pointer]
+      - generic [ref=f10e16194]:
+        - generic [ref=f10e16195]: task-024 Filter done
+        - generic [ref=f10e16196]: task-024 Directory filter owner
+        - generic [ref=f10e16197]: Completed
+        - generic [ref=f10e16198]: High
+        - generic [ref=f10e16199]: 2046-03-01
+        - button "Open project" [ref=f10e16200] [cursor=pointer]
+      - generic [ref=f10e16201]:
+        - generic [ref=f10e16202]: task-024 Filter low
+        - generic [ref=f10e16203]: task-024 Directory filter owner
+        - generic [ref=f10e16204]: Open
+        - generic [ref=f10e16205]: Low
+        - generic [ref=f10e16206]: 2046-03-01
+        - button "Open project" [ref=f10e16207] [cursor=pointer]
+      - generic [ref=f10e16208]:
+        - generic [ref=f10e16209]: task-024 Filter undated
+        - generic [ref=f10e16210]: task-024 Directory filter owner
+        - generic [ref=f10e16211]: Open
+        - generic [ref=f10e16212]: High
+        - button "Open project" [ref=f10e16213] [cursor=pointer]
+      - generic [ref=f10e16214]:
+        - generic [ref=f10e16215]: task-024 Filter outside
+        - generic [ref=f10e16216]: task-024 Directory filter owner
+        - generic [ref=f10e16217]: Open
+        - generic [ref=f10e16218]: High
+        - generic [ref=f10e16219]: 2046-04-01
+        - button "Open project" [ref=f10e16220] [cursor=pointer]
+      - generic [ref=f10e16221]:
+        - generic [ref=f10e16222]: task-024 Gap task
+        - generic [ref=f10e16223]: task-024 Directory whitespace
+        - generic [ref=f10e16224]: Open
+        - generic [ref=f10e16225]: Normal
+        - button "Open project" [ref=f10e16226] [cursor=pointer]
+      - generic [ref=f10e16227]:
+        - generic [ref=f10e16228]: Calendar renamed
+        - generic [ref=f10e16229]: task-024 Calendar persistence
+        - generic [ref=f10e16230]: Open
+        - generic [ref=f10e16231]: Normal
+        - button "Open project" [ref=f10e16232] [cursor=pointer]
+      - generic [ref=f10e16233]:
+        - generic [ref=f10e16234]: Calendar valid
+        - generic [ref=f10e16235]: task-024 Calendar validation
+        - generic [ref=f10e16236]: Open
+        - generic [ref=f10e16237]: Normal
+        - generic [ref=f10e16238]: 2028-04-30
+        - button "Open project" [ref=f10e16239] [cursor=pointer]
+      - generic [ref=f10e16240]:
+        - generic [ref=f10e16241]: Dated first
+        - generic [ref=f10e16242]: task-024 Calendar independence
+        - generic [ref=f10e16243]: Completed
+        - generic [ref=f10e16244]: High
+        - generic [ref=f10e16245]: 2029-01-01
+        - button "Open project" [ref=f10e16246] [cursor=pointer]
+      - generic [ref=f10e16247]:
+        - generic [ref=f10e16248]: Undated second
+        - generic [ref=f10e16249]: task-024 Calendar independence
+        - generic [ref=f10e16250]: Open
+        - generic [ref=f10e16251]: Normal
+        - button "Open project" [ref=f10e16252] [cursor=pointer]
+      - generic [ref=f10e16253]:
+        - generic [ref=f10e16254]: Completed normal guard
+        - generic [ref=f10e16255]: task-024 Calendar independence
+        - generic [ref=f10e16256]: Completed
+        - generic [ref=f10e16257]: Normal
+        - button "Open project" [ref=f10e16258] [cursor=pointer]
+      - generic [ref=f10e16259]:
+        - generic [ref=f10e16260]: Owner task
+        - generic [ref=f10e16261]: task-024 Calendar second owner
+        - generic [ref=f10e16262]: Open
+        - generic [ref=f10e16263]: Normal
+        - button "Open project" [ref=f10e16264] [cursor=pointer]
+      - generic [ref=f10e16265]:
+        - generic [ref=f10e16266]: Archive dated
+        - generic [ref=f10e16267]: task-024 Calendar archival
+        - generic [ref=f10e16268]: Open
+        - generic [ref=f10e16269]: Normal
+        - generic [ref=f10e16270]: 2030-12-31
+        - button "Open project" [ref=f10e16271] [cursor=pointer]
+      - generic [ref=f10e16272]:
+        - generic [ref=f10e16273]: Before range
+        - generic [ref=f10e16274]: task-024 Range boundaries
+        - generic [ref=f10e16275]: Open
+        - generic [ref=f10e16276]: Normal
+        - generic [ref=f10e16277]: 2028-02-28
+        - button "Open project" [ref=f10e16278] [cursor=pointer]
+      - generic [ref=f10e16279]:
+        - generic [ref=f10e16280]: Range first
+        - generic [ref=f10e16281]: task-024 Range boundaries
+        - generic [ref=f10e16282]: Open
+        - generic [ref=f10e16283]: Normal
+        - generic [ref=f10e16284]: 2028-02-29
+        - button "Open project" [ref=f10e16285] [cursor=pointer]
+      - generic [ref=f10e16286]:
+        - generic [ref=f10e16287]: No calendar date
+        - generic [ref=f10e16288]: task-024 Range boundaries
+        - generic [ref=f10e16289]: Open
+        - generic [ref=f10e16290]: Normal
+        - button "Open project" [ref=f10e16291] [cursor=pointer]
+      - generic [ref=f10e16292]:
+        - generic [ref=f10e16293]: Range last
+        - generic [ref=f10e16294]: task-024 Range boundaries
+        - generic [ref=f10e16295]: Open
+        - generic [ref=f10e16296]: Normal
+        - generic [ref=f10e16297]: 2028-03-02
+        - button "Open project" [ref=f10e16298] [cursor=pointer]
+      - generic [ref=f10e16299]:
+        - generic [ref=f10e16300]: After range
+        - generic [ref=f10e16301]: task-024 Range boundaries
+        - generic [ref=f10e16302]: Open
+        - generic [ref=f10e16303]: Normal
+        - generic [ref=f10e16304]: 2028-03-03
+        - button "Open project" [ref=f10e16305] [cursor=pointer]
+      - generic [ref=f10e16306]:
+        - generic [ref=f10e16307]: Range matching
+        - generic [ref=f10e16308]: task-024 Range intersections
+        - generic [ref=f10e16309]: Open
+        - generic [ref=f10e16310]: High
+        - generic [ref=f10e16311]: 2029-02-01
+        - button "Open project" [ref=f10e16312] [cursor=pointer]
+      - generic [ref=f10e16313]:
+        - generic [ref=f10e16314]: Range low
+        - generic [ref=f10e16315]: task-024 Range intersections
+        - generic [ref=f10e16316]: Open
+        - generic [ref=f10e16317]: Normal
+        - generic [ref=f10e16318]: 2029-01-15
+        - button "Open project" [ref=f10e16319] [cursor=pointer]
+      - generic [ref=f10e16320]:
+        - generic [ref=f10e16321]: Range completed
+        - generic [ref=f10e16322]: task-024 Range intersections
+        - generic [ref=f10e16323]: Open
+        - generic [ref=f10e16324]: Low
+        - generic [ref=f10e16325]: 2029-01-15
+        - button "Open project" [ref=f10e16326] [cursor=pointer]
+      - generic [ref=f10e16327]:
+        - generic [ref=f10e16328]: Range undated
+        - generic [ref=f10e16329]: task-024 Range intersections
+        - generic [ref=f10e16330]: Open
+        - generic [ref=f10e16331]: High
+        - button "Open project" [ref=f10e16332] [cursor=pointer]
+      - generic [ref=f10e16333]:
+        - generic [ref=f10e16334]: Valid member
+        - generic [ref=f10e16335]: task-024 Range validation
+        - generic [ref=f10e16336]: Open
+        - generic [ref=f10e16337]: Normal
+        - generic [ref=f10e16338]: 2028-06-15
+        - button "Open project" [ref=f10e16339] [cursor=pointer]
+      - generic [ref=f10e16340]:
+        - generic [ref=f10e16341]: Undated outsider
+        - generic [ref=f10e16342]: task-024 Range validation
+        - generic [ref=f10e16343]: Open
+        - generic [ref=f10e16344]: Normal
+        - button "Open project" [ref=f10e16345] [cursor=pointer]
+      - generic [ref=f10e16346]:
+        - generic [ref=f10e16347]: Archived date renamed
+        - generic [ref=f10e16348]: task-024 Range archival
+        - generic [ref=f10e16349]: Open
+        - generic [ref=f10e16350]: Normal
+        - generic [ref=f10e16351]: 2030-01-01
+        - button "Open project" [ref=f10e16352] [cursor=pointer]
+      - generic [ref=f10e16353]:
+        - generic [ref=f10e16354]: Archived undated outsider
+        - generic [ref=f10e16355]: task-024 Range archival
+        - generic [ref=f10e16356]: Open
+        - generic [ref=f10e16357]: Normal
+        - button "Open project" [ref=f10e16358] [cursor=pointer]
+      - generic [ref=f10e16359]:
+        - generic [ref=f10e16360]: Retained range member
+        - generic [ref=f10e16361]: task-024 Range owner renamed
+        - generic [ref=f10e16362]: Open
+        - generic [ref=f10e16363]: High
+        - generic [ref=f10e16364]: 2031-03-01
+        - button "Open project" [ref=f10e16365] [cursor=pointer]
+      - generic [ref=f10e16366]:
+        - generic [ref=f10e16367]: Retained undated outsider
+        - generic [ref=f10e16368]: task-024 Range owner renamed
+        - generic [ref=f10e16369]: Open
+        - generic [ref=f10e16370]: Normal
+        - button "Open project" [ref=f10e16371] [cursor=pointer]
+      - generic [ref=f10e16372]:
+        - generic [ref=f10e16373]: Created outside range
+        - generic [ref=f10e16374]: task-024 Range owner renamed
+        - generic [ref=f10e16375]: Open
+        - generic [ref=f10e16376]: Low
+        - button "Open project" [ref=f10e16377] [cursor=pointer]
+      - generic [ref=f10e16378]:
+        - generic [ref=f10e16379]: Must not export
+        - generic [ref=f10e16380]: task-024 Export foreign
+        - generic [ref=f10e16381]: Open
+        - generic [ref=f10e16382]: Normal
+        - button "Open project" [ref=f10e16383] [cursor=pointer]
+      - generic [ref=f10e16384]:
+        - generic [ref=f10e16385]: Export before
+        - generic [ref=f10e16386]: task-024 Export full Ω
+        - generic [ref=f10e16387]: Open
+        - generic [ref=f10e16388]: Normal
+        - button "Open project" [ref=f10e16389] [cursor=pointer]
+      - generic [ref=f10e16390]:
+        - generic [ref=f10e16391]: Export after
+        - generic [ref=f10e16392]: task-024 Export full Ω
+        - generic [ref=f10e16393]: Open
+        - generic [ref=f10e16394]: Normal
+        - button "Open project" [ref=f10e16395] [cursor=pointer]
+      - generic [ref=f10e16396]:
+        - generic [ref=f10e16397]: Imported before
+        - generic [ref=f10e16398]: task-024 Import origin
+        - generic [ref=f10e16399]: Open
+        - generic [ref=f10e16400]: Normal
+        - button "Open project" [ref=f10e16401] [cursor=pointer]
+      - generic [ref=f10e16402]:
+        - generic [ref=f10e16403]: Imported after
+        - generic [ref=f10e16404]: task-024 Import origin
+        - generic [ref=f10e16405]: Open
+        - generic [ref=f10e16406]: Normal
+        - button "Open project" [ref=f10e16407] [cursor=pointer]
+      - generic [ref=f10e16408]:
+        - generic [ref=f10e16409]: Imported before
+        - generic [ref=f10e16410]: task-024 Import copy
+        - generic [ref=f10e16411]: Open
+        - generic [ref=f10e16412]: Normal
+        - button "Open project" [ref=f10e16413] [cursor=pointer]
+      - generic [ref=f10e16414]:
+        - generic [ref=f10e16415]: Imported reserved
+        - generic [ref=f10e16416]: task-024 Import copy
+        - generic [ref=f10e16417]: Completed
+        - generic [ref=f10e16418]: High
+        - generic [ref=f10e16419]: 2040-02-29
+        - generic [ref=f10e16420]: Changed only copy
+        - button "Open project" [ref=f10e16421] [cursor=pointer]
+      - generic [ref=f10e16422]:
+        - generic [ref=f10e16423]: Imported after
+        - generic [ref=f10e16424]: task-024 Import copy
+        - generic [ref=f10e16425]: Open
+        - generic [ref=f10e16426]: Normal
+        - button "Open project" [ref=f10e16427] [cursor=pointer]
+      - generic [ref=f10e16428]:
+        - generic [ref=f10e16429]: Imported arrival
+        - generic [ref=f10e16430]: task-024 Import copy
+        - generic [ref=f10e16431]: Open
+        - generic [ref=f10e16432]: Low
+        - button "Open project" [ref=f10e16433] [cursor=pointer]
+      - generic [ref=f10e16434]:
+        - generic [ref=f10e16435]: Guard retained
+        - generic [ref=f10e16436]: task-024 Parse guard existing
+        - generic [ref=f10e16437]: Open
+        - generic [ref=f10e16438]: Normal
+        - button "Open project" [ref=f10e16439] [cursor=pointer]
+      - generic [ref=f10e16440]:
+        - generic [ref=f10e16441]: Guard retained
+        - generic [ref=f10e16442]: task-024 Task guard existing
+        - generic [ref=f10e16443]: Open
+        - generic [ref=f10e16444]: Normal
+        - button "Open project" [ref=f10e16445] [cursor=pointer]
+      - generic [ref=f10e16446]:
+        - generic [ref=f10e16447]: Imported live
+        - generic [ref=f10e16448]: task-024 Import restart
+        - generic [ref=f10e16449]: Open
+        - generic [ref=f10e16450]: Low
+        - generic [ref=f10e16451]: 2044-02-29
+        - generic [ref=f10e16452]: Live import
+        - button "Open project" [ref=f10e16453] [cursor=pointer]
+      - generic [ref=f10e16454]:
+        - generic [ref=f10e16455]: Target first
+        - generic [ref=f10e16456]: task-024 Transfer target
+        - generic [ref=f10e16457]: Open
+        - generic [ref=f10e16458]: Normal
+        - button "Open project" [ref=f10e16459] [cursor=pointer]
+      - generic [ref=f10e16460]:
+        - generic [ref=f10e16461]: Target second
+        - generic [ref=f10e16462]: task-024 Transfer target
+        - generic [ref=f10e16463]: Open
+        - generic [ref=f10e16464]: Normal
+        - button "Open project" [ref=f10e16465] [cursor=pointer]
+      - generic [ref=f10e16466]:
+        - generic [ref=f10e16467]: Transferred complete
+        - generic [ref=f10e16468]: task-024 Transfer target
+        - generic [ref=f10e16469]: Completed
+        - generic [ref=f10e16470]: High
+        - generic [ref=f10e16471]: 2032-02-29
+        - button "Open project" [ref=f10e16472] [cursor=pointer]
+      - generic [ref=f10e16473]:
+        - generic [ref=f10e16474]: Source remaining
+        - generic [ref=f10e16475]: task-024 Transfer source
+        - generic [ref=f10e16476]: Open
+        - generic [ref=f10e16477]: Normal
+        - button "Open project" [ref=f10e16478] [cursor=pointer]
+      - generic [ref=f10e16479]:
+        - generic [ref=f10e16480]: Filtered target sentinel
+        - generic [ref=f10e16481]: task-024 Filtered transfer target
+        - generic [ref=f10e16482]: Open
+        - generic [ref=f10e16483]: Normal
+        - button "Open project" [ref=f10e16484] [cursor=pointer]
+      - generic [ref=f10e16485]:
+        - generic [ref=f10e16486]: Filtered moving
+        - generic [ref=f10e16487]: task-024 Filtered transfer target
+        - generic [ref=f10e16488]: Open
+        - generic [ref=f10e16489]: High
+        - generic [ref=f10e16490]: 2033-01-01
+        - button "Open project" [ref=f10e16491] [cursor=pointer]
+      - generic [ref=f10e16492]:
+        - generic [ref=f10e16493]: Filtered first
+        - generic [ref=f10e16494]: task-024 Filtered transfer source
+        - generic [ref=f10e16495]: Open
+        - generic [ref=f10e16496]: High
+        - generic [ref=f10e16497]: 2033-01-01
+        - button "Open project" [ref=f10e16498] [cursor=pointer]
+      - generic [ref=f10e16499]:
+        - generic [ref=f10e16500]: Filtered last
+        - generic [ref=f10e16501]: task-024 Filtered transfer source
+        - generic [ref=f10e16502]: Open
+        - generic [ref=f10e16503]: High
+        - generic [ref=f10e16504]: 2033-01-01
+        - button "Open project" [ref=f10e16505] [cursor=pointer]
+      - generic [ref=f10e16506]:
+        - generic [ref=f10e16507]: Filtered outside range
+        - generic [ref=f10e16508]: task-024 Filtered transfer source
+        - generic [ref=f10e16509]: Open
+        - generic [ref=f10e16510]: High
+        - generic [ref=f10e16511]: 2034-01-01
+        - button "Open project" [ref=f10e16512] [cursor=pointer]
+      - generic [ref=f10e16513]:
+        - generic [ref=f10e16514]: Filtered completed guard
+        - generic [ref=f10e16515]: task-024 Filtered transfer source
+        - generic [ref=f10e16516]: Completed
+        - generic [ref=f10e16517]: High
+        - button "Open project" [ref=f10e16518] [cursor=pointer]
+      - generic [ref=f10e16519]:
+        - generic [ref=f10e16520]: Filtered normal guard
+        - generic [ref=f10e16521]: task-024 Filtered transfer source
+        - generic [ref=f10e16522]: Open
+        - generic [ref=f10e16523]: Normal
+        - button "Open project" [ref=f10e16524] [cursor=pointer]
+      - generic [ref=f10e16525]:
+        - generic [ref=f10e16526]: Options task
+        - generic [ref=f10e16527]: task-024 Options owner
+        - generic [ref=f10e16528]: Open
+        - generic [ref=f10e16529]: Normal
+        - button "Open project" [ref=f10e16530] [cursor=pointer]
+      - generic [ref=f10e16531]:
+        - generic [ref=f10e16532]: Undated target sentinel
+        - generic [ref=f10e16533]: task-024 Read-only transfer target
+        - generic [ref=f10e16534]: Open
+        - generic [ref=f10e16535]: Normal
+        - button "Open project" [ref=f10e16536] [cursor=pointer]
+      - generic [ref=f10e16537]:
+        - generic [ref=f10e16538]: Undated transfer
+        - generic [ref=f10e16539]: task-024 Read-only transfer owner
+        - generic [ref=f10e16540]: Open
+        - generic [ref=f10e16541]: Normal
+        - button "Open project" [ref=f10e16542] [cursor=pointer]
+      - generic [ref=f10e16543]:
+        - generic [ref=f10e16544]: Undated owner sentinel
+        - generic [ref=f10e16545]: task-024 Read-only transfer owner
+        - generic [ref=f10e16546]: Open
+        - generic [ref=f10e16547]: Normal
+        - button "Open project" [ref=f10e16548] [cursor=pointer]
+      - generic [ref=f10e16549]:
+        - generic [ref=f10e16550]: Notes identity
+        - generic [ref=f10e16551]: task-024 Notes values
+        - generic [ref=f10e16552]: Open
+        - generic [ref=f10e16553]: High
+        - generic [ref=f10e16554]: 2035-01-01
+        - generic [ref=f10e16555]: First line Ω Only in notes </textarea><script>window.ffNotesExecuted=true</script><textarea> last line
+        - button "Open project" [ref=f10e16556] [cursor=pointer]
+      - generic [ref=f10e16557]:
+        - generic [ref=f10e16558]: Only in notes title sentinel
+        - generic [ref=f10e16559]: task-024 Notes values
+        - generic [ref=f10e16560]: Open
+        - generic [ref=f10e16561]: Normal
+        - button "Open project" [ref=f10e16562] [cursor=pointer]
+      - generic [ref=f10e16563]:
+        - generic [ref=f10e16564]: Notes target existing
+        - generic [ref=f10e16565]: task-024 Notes target
+        - generic [ref=f10e16566]: Open
+        - generic [ref=f10e16567]: Normal
+        - button "Open project" [ref=f10e16568] [cursor=pointer]
+      - generic [ref=f10e16569]:
+        - generic [ref=f10e16570]: Notes before
+        - generic [ref=f10e16571]: task-024 Notes owner
+        - generic [ref=f10e16572]: Open
+        - generic [ref=f10e16573]: Normal
+        - button "Open project" [ref=f10e16574] [cursor=pointer]
+      - generic [ref=f10e16575]:
+        - generic [ref=f10e16576]: Notes travelling
+        - generic [ref=f10e16577]: task-024 Notes owner
+        - generic [ref=f10e16578]: Open
+        - generic [ref=f10e16579]: Normal
+        - generic [ref=f10e16580]: Current note retained Unicode λ
+        - button "Open project" [ref=f10e16581] [cursor=pointer]
+      - generic [ref=f10e16582]:
+        - generic [ref=f10e16583]: Notes after
+        - generic [ref=f10e16584]: task-024 Notes owner
+        - generic [ref=f10e16585]: Open
+        - generic [ref=f10e16586]: Normal
+        - button "Open project" [ref=f10e16587] [cursor=pointer]
+      - generic [ref=f10e16588]:
+        - generic [ref=f10e16589]: High open first
+        - generic [ref=f10e16590]: task-024 Priority intersection
+        - generic [ref=f10e16591]: Open
+        - generic [ref=f10e16592]: High
+        - button "Open project" [ref=f10e16593] [cursor=pointer]
+      - generic [ref=f10e16594]:
+        - generic [ref=f10e16595]: Low open
+        - generic [ref=f10e16596]: task-024 Priority intersection
+        - generic [ref=f10e16597]: Open
+        - generic [ref=f10e16598]: Low
+        - button "Open project" [ref=f10e16599] [cursor=pointer]
+      - generic [ref=f10e16600]:
+        - generic [ref=f10e16601]: High completed
+        - generic [ref=f10e16602]: task-024 Priority intersection
+        - generic [ref=f10e16603]: Completed
+        - generic [ref=f10e16604]: High
+        - button "Open project" [ref=f10e16605] [cursor=pointer]
+      - generic [ref=f10e16606]:
+        - generic [ref=f10e16607]: High open last
+        - generic [ref=f10e16608]: task-024 Priority intersection
+        - generic [ref=f10e16609]: Open
+        - generic [ref=f10e16610]: High
+        - button "Open project" [ref=f10e16611] [cursor=pointer]
+      - generic [ref=f10e16612]:
+        - generic [ref=f10e16613]: Leaving priority
+        - generic [ref=f10e16614]: task-024 Priority live filters
+        - generic [ref=f10e16615]: Open
+        - generic [ref=f10e16616]: Low
+        - button "Open project" [ref=f10e16617] [cursor=pointer]
+      - generic [ref=f10e16618]:
+        - generic [ref=f10e16619]: Leaving completion
+        - generic [ref=f10e16620]: task-024 Priority live filters
+        - generic [ref=f10e16621]: Open
+        - generic [ref=f10e16622]: High
+        - button "Open project" [ref=f10e16623] [cursor=pointer]
+      - generic [ref=f10e16624]:
+        - generic [ref=f10e16625]: Completed high guard
+        - generic [ref=f10e16626]: task-024 Priority live filters
+        - generic [ref=f10e16627]: Completed
+        - generic [ref=f10e16628]: High
+        - button "Open project" [ref=f10e16629] [cursor=pointer]
+      - generic [ref=f10e16630]:
+        - generic [ref=f10e16631]: Open normal guard
+        - generic [ref=f10e16632]: task-024 Priority live filters
+        - generic [ref=f10e16633]: Open
+        - generic [ref=f10e16634]: Normal
+        - button "Open project" [ref=f10e16635] [cursor=pointer]
+      - generic [ref=f10e16636]:
+        - generic [ref=f10e16637]: Filtered new title
+        - generic [ref=f10e16638]: task-024 Priority rename filters
+        - generic [ref=f10e16639]: Open
+        - generic [ref=f10e16640]: Low
+        - button "Open project" [ref=f10e16641] [cursor=pointer]
+      - generic [ref=f10e16642]:
+        - generic [ref=f10e16643]: Unmatched normal task
+        - generic [ref=f10e16644]: task-024 Priority rename filters
+        - generic [ref=f10e16645]: Open
+        - generic [ref=f10e16646]: Normal
+        - button "Open project" [ref=f10e16647] [cursor=pointer]
+      - generic [ref=f10e16648]:
+        - generic [ref=f10e16649]: Completed low guard
+        - generic [ref=f10e16650]: task-024 Priority rename filters
+        - generic [ref=f10e16651]: Completed
+        - generic [ref=f10e16652]: Low
+        - button "Open project" [ref=f10e16653] [cursor=pointer]
+      - generic [ref=f10e16654]:
+        - generic [ref=f10e16655]: Archived high open
+        - generic [ref=f10e16656]: task-024 Archived combined filters
+        - generic [ref=f10e16657]: Open
+        - generic [ref=f10e16658]: High
+        - button "Open project" [ref=f10e16659] [cursor=pointer]
+      - generic [ref=f10e16660]:
+        - generic [ref=f10e16661]: Archived normal completed
+        - generic [ref=f10e16662]: task-024 Archived combined filters
+        - generic [ref=f10e16663]: Completed
+        - generic [ref=f10e16664]: Normal
+        - button "Open project" [ref=f10e16665] [cursor=pointer]
+      - generic [ref=f10e16666]:
+        - generic [ref=f10e16667]: Priority renamed
+        - generic [ref=f10e16668]: task-024 Priority ownership
+        - generic [ref=f10e16669]: Open
+        - generic [ref=f10e16670]: High
+        - button "Open project" [ref=f10e16671] [cursor=pointer]
+      - generic [ref=f10e16672]:
+        - generic [ref=f10e16673]: Priority second
+        - generic [ref=f10e16674]: task-024 Priority ownership
+        - generic [ref=f10e16675]: Open
+        - generic [ref=f10e16676]: Low
+        - button "Open project" [ref=f10e16677] [cursor=pointer]
+      - generic [ref=f10e16678]:
+        - generic [ref=f10e16679]: Priority other task
+        - generic [ref=f10e16680]: task-024 Priority other owner
+        - generic [ref=f10e16681]: Open
+        - generic [ref=f10e16682]: Normal
+        - button "Open project" [ref=f10e16683] [cursor=pointer]
+      - generic [ref=f10e16684]:
+        - generic [ref=f10e16685]: Priority completed
+        - generic [ref=f10e16686]: task-024 Priority completion
+        - generic [ref=f10e16687]: Completed
+        - generic [ref=f10e16688]: Low
+        - button "Open project" [ref=f10e16689] [cursor=pointer]
+      - generic [ref=f10e16690]:
+        - generic [ref=f10e16691]: Priority open
+        - generic [ref=f10e16692]: task-024 Priority completion
+        - generic [ref=f10e16693]: Open
+        - generic [ref=f10e16694]: High
+        - button "Open project" [ref=f10e16695] [cursor=pointer]
+      - generic [ref=f10e16696]:
+        - generic [ref=f10e16697]: Priority retained
+        - generic [ref=f10e16698]: task-024 Priority archive
+        - generic [ref=f10e16699]: Open
+        - generic [ref=f10e16700]: Normal
+        - button "Open project" [ref=f10e16701] [cursor=pointer]
+      - generic [ref=f10e16702]:
+        - generic [ref=f10e16703]: Return first
+        - generic [ref=f10e16704]: task-024 Return owner
+        - generic [ref=f10e16705]: Open
+        - generic [ref=f10e16706]: Normal
+        - button "Open project" [ref=f10e16707] [cursor=pointer]
+      - generic [ref=f10e16708]:
+        - generic [ref=f10e16709]: Return second
+        - generic [ref=f10e16710]: task-024 Return owner
+        - generic [ref=f10e16711]: Completed
+        - generic [ref=f10e16712]: High
+        - button "Open project" [ref=f10e16713] [cursor=pointer]
+      - generic [ref=f10e16714]:
+        - generic [ref=f10e16715]: Return third
+        - generic [ref=f10e16716]: task-024 Return owner
+        - generic [ref=f10e16717]: Open
+        - generic [ref=f10e16718]: Normal
+        - button "Open project" [ref=f10e16719] [cursor=pointer]
+      - generic [ref=f10e16720]:
+        - generic [ref=f10e16721]: Return fourth
+        - generic [ref=f10e16722]: task-024 Return owner
+        - generic [ref=f10e16723]: Open
+        - generic [ref=f10e16724]: Normal
+        - button "Open project" [ref=f10e16725] [cursor=pointer]
+      - generic [ref=f10e16726]:
+        - generic [ref=f10e16727]: Identity before
+        - generic [ref=f10e16728]: task-024 Returned owner renamed
+        - generic [ref=f10e16729]: Open
+        - generic [ref=f10e16730]: Normal
+        - button "Open project" [ref=f10e16731] [cursor=pointer]
+      - generic [ref=f10e16732]:
+        - generic [ref=f10e16733]: Identity returning
+        - generic [ref=f10e16734]: task-024 Returned owner renamed
+        - generic [ref=f10e16735]: Open
+        - generic [ref=f10e16736]: Normal
+        - button "Open project" [ref=f10e16737] [cursor=pointer]
+      - generic [ref=f10e16738]:
+        - generic [ref=f10e16739]: Identity after
+        - generic [ref=f10e16740]: task-024 Returned owner renamed
+        - generic [ref=f10e16741]: Open
+        - generic [ref=f10e16742]: Normal
+        - button "Open project" [ref=f10e16743] [cursor=pointer]
+      - generic [ref=f10e16744]:
+        - generic [ref=f10e16745]: Second existing
+        - generic [ref=f10e16746]: task-024 Position second owner
+        - generic [ref=f10e16747]: Open
+        - generic [ref=f10e16748]: Normal
+        - button "Open project" [ref=f10e16749] [cursor=pointer]
+      - generic [ref=f10e16750]:
+        - generic [ref=f10e16751]: Second newly created
+        - generic [ref=f10e16752]: task-024 Position second owner
+        - generic [ref=f10e16753]: Open
+        - generic [ref=f10e16754]: Normal
+        - button "Open project" [ref=f10e16755] [cursor=pointer]
+      - generic [ref=f10e16756]:
+        - generic [ref=f10e16757]: First existing
+        - generic [ref=f10e16758]: task-024 Position first owner
+        - generic [ref=f10e16759]: Open
+        - generic [ref=f10e16760]: Normal
+        - button "Open project" [ref=f10e16761] [cursor=pointer]
+      - generic [ref=f10e16762]:
+        - generic [ref=f10e16763]: Position travelling
+        - generic [ref=f10e16764]: task-024 Position first owner
+        - generic [ref=f10e16765]: Open
+        - generic [ref=f10e16766]: Normal
+        - button "Open project" [ref=f10e16767] [cursor=pointer]
+      - generic [ref=f10e16768]:
+        - generic [ref=f10e16769]: First later
+        - generic [ref=f10e16770]: task-024 Position first owner
+        - generic [ref=f10e16771]: Open
+        - generic [ref=f10e16772]: Normal
+        - button "Open project" [ref=f10e16773] [cursor=pointer]
+      - generic [ref=f10e16774]:
+        - generic [ref=f10e16775]: First newly created
+        - generic [ref=f10e16776]: task-024 Position first owner
+        - generic [ref=f10e16777]: Open
+        - generic [ref=f10e16778]: Normal
+        - button "Open project" [ref=f10e16779] [cursor=pointer]
+      - generic [ref=f10e16780]:
+        - generic [ref=f10e16781]: Original task gap
+        - generic [ref=f10e16782]: task-024 Whitespace retained owner
+        - generic [ref=f10e16783]: Open
+        - generic [ref=f10e16784]: High
+        - button "Open project" [ref=f10e16785] [cursor=pointer]
+      - generic [ref=f10e16786]:
+        - generic [ref=f10e16787]: Other task gap
+        - generic [ref=f10e16788]: task-024 Whitespace retained owner
+        - generic [ref=f10e16789]: Open
+        - generic [ref=f10e16790]: High
+        - button "Open project" [ref=f10e16791] [cursor=pointer]
+      - generic [ref=f10e16792]:
+        - generic [ref=f10e16793]: Mixed first
+        - generic [ref=f10e16794]: task-024 Search task intersections
+        - generic [ref=f10e16795]: Open
+        - generic [ref=f10e16796]: High
+        - generic [ref=f10e16797]: 2034-01-01
+        - button "Open project" [ref=f10e16798] [cursor=pointer]
+      - generic [ref=f10e16799]:
+        - generic [ref=f10e16800]: Other high
+        - generic [ref=f10e16801]: task-024 Search task intersections
+        - generic [ref=f10e16802]: Open
+        - generic [ref=f10e16803]: High
+        - generic [ref=f10e16804]: 2034-01-01
+        - button "Open project" [ref=f10e16805] [cursor=pointer]
+      - generic [ref=f10e16806]:
+        - generic [ref=f10e16807]: MIXED completed
+        - generic [ref=f10e16808]: task-024 Search task intersections
+        - generic [ref=f10e16809]: Completed
+        - generic [ref=f10e16810]: High
+        - generic [ref=f10e16811]: 2034-01-01
+        - button "Open project" [ref=f10e16812] [cursor=pointer]
+      - generic [ref=f10e16813]:
+        - generic [ref=f10e16814]: Mixed undated
+        - generic [ref=f10e16815]: task-024 Search task intersections
+        - generic [ref=f10e16816]: Open
+        - generic [ref=f10e16817]: High
+        - button "Open project" [ref=f10e16818] [cursor=pointer]
+      - generic [ref=f10e16819]:
+        - generic [ref=f10e16820]: mixed last
+        - generic [ref=f10e16821]: task-024 Search task intersections
+        - generic [ref=f10e16822]: Open
+        - generic [ref=f10e16823]: High
+        - generic [ref=f10e16824]: 2034-01-01
+        - button "Open project" [ref=f10e16825] [cursor=pointer]
+      - generic [ref=f10e16826]:
+        - generic [ref=f10e16827]: Other normal guard
+        - generic [ref=f10e16828]: task-024 Search task intersections
+        - generic [ref=f10e16829]: Open
+        - generic [ref=f10e16830]: Normal
+        - button "Open project" [ref=f10e16831] [cursor=pointer]
+      - generic [ref=f10e16832]:
+        - generic [ref=f10e16833]: Two spaces
+        - generic [ref=f10e16834]: task-024 Search internal spacing
+        - generic [ref=f10e16835]: Open
+        - generic [ref=f10e16836]: Normal
+        - button "Open project" [ref=f10e16837] [cursor=pointer]
+      - generic [ref=f10e16838]:
+        - generic [ref=f10e16839]: Two spaces sentinel
+        - generic [ref=f10e16840]: task-024 Search internal spacing
+        - generic [ref=f10e16841]: Open
+        - generic [ref=f10e16842]: Normal
+        - button "Open project" [ref=f10e16843] [cursor=pointer]
+      - generic [ref=f10e16844]:
+        - generic [ref=f10e16845]: Task preserved
+        - generic [ref=f10e16846]: task-024 Task reload
+        - generic [ref=f10e16847]: Open
+        - generic [ref=f10e16848]: Normal
+        - button "Open project" [ref=f10e16849] [cursor=pointer]
+      - generic [ref=f10e16850]:
+        - generic [ref=f10e16851]: Private to owner
+        - generic [ref=f10e16852]: task-024 Task owner
+        - generic [ref=f10e16853]: Open
+        - generic [ref=f10e16854]: Normal
+        - button "Open project" [ref=f10e16855] [cursor=pointer]
+      - generic [ref=f10e16856]:
+        - generic [ref=f10e16857]: Done task
+        - generic [ref=f10e16858]: task-024 Task filters
+        - generic [ref=f10e16859]: Open
+        - generic [ref=f10e16860]: Normal
+        - button "Open project" [ref=f10e16861] [cursor=pointer]
+      - generic [ref=f10e16862]:
+        - generic [ref=f10e16863]: Open task
+        - generic [ref=f10e16864]: task-024 Task filters
+        - generic [ref=f10e16865]: Open
+        - generic [ref=f10e16866]: Normal
+        - button "Open project" [ref=f10e16867] [cursor=pointer]
+      - generic [ref=f10e16868]:
+        - generic [ref=f10e16869]: Retained task
+        - generic [ref=f10e16870]: task-024 Archive tasks
+        - generic [ref=f10e16871]: Completed
+        - generic [ref=f10e16872]: Normal
+        - button "Open project" [ref=f10e16873] [cursor=pointer]
+      - generic [ref=f10e16874]:
+        - generic [ref=f10e16875]: Summary one
+        - generic [ref=f10e16876]: task-024 Summary project
+        - generic [ref=f10e16877]: Completed
+        - generic [ref=f10e16878]: Normal
+        - button "Open project" [ref=f10e16879] [cursor=pointer]
+      - generic [ref=f10e16880]:
+        - generic [ref=f10e16881]: Summary two
+        - generic [ref=f10e16882]: task-024 Summary project
+        - generic [ref=f10e16883]: Open
+        - generic [ref=f10e16884]: Normal
+        - button "Open project" [ref=f10e16885] [cursor=pointer]
+      - generic [ref=f10e16886]:
+        - generic [ref=f10e16887]: Identity task
+        - generic [ref=f10e16888]: task-024 Identity updated
+        - generic [ref=f10e16889]: Completed
+        - generic [ref=f10e16890]: Normal
+        - button "Open project" [ref=f10e16891] [cursor=pointer]
+      - generic [ref=f10e16892]:
+        - generic [ref=f10e16893]: Name updated
+        - generic [ref=f10e16894]: task-024 Task rename identity
+        - generic [ref=f10e16895]: Completed
+        - generic [ref=f10e16896]: Normal
+        - button "Open project" [ref=f10e16897] [cursor=pointer]
+      - generic [ref=f10e16898]:
+        - generic [ref=f10e16899]: Name second
+        - generic [ref=f10e16900]: task-024 Task rename identity
+        - generic [ref=f10e16901]: Open
+        - generic [ref=f10e16902]: Normal
+        - button "Open project" [ref=f10e16903] [cursor=pointer]
+      - generic [ref=f10e16904]:
+        - generic [ref=f10e16905]: Kept title
+        - generic [ref=f10e16906]: task-024 Task rename invalid
+        - generic [ref=f10e16907]: Open
+        - generic [ref=f10e16908]: Normal
+        - button "Open project" [ref=f10e16909] [cursor=pointer]
+      - generic [ref=f10e16910]:
+        - generic [ref=f10e16911]: Archived title
+        - generic [ref=f10e16912]: task-024 Task rename archive
+        - generic [ref=f10e16913]: Open
+        - generic [ref=f10e16914]: Normal
+        - button "Open project" [ref=f10e16915] [cursor=pointer]
+      - generic [ref=f10e16916]:
+        - generic [ref=f10e16917]: task-025 Bulk match first
+        - generic [ref=f10e16918]: task-025 Bulk first owner
+        - generic [ref=f10e16919]: Open
+        - generic [ref=f10e16920]: High
+        - generic [ref=f10e16921]: 2050-01-01
+        - generic [ref=f10e16922]: Bulk <b>Ω</b> retained
+        - button "Open project" [ref=f10e16923] [cursor=pointer]
+      - generic [ref=f10e16924]:
+        - generic [ref=f10e16925]: task-025 Bulk match low
+        - generic [ref=f10e16926]: task-025 Bulk first owner
+        - generic [ref=f10e16927]: Open
+        - generic [ref=f10e16928]: Low
+        - generic [ref=f10e16929]: 2050-01-01
+        - button "Open project" [ref=f10e16930] [cursor=pointer]
+      - generic [ref=f10e16931]:
+        - generic [ref=f10e16932]: task-025 Bulk match done
+        - generic [ref=f10e16933]: task-025 Bulk first owner
+        - generic [ref=f10e16934]: Open
+        - generic [ref=f10e16935]: High
+        - generic [ref=f10e16936]: 2050-01-01
+        - button "Open project" [ref=f10e16937] [cursor=pointer]
+      - generic [ref=f10e16938]:
+        - generic [ref=f10e16939]: task-025 Bulk other title
+        - generic [ref=f10e16940]: task-025 Bulk first owner
+        - generic [ref=f10e16941]: Open
+        - generic [ref=f10e16942]: High
+        - generic [ref=f10e16943]: 2050-01-01
+        - button "Open project" [ref=f10e16944] [cursor=pointer]
+      - generic [ref=f10e16945]:
+        - generic [ref=f10e16946]: task-025 Bulk match later
+        - generic [ref=f10e16947]: task-025 Bulk first owner
+        - generic [ref=f10e16948]: Open
+        - generic [ref=f10e16949]: High
+        - generic [ref=f10e16950]: 2050-01-02
+        - button "Open project" [ref=f10e16951] [cursor=pointer]
+      - generic [ref=f10e16952]:
+        - generic [ref=f10e16953]: task-025 Bulk match second
+        - generic [ref=f10e16954]: task-025 Bulk first owner
+        - generic [ref=f10e16955]: Open
+        - generic [ref=f10e16956]: High
+        - generic [ref=f10e16957]: 2050-01-01
+        - generic [ref=f10e16958]: Second original note
+        - button "Open project" [ref=f10e16959] [cursor=pointer]
+      - generic [ref=f10e16960]:
+        - generic [ref=f10e16961]: Bulk later reservation sentinel
+        - generic [ref=f10e16962]: task-025 Bulk first owner
+        - generic [ref=f10e16963]: Open
+        - generic [ref=f10e16964]: Normal
+        - button "Open project" [ref=f10e16965] [cursor=pointer]
+      - generic [ref=f10e16966]:
+        - generic [ref=f10e16967]: task-025 Bulk match second done
+        - generic [ref=f10e16968]: task-025 Bulk second owner
+        - generic [ref=f10e16969]: Open
+        - generic [ref=f10e16970]: High
+        - generic [ref=f10e16971]: 2050-01-01
+        - button "Open project" [ref=f10e16972] [cursor=pointer]
+      - generic [ref=f10e16973]:
+        - generic [ref=f10e16974]: task-025 Bulk match undated
+        - generic [ref=f10e16975]: task-025 Bulk second owner
+        - generic [ref=f10e16976]: Open
+        - generic [ref=f10e16977]: High
+        - button "Open project" [ref=f10e16978] [cursor=pointer]
+      - generic [ref=f10e16979]:
+        - generic [ref=f10e16980]: task-025 Protected live
+        - generic [ref=f10e16981]: task-025 Bulk protected
+        - generic [ref=f10e16982]: Completed
+        - generic [ref=f10e16983]: Low
+        - generic [ref=f10e16984]: 2051-01-01
+        - button "Open project" [ref=f10e16985] [cursor=pointer]
+      - generic [ref=f10e16986]:
+        - generic [ref=f10e16987]: task-025 Bulk restart record Bulk restart first
+        - generic [ref=f10e16988]: task-025 Bulk restart first
+        - generic [ref=f10e16989]: Completed
+        - generic [ref=f10e16990]: High
+        - generic [ref=f10e16991]: 2052-02-29
+        - generic [ref=f10e16992]: Bulk restart Ω original
+        - button "Open project" [ref=f10e16993] [cursor=pointer]
+      - generic [ref=f10e16994]:
+        - generic [ref=f10e16995]: task-025 Bulk restart record Bulk restart second
+        - generic [ref=f10e16996]: task-025 Bulk restart second
+        - generic [ref=f10e16997]: Completed
+        - generic [ref=f10e16998]: High
+        - generic [ref=f10e16999]: 2052-02-29
+        - generic [ref=f10e17000]: Bulk restart Ω original
+        - button "Open project" [ref=f10e17001] [cursor=pointer]
+      - generic [ref=f10e17002]:
+        - generic [ref=f10e17003]: Independent normal
+        - generic [ref=f10e17004]: task-025 Defaults independent
+        - generic [ref=f10e17005]: Open
+        - generic [ref=f10e17006]: Normal
+        - button "Open project" [ref=f10e17007] [cursor=pointer]
+      - generic [ref=f10e17008]:
+        - generic [ref=f10e17009]: Before default change
+        - generic [ref=f10e17010]: task-025 Defaults inheritance
+        - generic [ref=f10e17011]: Completed
+        - generic [ref=f10e17012]: Normal
+        - button "Open project" [ref=f10e17013] [cursor=pointer]
+      - generic [ref=f10e17014]:
+        - generic [ref=f10e17015]: Inherited high
+        - generic [ref=f10e17016]: task-025 Defaults inheritance
+        - generic [ref=f10e17017]: Open
+        - generic [ref=f10e17018]: High
+        - button "Open project" [ref=f10e17019] [cursor=pointer]
+      - generic [ref=f10e17020]:
+        - generic [ref=f10e17021]: Inherited low
+        - generic [ref=f10e17022]: task-025 Defaults inheritance
+        - generic [ref=f10e17023]: Open
+        - generic [ref=f10e17024]: Low
+        - button "Open project" [ref=f10e17025] [cursor=pointer]
+      - generic [ref=f10e17026]:
+        - generic [ref=f10e17027]: Inherited normal
+        - generic [ref=f10e17028]: task-025 Defaults inheritance
+        - generic [ref=f10e17029]: Open
+        - generic [ref=f10e17030]: Normal
+        - button "Open project" [ref=f10e17031] [cursor=pointer]
+      - generic [ref=f10e17032]:
+        - generic [ref=f10e17033]: Lifecycle task
+        - generic [ref=f10e17034]: task-025 Defaults renamed
+        - generic [ref=f10e17035]: Open
+        - generic [ref=f10e17036]: Low
+        - button "Open project" [ref=f10e17037] [cursor=pointer]
+      - generic [ref=f10e17038]:
+        - generic [ref=f10e17039]: Restored inherits
+        - generic [ref=f10e17040]: task-025 Defaults renamed
+        - generic [ref=f10e17041]: Open
+        - generic [ref=f10e17042]: Low
+        - button "Open project" [ref=f10e17043] [cursor=pointer]
+      - generic [ref=f10e17044]:
+        - generic [ref=f10e17045]: Live before
+        - generic [ref=f10e17046]: task-025 Deletion fields
+        - generic [ref=f10e17047]: Open
+        - generic [ref=f10e17048]: Normal
+        - button "Open project" [ref=f10e17049] [cursor=pointer]
+      - generic [ref=f10e17050]:
+        - generic [ref=f10e17051]: Live after
+        - generic [ref=f10e17052]: task-025 Deletion fields
+        - generic [ref=f10e17053]: Open
+        - generic [ref=f10e17054]: Normal
+        - button "Open project" [ref=f10e17055] [cursor=pointer]
+      - generic [ref=f10e17056]:
+        - generic [ref=f10e17057]: Completed remove sentinel
+        - generic [ref=f10e17058]: task-025 Deletion fields
+        - generic [ref=f10e17059]: Completed
+        - generic [ref=f10e17060]: High
+        - generic [ref=f10e17061]: 2036-02-29
+        - button "Open project" [ref=f10e17062] [cursor=pointer]
+      - generic [ref=f10e17063]:
+        - generic [ref=f10e17064]: Completed remove outside
+        - generic [ref=f10e17065]: task-025 Deletion fields
+        - generic [ref=f10e17066]: Completed
+        - generic [ref=f10e17067]: High
+        - generic [ref=f10e17068]: 2037-01-01
+        - button "Open project" [ref=f10e17069] [cursor=pointer]
+      - generic [ref=f10e17070]:
+        - generic [ref=f10e17071]: Completed normal exclusion
+        - generic [ref=f10e17072]: task-025 Deletion fields
+        - generic [ref=f10e17073]: Completed
+        - generic [ref=f10e17074]: Normal
+        - button "Open project" [ref=f10e17075] [cursor=pointer]
+      - generic [ref=f10e17076]:
+        - generic [ref=f10e17077]: Completed unrelated high
+        - generic [ref=f10e17078]: task-025 Deletion fields
+        - generic [ref=f10e17079]: Completed
+        - generic [ref=f10e17080]: High
+        - button "Open project" [ref=f10e17081] [cursor=pointer]
+      - generic [ref=f10e17082]:
+        - generic [ref=f10e17083]: Target first
+        - generic [ref=f10e17084]: task-025 Deletion target
+        - generic [ref=f10e17085]: Open
+        - generic [ref=f10e17086]: Normal
+        - button "Open project" [ref=f10e17087] [cursor=pointer]
+      - generic [ref=f10e17088]:
+        - generic [ref=f10e17089]: Reserved
+        - generic [ref=f10e17090]: task-025 Deletion target
+        - generic [ref=f10e17091]: Completed
+        - generic [ref=f10e17092]: High
+        - generic [ref=f10e17093]: 2037-01-01
+        - generic [ref=f10e17094]: Restore original note
+        - button "Open project" [ref=f10e17095] [cursor=pointer]
+      - generic [ref=f10e17096]:
+        - generic [ref=f10e17097]: Target later
+        - generic [ref=f10e17098]: task-025 Deletion target
+        - generic [ref=f10e17099]: Open
+        - generic [ref=f10e17100]: Normal
+        - button "Open project" [ref=f10e17101] [cursor=pointer]
+      - generic [ref=f10e17102]:
+        - generic [ref=f10e17103]: Before
+        - generic [ref=f10e17104]: task-025 Deletion order
+        - generic [ref=f10e17105]: Open
+        - generic [ref=f10e17106]: Normal
+        - button "Open project" [ref=f10e17107] [cursor=pointer]
+      - generic [ref=f10e17108]:
+        - generic [ref=f10e17109]: After
+        - generic [ref=f10e17110]: task-025 Deletion order
+        - generic [ref=f10e17111]: Open
+        - generic [ref=f10e17112]: Normal
+        - button "Open project" [ref=f10e17113] [cursor=pointer]
+      - generic [ref=f10e17114]:
+        - generic [ref=f10e17115]: New arrival
+        - generic [ref=f10e17116]: task-025 Deletion order
+        - generic [ref=f10e17117]: Open
+        - generic [ref=f10e17118]: Normal
+        - button "Open project" [ref=f10e17119] [cursor=pointer]
+      - generic [ref=f10e17120]:
+        - generic [ref=f10e17121]: Bulk before A
+        - generic [ref=f10e17122]: task-025 Bulk position first
+        - generic [ref=f10e17123]: Open
+        - generic [ref=f10e17124]: Normal
+        - button "Open project" [ref=f10e17125] [cursor=pointer]
+      - generic [ref=f10e17126]:
+        - generic [ref=f10e17127]: task-025 Bulk position travelling
+        - generic [ref=f10e17128]: task-025 Bulk position first
+        - generic [ref=f10e17129]: Completed
+        - generic [ref=f10e17130]: Low
+        - generic [ref=f10e17131]: 2068-02-29
+        - generic [ref=f10e17132]: After deletion Ω new literal notes
+        - button "Open project" [ref=f10e17133] [cursor=pointer]
+      - generic [ref=f10e17134]:
+        - generic [ref=f10e17135]: Bulk after A
+        - generic [ref=f10e17136]: task-025 Bulk position first
+        - generic [ref=f10e17137]: Open
+        - generic [ref=f10e17138]: Normal
+        - button "Open project" [ref=f10e17139] [cursor=pointer]
+      - generic [ref=f10e17140]:
+        - generic [ref=f10e17141]: Bulk before B
+        - generic [ref=f10e17142]: task-025 Bulk position second
+        - generic [ref=f10e17143]: Open
+        - generic [ref=f10e17144]: Normal
+        - button "Open project" [ref=f10e17145] [cursor=pointer]
+      - generic [ref=f10e17146]:
+        - generic [ref=f10e17147]: Bulk later B
+        - generic [ref=f10e17148]: task-025 Bulk position second
+        - generic [ref=f10e17149]: Open
+        - generic [ref=f10e17150]: Normal
+        - button "Open project" [ref=f10e17151] [cursor=pointer]
+      - generic [ref=f10e17152]:
+        - generic [ref=f10e17153]: Bulk deletion before
+        - generic [ref=f10e17154]: task-025 Bulk deletion restart first
+        - generic [ref=f10e17155]: Open
+        - generic [ref=f10e17156]: Low
+        - button "Open project" [ref=f10e17157] [cursor=pointer]
+      - generic [ref=f10e17158]:
+        - generic [ref=f10e17159]: task-025 Bulk deletion restart record restored first
+        - generic [ref=f10e17160]: task-025 Bulk deletion restart first
+        - generic [ref=f10e17161]: Open
+        - generic [ref=f10e17162]: Low
+        - generic [ref=f10e17163]: 2064-02-29
+        - generic [ref=f10e17164]: Restored restart Ω first literal
+        - button "Open project" [ref=f10e17165] [cursor=pointer]
+      - generic [ref=f10e17166]:
+        - generic [ref=f10e17167]: Bulk deletion after
+        - generic [ref=f10e17168]: task-025 Bulk deletion restart first
+        - generic [ref=f10e17169]: Open
+        - generic [ref=f10e17170]: Low
+        - button "Open project" [ref=f10e17171] [cursor=pointer]
+      - generic [ref=f10e17172]:
+        - generic [ref=f10e17173]: Bulk deletion holding before
+        - generic [ref=f10e17174]: task-025 Bulk deletion restart holding
+        - generic [ref=f10e17175]: Open
+        - generic [ref=f10e17176]: Normal
+        - button "Open project" [ref=f10e17177] [cursor=pointer]
+      - generic [ref=f10e17178]:
+        - generic [ref=f10e17179]: Bulk deletion holding after
+        - generic [ref=f10e17180]: task-025 Bulk deletion restart holding
+        - generic [ref=f10e17181]: Open
+        - generic [ref=f10e17182]: Normal
+        - button "Open project" [ref=f10e17183] [cursor=pointer]
+      - generic [ref=f10e17184]:
+        - generic [ref=f10e17185]: task-025 Batch record before first
+        - generic [ref=f10e17186]: task-025 Bulk delete first owner
+        - generic [ref=f10e17187]: Open
+        - generic [ref=f10e17188]: Normal
+        - button "Open project" [ref=f10e17189] [cursor=pointer]
+      - generic [ref=f10e17190]:
+        - generic [ref=f10e17191]: task-025 Batch record selected target zulu
+        - generic [ref=f10e17192]: task-025 Bulk delete first owner
+        - generic [ref=f10e17193]: Open
+        - generic [ref=f10e17194]: High
+        - generic [ref=f10e17195]: 2064-02-29
+        - generic [ref=f10e17196]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17197] [cursor=pointer]
+      - generic [ref=f10e17198]:
+        - generic [ref=f10e17199]: task-025 Batch record priority guard
+        - generic [ref=f10e17200]: task-025 Bulk delete first owner
+        - generic [ref=f10e17201]: Open
+        - generic [ref=f10e17202]: Low
+        - generic [ref=f10e17203]: 2064-02-29
+        - generic [ref=f10e17204]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17205] [cursor=pointer]
+      - generic [ref=f10e17206]:
+        - generic [ref=f10e17207]: task-025 Batch record date guard
+        - generic [ref=f10e17208]: task-025 Bulk delete first owner
+        - generic [ref=f10e17209]: Open
+        - generic [ref=f10e17210]: High
+        - generic [ref=f10e17211]: 2064-03-01
+        - generic [ref=f10e17212]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17213] [cursor=pointer]
+      - generic [ref=f10e17214]:
+        - generic [ref=f10e17215]: task-025 Batch record completion guard
+        - generic [ref=f10e17216]: task-025 Bulk delete first owner
+        - generic [ref=f10e17217]: Completed
+        - generic [ref=f10e17218]: High
+        - generic [ref=f10e17219]: 2064-02-29
+        - generic [ref=f10e17220]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17221] [cursor=pointer]
+      - generic [ref=f10e17222]:
+        - generic [ref=f10e17223]: task-025 Unrelated search guard
+        - generic [ref=f10e17224]: task-025 Bulk delete first owner
+        - generic [ref=f10e17225]: Open
+        - generic [ref=f10e17226]: High
+        - generic [ref=f10e17227]: 2064-02-29
+        - generic [ref=f10e17228]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17229] [cursor=pointer]
+      - generic [ref=f10e17230]:
+        - generic [ref=f10e17231]: task-025 Batch record before second
+        - generic [ref=f10e17232]: task-025 Bulk delete second owner
+        - generic [ref=f10e17233]: Open
+        - generic [ref=f10e17234]: Normal
+        - button "Open project" [ref=f10e17235] [cursor=pointer]
+      - generic [ref=f10e17236]:
+        - generic [ref=f10e17237]: task-025 Batch record selected target alpha
+        - generic [ref=f10e17238]: task-025 Bulk delete second owner
+        - generic [ref=f10e17239]: Open
+        - generic [ref=f10e17240]: High
+        - generic [ref=f10e17241]: 2064-02-29
+        - generic [ref=f10e17242]: Literal Ω retained notes
+        - button "Open project" [ref=f10e17243] [cursor=pointer]
+      - generic [ref=f10e17244]:
+        - generic [ref=f10e17245]: task-025 Batch record after second
+        - generic [ref=f10e17246]: task-025 Bulk delete second owner
+        - generic [ref=f10e17247]: Open
+        - generic [ref=f10e17248]: Normal
+        - button "Open project" [ref=f10e17249] [cursor=pointer]
+      - generic [ref=f10e17250]:
+        - generic [ref=f10e17251]: Duplicate before A
+        - generic [ref=f10e17252]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17253]: Open
+        - generic [ref=f10e17254]: Normal
+        - button "Open project" [ref=f10e17255] [cursor=pointer]
+      - generic [ref=f10e17256]:
+        - generic [ref=f10e17257]: task-025 Duplicate bulk target zulu first
+        - generic [ref=f10e17258]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17259]: Open
+        - generic [ref=f10e17260]: Normal
+        - button "Open project" [ref=f10e17261] [cursor=pointer]
+      - generic [ref=f10e17262]:
+        - generic [ref=f10e17263]: Duplicate after A
+        - generic [ref=f10e17264]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17265]: Open
+        - generic [ref=f10e17266]: Normal
+        - button "Open project" [ref=f10e17267] [cursor=pointer]
+      - generic [ref=f10e17268]:
+        - generic [ref=f10e17269]: Duplicate before B
+        - generic [ref=f10e17270]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17271]: Open
+        - generic [ref=f10e17272]: Normal
+        - button "Open project" [ref=f10e17273] [cursor=pointer]
+      - generic [ref=f10e17274]:
+        - generic [ref=f10e17275]: task-025 Duplicate bulk target alpha second
+        - generic [ref=f10e17276]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17277]: Completed
+        - generic [ref=f10e17278]: Normal
+        - button "Open project" [ref=f10e17279] [cursor=pointer]
+      - generic [ref=f10e17280]:
+        - generic [ref=f10e17281]: Duplicate after B
+        - generic [ref=f10e17282]: task-025 Bulk duplicate owner
+        - generic [ref=f10e17283]: Open
+        - generic [ref=f10e17284]: Normal
+        - button "Open project" [ref=f10e17285] [cursor=pointer]
+      - generic [ref=f10e17286]:
+        - generic [ref=f10e17287]: task-025 Order stable zulu
+        - generic [ref=f10e17288]: task-025 Ordering Zulu owner
+        - generic [ref=f10e17289]: Open
+        - generic [ref=f10e17290]: High
+        - generic [ref=f10e17291]: 2053-02-01
+        - button "Open project" [ref=f10e17292] [cursor=pointer]
+      - generic [ref=f10e17293]:
+        - generic [ref=f10e17294]: task-025 Order stable bravo
+        - generic [ref=f10e17295]: task-025 Ordering Zulu owner
+        - generic [ref=f10e17296]: Open
+        - generic [ref=f10e17297]: Low
+        - button "Open project" [ref=f10e17298] [cursor=pointer]
+      - generic [ref=f10e17299]:
+        - generic [ref=f10e17300]: task-025 Order stable Alpha
+        - generic [ref=f10e17301]: task-025 Ordering Zulu owner
+        - generic [ref=f10e17302]: Open
+        - generic [ref=f10e17303]: Normal
+        - generic [ref=f10e17304]: 2053-01-01
+        - button "Open project" [ref=f10e17305] [cursor=pointer]
+      - generic [ref=f10e17306]:
+        - generic [ref=f10e17307]: task-025 Order stable ALPHA
+        - generic [ref=f10e17308]: task-025 Ordering Alpha owner
+        - generic [ref=f10e17309]: Open
+        - generic [ref=f10e17310]: Normal
+        - generic [ref=f10e17311]: 2053-01-01
+        - button "Open project" [ref=f10e17312] [cursor=pointer]
+      - generic [ref=f10e17313]:
+        - generic [ref=f10e17314]: task-025 Order stable bravo
+        - generic [ref=f10e17315]: task-025 Ordering Alpha owner
+        - generic [ref=f10e17316]: Open
+        - generic [ref=f10e17317]: High
+        - generic [ref=f10e17318]: 2053-02-01
+        - button "Open project" [ref=f10e17319] [cursor=pointer]
+      - generic [ref=f10e17320]:
+        - generic [ref=f10e17321]: task-025 Order action alpha
+        - generic [ref=f10e17322]: task-025 Ordering actions owner
+        - generic [ref=f10e17323]: Completed
+        - generic [ref=f10e17324]: High
+        - generic [ref=f10e17325]: 2054-02-01
+        - button "Open project" [ref=f10e17326] [cursor=pointer]
+      - generic [ref=f10e17327]:
+        - generic [ref=f10e17328]: task-025 Order action zulu
+        - generic [ref=f10e17329]: task-025 Ordering actions owner
+        - generic [ref=f10e17330]: Completed
+        - generic [ref=f10e17331]: High
+        - generic [ref=f10e17332]: 2054-01-01
+        - button "Open project" [ref=f10e17333] [cursor=pointer]
+      - generic [ref=f10e17334]:
+        - generic [ref=f10e17335]: task-025 Order action middle
+        - generic [ref=f10e17336]: task-025 Ordering actions owner
+        - generic [ref=f10e17337]: Open
+        - generic [ref=f10e17338]: High
+        - button "Open project" [ref=f10e17339] [cursor=pointer]
+      - generic [ref=f10e17340]:
+        - generic [ref=f10e17341]: task-025 Order action low
+        - generic [ref=f10e17342]: task-025 Ordering actions owner
+        - generic [ref=f10e17343]: Open
+        - generic [ref=f10e17344]: Low
+        - generic [ref=f10e17345]: 2054-01-01
+        - button "Open project" [ref=f10e17346] [cursor=pointer]
+      - generic [ref=f10e17347]:
+        - generic [ref=f10e17348]: task-025 Order action done
+        - generic [ref=f10e17349]: task-025 Ordering actions owner
+        - generic [ref=f10e17350]: Completed
+        - generic [ref=f10e17351]: High
+        - generic [ref=f10e17352]: 2054-01-01
+        - button "Open project" [ref=f10e17353] [cursor=pointer]
+      - generic [ref=f10e17354]:
+        - generic [ref=f10e17355]: task-025 Order protected active guard
+        - generic [ref=f10e17356]: task-025 Ordering active guard owner
+        - generic [ref=f10e17357]: Open
+        - generic [ref=f10e17358]: Normal
+        - button "Open project" [ref=f10e17359] [cursor=pointer]
+      - generic [ref=f10e17360]:
+        - generic [ref=f10e17361]: task-025 Order Unicode å
+        - generic [ref=f10e17362]: task-025 Ordering Unicode owner
+        - generic [ref=f10e17363]: Open
+        - generic [ref=f10e17364]: Normal
+        - button "Open project" [ref=f10e17365] [cursor=pointer]
+      - generic [ref=f10e17366]:
+        - generic [ref=f10e17367]: task-025 Order Unicode Å
+        - generic [ref=f10e17368]: task-025 Ordering Unicode owner
+        - generic [ref=f10e17369]: Open
+        - generic [ref=f10e17370]: Normal
+        - button "Open project" [ref=f10e17371] [cursor=pointer]
+      - generic [ref=f10e17372]:
+        - generic [ref=f10e17373]: task-025 Order Unicode 🙂
+        - generic [ref=f10e17374]: task-025 Ordering Unicode owner
+        - generic [ref=f10e17375]: Open
+        - generic [ref=f10e17376]: Normal
+        - button "Open project" [ref=f10e17377] [cursor=pointer]
+      - generic [ref=f10e17378]:
+        - generic [ref=f10e17379]: task-025 Order Unicode 
+        - generic [ref=f10e17380]: task-025 Ordering Unicode owner
+        - generic [ref=f10e17381]: Open
+        - generic [ref=f10e17382]: Normal
+        - button "Open project" [ref=f10e17383] [cursor=pointer]
+      - generic [ref=f10e17384]:
+        - generic [ref=f10e17385]: task-025 Owner totals record zulu live
+        - generic [ref=f10e17386]: task-025 Owner totals zulu first
+        - generic [ref=f10e17387]: Open
+        - generic [ref=f10e17388]: Normal
+        - generic [ref=f10e17389]: 2060-01-01
+        - button "Open project" [ref=f10e17390] [cursor=pointer]
+      - generic [ref=f10e17391]:
+        - generic [ref=f10e17392]: task-025 Owner totals record middle completed
+        - generic [ref=f10e17393]: task-025 Owner totals zulu first
+        - generic [ref=f10e17394]: Completed
+        - generic [ref=f10e17395]: High
+        - generic [ref=f10e17396]: 2060-02-01
+        - button "Open project" [ref=f10e17397] [cursor=pointer]
+      - generic [ref=f10e17398]:
+        - generic [ref=f10e17399]: task-025 Owner totals record alpha live
+        - generic [ref=f10e17400]: task-025 Owner totals alpha second
+        - generic [ref=f10e17401]: Completed
+        - generic [ref=f10e17402]: High
+        - generic [ref=f10e17403]: 2060-01-01
+        - button "Open project" [ref=f10e17404] [cursor=pointer]
+      - generic [ref=f10e17405]:
+        - generic [ref=f10e17406]: task-025 Duplicate record zulu first
+        - generic [ref=f10e17407]: task-025 Duplicate owner first
+        - generic [ref=f10e17408]: Open
+        - generic [ref=f10e17409]: Normal
+        - button "Open project" [ref=f10e17410] [cursor=pointer]
+      - generic [ref=f10e17411]:
+        - generic [ref=f10e17412]: task-025 Duplicate record alpha second
+        - generic [ref=f10e17413]: task-025 Duplicate owner first
+        - generic [ref=f10e17414]: Completed
+        - generic [ref=f10e17415]: Normal
+        - button "Open project" [ref=f10e17416] [cursor=pointer]
+      - generic [ref=f10e17417]:
+        - generic [ref=f10e17418]: task-025 Duplicate record middle third
+        - generic [ref=f10e17419]: task-025 Duplicate owner first
+        - generic [ref=f10e17420]: Open
+        - generic [ref=f10e17421]: Normal
+        - button "Open project" [ref=f10e17422] [cursor=pointer]
+      - generic [ref=f10e17423]:
+        - generic [ref=f10e17424]: Priority reserved before A
+        - generic [ref=f10e17425]: task-025 Priority reserved first
+        - generic [ref=f10e17426]: Open
+        - generic [ref=f10e17427]: Normal
+        - button "Open project" [ref=f10e17428] [cursor=pointer]
+      - generic [ref=f10e17429]:
+        - generic [ref=f10e17430]: task-025 Priority reserved travelling
+        - generic [ref=f10e17431]: task-025 Priority reserved first
+        - generic [ref=f10e17432]: Open
+        - generic [ref=f10e17433]: High
+        - generic [ref=f10e17434]: 2064-02-29
+        - generic [ref=f10e17435]: Before deletion Ω retained
+        - button "Open project" [ref=f10e17436] [cursor=pointer]
+      - generic [ref=f10e17437]:
+        - generic [ref=f10e17438]: Priority reserved after A
+        - generic [ref=f10e17439]: task-025 Priority reserved first
+        - generic [ref=f10e17440]: Open
+        - generic [ref=f10e17441]: Normal
+        - button "Open project" [ref=f10e17442] [cursor=pointer]
+      - generic [ref=f10e17443]:
+        - generic [ref=f10e17444]: Priority reserved before B
+        - generic [ref=f10e17445]: task-025 Priority reserved second
+        - generic [ref=f10e17446]: Open
+        - generic [ref=f10e17447]: Normal
+        - button "Open project" [ref=f10e17448] [cursor=pointer]
+      - generic [ref=f10e17449]:
+        - generic [ref=f10e17450]: Priority reserved later B
+        - generic [ref=f10e17451]: task-025 Priority reserved second
+        - generic [ref=f10e17452]: Open
+        - generic [ref=f10e17453]: Normal
+        - button "Open project" [ref=f10e17454] [cursor=pointer]
+```
+
+# Test source
+
+```ts
+  1  | import {test,expect} from '@playwright/test';
+  2  | import {stage,projectName,projectRow,taskRow,createProject,openProject,createTask,isolateBrowser,expectPersistedPriority,expectPersistedCompletion} from './helpers.mjs';
+  3  | async function home(p,owner){await p.goto('/');await openProject(p,owner);}
+  4  | async function order(p,titles){const rows=p.getByTestId('task-row').filter({visible:true});await expect(rows).toHaveCount(titles.length);for(const [i,title] of titles.entries())await expect(rows.nth(i).getByRole('checkbox',{name:'Complete '+title,exact:true})).toBeVisible();}
+  5  | async function save(p,owner,title,label,value){await taskRow(p,title).getByRole('textbox',{name:label,exact:true}).fill(value);await taskRow(p,title).getByRole('button',{name:label==='Task notes'?'Save notes':'Save due date',exact:true}).click();const o=await p.context().newPage();try{await expect.poll(async()=>{await home(o,owner);return taskRow(o,title).getByRole('textbox',{name:label,exact:true}).inputValue();},{timeout:5000}).toBe(value);}finally{await o.close();}await home(p,owner);}
+  6  | async function move(p,source,target,title,sourceOrder,targetOrder){await taskRow(p,title).getByRole('combobox',{name:'Destination project',exact:true}).selectOption({label:projectName(target)});await taskRow(p,title).getByRole('button',{name:'Move task',exact:true}).click();const o=await p.context().newPage();try{await home(o,target);await order(o,targetOrder);await home(o,source);await order(o,sourceOrder);}finally{await o.close();}await home(p,target);}
+  7  | test.beforeEach(async({context})=>{await isolateBrowser(context);});
+  8  | if(stage>=25)test('084 bulk priority assignment preserves own and foreign reserved positions later edits and export order',async({page})=>{
+  9  |  test.setTimeout(90000);const a='Priority reserved first',b='Priority reserved second',beforeA='Priority reserved before A',afterA='Priority reserved after A',beforeB='Priority reserved before B',afterB='Priority reserved later B',travel=projectName('Priority reserved travelling');
+  10 |  await createProject(page,a);await openProject(page,a);await createTask(page,beforeA);await createTask(page,travel);await createTask(page,afterA);await taskRow(page,travel).getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'High'});await expectPersistedPriority(page,a,travel,'High');await home(page,a);await save(page,a,travel,'Task due date','2064-02-29');await save(page,a,travel,'Task notes','Before deletion Ω\nretained');
+  11 |  await createProject(page,b);await openProject(page,b);await createTask(page,beforeB);await home(page,a);await move(page,a,b,travel,[beforeA,afterA],[beforeB,travel]);await move(page,b,a,travel,[beforeB],[beforeA,travel,afterA]);await home(page,b);await createTask(page,afterB);
+> 12 |  await page.goto('/');await page.getByRole('button',{name:'Task directory',exact:true}).click();await page.getByRole('textbox',{name:'Directory search',exact:true}).fill(travel);await page.getByRole('button',{name:'Search directory',exact:true}).click();const rows=page.getByTestId('directory-task-row').filter({visible:true});await expect(rows.getByTestId('directory-task-title')).toHaveText([travel]);await page.getByRole('combobox',{name:'Visible tasks priority',exact:true}).selectOption({label:'Normal'});await page.getByRole('button',{name:'Set visible priority',exact:true}).click();const observer=await page.context().newPage();try{await expectPersistedPriority(observer,a,travel,'Normal');}finally{await observer.close();}await expect(rows.getByTestId('directory-task-title')).toHaveText([travel]);
+     |                                                                                                                                                                                                                                                                                                                                                                                               ^ Error: expect(locator).toHaveText(expected) failed
+  13 |  await home(page,a);await order(page,[beforeA,travel,afterA]);await expect(taskRow(page,travel).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Normal');await move(page,a,b,travel,[beforeA,afterA],[beforeB,travel,afterB]);await taskRow(page,travel).getByRole('combobox',{name:'Task priority',exact:true}).selectOption({label:'Low'});await expectPersistedPriority(page,b,travel,'Low');await home(page,b);await page.getByRole('checkbox',{name:'Complete '+travel,exact:true}).check();await expectPersistedCompletion(page,b,travel,true);await home(page,b);await save(page,b,travel,'Task due date','2068-02-29');await save(page,b,travel,'Task notes','After deletion Ω\nnew literal notes');await move(page,b,a,travel,[beforeB,afterB],[beforeA,travel,afterA]);
+  14 |  await expect(taskRow(page,travel).getByRole('combobox',{name:'Task priority',exact:true}).locator('option:checked')).toHaveText('Low');await expect(page.getByRole('checkbox',{name:'Complete '+travel,exact:true})).toBeChecked();await expect(taskRow(page,travel).getByRole('textbox',{name:'Task due date',exact:true})).toHaveValue('2068-02-29');await expect(taskRow(page,travel).getByRole('textbox',{name:'Task notes',exact:true})).toHaveValue('After deletion Ω\nnew literal notes');
+  15 |  const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download project',exact:true}).click();const download=await pending;const stream=await download.createReadStream();const chunks=[];for await(const chunk of stream)chunks.push(chunk);const doc=JSON.parse(Buffer.concat(chunks).toString('utf8'));expect(doc.project.tasks.map(t=>t.title)).toEqual([beforeA,travel,afterA]);expect(doc.project.tasks[1]).toMatchObject({title:travel,completed:true,priority:'Low',dueDate:'2068-02-29',notes:'After deletion Ω\nnew literal notes',deleted:false});await page.goto('/');await expect(projectRow(page,a).getByTestId('project-summary')).toHaveText('1/3 completed');await expect(projectRow(page,b).getByTestId('project-summary')).toHaveText('0/2 completed');
+  16 | });
+  17 | 
+```
