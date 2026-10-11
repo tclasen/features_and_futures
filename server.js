@@ -45,83 +45,30 @@ const page = `<!doctype html>
   <main id="app">__INITIAL_CONTENT__</main>
   <script>
   (() => {
-    const app = document.querySelector('#app');
-
-    function element(tag, text, attributes = {}) {
-      const node = document.createElement(tag);
-      if (text !== undefined) node.textContent = text;
-      for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
-      return node;
-    }
-
-    async function request(url, options) {
-      const response = await fetch(url, options);
-      if (!response.ok) throw new Error('Request failed');
-      return response.json();
-    }
-
-    async function showProjects() {
-      app.replaceChildren(element('h1', 'Workboard'));
-      const form = element('form');
-      const label = element('label', 'Project name', { for: 'project-name' });
-      const input = element('input', undefined, { id: 'project-name', name: 'name', type: 'text' });
-      const submit = element('button', 'Create project', { type: 'submit' });
-      const alert = element('p', undefined, { role: 'alert', 'aria-live': 'polite' });
-      form.append(label, input, submit);
-      app.append(form, alert);
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const name = input.value.trim();
-        if (!name) {
-          alert.textContent = 'Project name is required';
-          return;
-        }
-        alert.textContent = '';
-        try {
-          await request('/api/projects', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ name })
-          });
-          await showProjects();
-        } catch {
-          alert.textContent = 'Unable to create project';
-        }
-      });
-
-      try {
-        const projects = await request('/api/projects');
-        for (const project of projects) {
-          const row = element('section', undefined, { 'data-testid': 'project-row' });
-          row.append(element('span', project.name));
-          const open = element('button', 'Open project', { type: 'button' });
-          open.addEventListener('click', () => { window.location.href = '/projects/' + encodeURIComponent(project.id); });
-          row.append(open);
-          app.append(row);
-        }
-      } catch {
-        alert.textContent = 'Unable to load projects';
+    const form = document.querySelector('#project-form');
+    if (!form) return;
+    const input = form.querySelector('#project-name');
+    const alert = document.querySelector('[role="alert"]');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const name = input.value.trim();
+      if (!name) {
+        alert.textContent = 'Project name is required';
+        return;
       }
-    }
-
-    async function showProject(id) {
+      alert.textContent = '';
       try {
-        const project = await request('/api/projects/' + encodeURIComponent(id));
-        app.replaceChildren(element('h1', project.name));
-        const back = element('button', 'Projects', { type: 'button' });
-        back.addEventListener('click', () => { window.location.href = '/'; });
-        app.append(back);
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (!response.ok) throw new Error('Project creation failed');
+        window.location.reload();
       } catch {
-        app.replaceChildren(element('h1', 'Project not found'));
-        const back = element('button', 'Projects', { type: 'button' });
-        back.addEventListener('click', () => { window.location.href = '/'; });
-        app.append(back);
+        alert.textContent = 'Unable to create project';
       }
-    }
-
-    const match = window.location.pathname.match(/^\/projects\/(\d+)\/?$/);
-    if (match) showProject(match[1]);
-    else showProjects();
+    });
   })();
   </script>
 </body>
