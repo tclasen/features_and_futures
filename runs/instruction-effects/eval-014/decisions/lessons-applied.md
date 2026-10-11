@@ -55,3 +55,5 @@ L060 broader002 prospective preparation: separate controller adds ten process-lo
 L062 focused031 controls independently verified: three four-case positive render runs and ten exact selected genuine faults, full closed file/input binding, no skips/flakes. Serial batch continues; remaining032–039 and broader/native gates pending. Evidence: `research-v014/preflight/future031-focused-check-1791743915266/independently-verified.json`.
 
 L062 focused032 independently verified: three four-case positive render variants and thirteen exact selected faults, complete file/input binding, zero skips/flakes. Remaining033–039 and broader/native readiness pending. Evidence: `research-v014/preflight/future032-focused-check-1791744126215/independently-verified.json`.
+
+L026 task024/b003 recheck: attempt001 has HTTP200 missing-terminal-usage; upstream cause unknown. All five infrastructure originals independently restore with exact archive/native bindings. Keep unknown expenditure and exposure; unchanged task continues through frozen fresh-context recovery. Evidence: `preflight/incident-audits/verified-7dc4fd2674265852.json`.
