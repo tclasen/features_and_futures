@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0`; the defaults are
 port `8080` and database `data/workboard.sqlite`. Keep the SQLite file to retain
-projects, tasks, completion state, priorities, and project defaults across restarts. `GET /health` returns
+projects, tasks, completion state, priorities, due dates, and project defaults across restarts. `GET /health` returns
 `{"status":"ok"}`.
 
 Open a project to create tasks, change completion with each task's checkbox, and
@@ -50,6 +50,13 @@ created afterward in that project. Existing tasks and both filter selections
 remain unchanged. Defaults persist through renaming, restarts, archival, and
 restoration. Archived projects display the saved default with the selector disabled.
 
+Each task has a Task due date textbox and Save due date button. Enter a real
+Gregorian date in YYYY-MM-DD format (years 0001–9999), or leave it blank to clear
+the date. Surrounding whitespace is trimmed. Invalid dates show an alert and
+preserve the saved date. Due dates persist without timezone conversion and leave
+other task data and filters unchanged. Archived projects disable due-date edits
+until restored.
+
 Run the integration checks:
 
 ```sh
@@ -62,5 +69,6 @@ health, database migration, archive/restore, completion summaries, archived writ
 protection, project and task renaming with identity and data preservation, task
 priority defaults and independence, project default migration and inheritance,
 combined completion and priority filtering,
-selection preservation through edits and validation, and persistence after server
+due-date calendar validation and clearing, selection preservation through edits
+and validation, and persistence after server
 restarts.
