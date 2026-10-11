@@ -36,12 +36,16 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
 }
 
+function normalizeSearchText(value) {
+  return asciiLower(value.replace(/[ \t]+/g, ' '));
+}
+
 async function loadProjects() {
   const response = await fetch(`/api/projects?filter=${encodeURIComponent(projectFilter.value)}`);
   const projects = await response.json();
   projectsContainer.replaceChildren();
   for (const project of projects) {
-    if (!asciiLower(project.name).includes(asciiLower(appliedProjectQuery))) continue;
+    if (!normalizeSearchText(project.name).includes(normalizeSearchText(appliedProjectQuery))) continue;
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -138,7 +142,7 @@ async function loadTasks() {
     if ((appliedDueFrom || appliedDueThrough) && !task.dueDate) continue;
     if (appliedDueFrom && task.dueDate < appliedDueFrom) continue;
     if (appliedDueThrough && task.dueDate > appliedDueThrough) continue;
-    if (!asciiLower(task.title).includes(asciiLower(appliedTaskQuery))) continue;
+    if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskQuery))) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
