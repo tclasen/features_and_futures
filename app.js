@@ -205,6 +205,9 @@ async function loadDirectory() {
     if (directoryOrder === 'Title') difference = compareCodePoints(asciiLower(left.task.title), asciiLower(right.task.title));
     return difference || left.originalIndex - right.originalIndex;
   });
+  const completedCount = matchingTasks.reduce((count, { task }) => count + Number(task.completed), 0);
+  document.querySelector('[data-testid="directory-summary"]').textContent =
+    `${completedCount}/${matchingTasks.length} completed`;
   for (const { task } of matchingTasks) {
     if (!task.deleted) (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.dataset.taskId = task.id; row.className = 'task-row';
