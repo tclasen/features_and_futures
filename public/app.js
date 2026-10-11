@@ -28,7 +28,8 @@ async function loadTasks() {
   if (!response.ok) throw new Error('Could not load tasks');
   const tasks = await response.json();
   const filter = document.querySelector('#task-filter').value;
-  const shown = tasks.filter(task => filter === 'All' || (filter === 'Completed') === task.completed);
+  const priorityFilter = document.querySelector('#priority-filter').value;
+  const shown = tasks.filter(task => (filter === 'All' || (filter === 'Completed') === task.completed) && (priorityFilter === 'All' || task.priority === priorityFilter));
   const container = document.querySelector('#tasks'); container.replaceChildren();
   for (const task of shown) {
     const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
@@ -56,6 +57,7 @@ async function loadTasks() {
     priority.addEventListener('change', async () => {
       const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value }) });
       if (!result.ok) priority.value = task.priority || 'Normal';
+      else await loadTasks();
     });
     row.append(priority); container.append(row);
   }
@@ -107,6 +109,7 @@ document.querySelector('#task-form').addEventListener('submit', async event => {
   input.value = ''; message.hidden = true; await loadTasks();
 });
 document.querySelector('#task-filter').addEventListener('change', loadTasks);
+document.querySelector('#priority-filter').addEventListener('change', loadTasks);
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
 showPage().catch(() => { alert.textContent = 'Unable to load Workboard'; alert.hidden = false; listView.hidden = false; });
