@@ -1,6 +1,7 @@
 const listView = document.querySelector('#project-list');
 const detailView = document.querySelector('#project-detail');
 const alert = document.querySelector('#alert');
+let activeProjectId = null;
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
@@ -9,64 +10,57 @@ async function loadProjects() {
   const container = document.querySelector('#projects');
   container.replaceChildren();
   for (const project of projects) {
-    const row = document.createElement('div');
-    row.dataset.testid = 'project-row';
-    row.className = 'project-row';
-    const name = document.createElement('span');
-    name.textContent = project.name;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = 'Open project';
+    const row = document.createElement('div'); row.dataset.testid = 'project-row'; row.className = 'project-row';
+    const name = document.createElement('span'); name.textContent = project.name;
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Open project';
     button.addEventListener('click', () => { location.href = `/projects/${project.id}`; });
-    row.append(name, button);
-    container.append(row);
+    row.append(name, button); container.append(row);
+  }
+}
+
+async function loadTasks() {
+  const response = await fetch(`/api/projects/${activeProjectId}/tasks`);
+  if (!response.ok) throw new Error('Could not load tasks');
+  const tasks = await response.json();
+  const filter = document.querySelector('#task-filter').value;
+  const shown = tasks.filter(task => filter === 'All' || (filter === 'Completed') === task.completed);
+  const container = document.querySelector('#tasks'); container.replaceChildren();
+  for (const task of shown) {
+    const row = document.createElement('div'); row.dataset.testid = 'task-row'; row.className = 'project-row';
+    const title = document.createElement('span'); title.textContent = task.title;
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task.completed; checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+    checkbox.addEventListener('change', async () => {
+      const result = await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+      if (result.ok) await loadTasks(); else checkbox.checked = task.completed;
+    });
+    row.append(title, checkbox); container.append(row);
   }
 }
 
 async function showPage() {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
-  if (!match) {
-    detailView.hidden = true;
-    listView.hidden = false;
-    await loadProjects();
-    return;
-  }
-  listView.hidden = true;
-  detailView.hidden = false;
-  const response = await fetch(`/api/projects/${match[1]}`);
-  if (!response.ok) {
-    document.querySelector('#project-title').textContent = 'Project not found';
-    return;
-  }
-  const project = await response.json();
-  document.querySelector('#project-title').textContent = project.name;
+  if (!match) { detailView.hidden = true; listView.hidden = false; await loadProjects(); return; }
+  activeProjectId = match[1]; listView.hidden = true; detailView.hidden = false;
+  const response = await fetch(`/api/projects/${activeProjectId}`);
+  if (!response.ok) { document.querySelector('#project-title').textContent = 'Project not found'; return; }
+  const project = await response.json(); document.querySelector('#project-title').textContent = project.name; await loadTasks();
 }
 
 document.querySelector('#create-form').addEventListener('submit', async event => {
-  event.preventDefault();
-  const input = document.querySelector('#project-name');
-  const name = input.value.trim();
-  if (!name) {
-    alert.textContent = 'Project name is required';
-    alert.hidden = false;
-    return;
-  }
-  const response = await fetch('/api/projects', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
-  });
-  if (!response.ok) {
-    alert.textContent = 'Project name is required';
-    alert.hidden = false;
-    return;
-  }
-  input.value = '';
-  alert.hidden = true;
-  await loadProjects();
+  event.preventDefault(); const input = document.querySelector('#project-name'); const name = input.value.trim();
+  if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+  const response = await fetch('/api/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) });
+  if (!response.ok) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+  input.value = ''; alert.hidden = true; await loadProjects();
 });
 
-document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
-showPage().catch(() => {
-  alert.textContent = 'Unable to load Workboard';
-  alert.hidden = false;
-  listView.hidden = false;
+document.querySelector('#task-form').addEventListener('submit', async event => {
+  event.preventDefault(); const input = document.querySelector('#task-title'); const title = input.value.trim(); const message = document.querySelector('#task-alert');
+  if (!title) { message.textContent = 'Task title is required'; message.hidden = false; return; }
+  const response = await fetch(`/api/projects/${activeProjectId}/tasks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title }) });
+  if (!response.ok) { message.textContent = 'Task title is required'; message.hidden = false; return; }
+  input.value = ''; message.hidden = true; await loadTasks();
 });
+document.querySelector('#task-filter').addEventListener('change', loadTasks);
+document.querySelector('#back-button').addEventListener('click', () => { location.href = '/'; });
+showPage().catch(() => { alert.textContent = 'Unable to load Workboard'; alert.hidden = false; listView.hidden = false; });
