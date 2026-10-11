@@ -330,10 +330,11 @@ async function renderDirectory() {
   const alert = element('p', { role: 'alert', hidden: '' });
   const completeVisible = element('button', { type: 'button' }, 'Complete visible tasks');
   const reopenVisible = element('button', { type: 'button' }, 'Reopen visible tasks');
+  const summary = element('p', { 'data-testid': 'directory-summary' }, '0/0 completed');
   const emptyMessage = element('p', {}, 'No matching tasks');
   emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, emptyMessage, rows);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, summary, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
   let matchingTasks = [];
   const renderRows = async () => {
@@ -377,6 +378,8 @@ async function renderDirectory() {
       open.addEventListener('click', () => { projectViewState.delete(String(task.projectId)); history.pushState({}, '', `/projects/${encodeURIComponent(task.projectId)}`); render(); });
       row.append(open); rows.append(row);
     }
+    const completedCount = matchingTasks.filter(task => Boolean(task.completed)).length;
+    summary.textContent = `${completedCount}/${matchingTasks.length} completed`;
     emptyMessage.hidden = matchingTasks.length !== 0;
     const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? matchingTasks.filter(task => !task.deleted) : [];
     const openTasks = eligible.filter(task => !task.completed);
