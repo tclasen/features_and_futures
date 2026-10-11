@@ -112,6 +112,32 @@ async function loadTasks(projectId, archived = false) {
     row.dataset.testid = 'task-row';
     const title = document.createElement('span');
     title.textContent = task.title;
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = archived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'button';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = archived;
+    renameButton.addEventListener('click', async () => {
+      const newTitle = renameInput.value.trim();
+      if (!newTitle) {
+        taskAlert.textContent = 'Task title is required';
+        taskAlert.hidden = false;
+        renameInput.focus();
+        return;
+      }
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (response.ok) {
+        taskAlert.hidden = true;
+        await loadTasks(projectId, archived);
+      }
+    });
     const label = document.createElement('label');
     label.className = 'task-check-label';
     const checkbox = document.createElement('input');
@@ -127,7 +153,7 @@ async function loadTasks(projectId, archived = false) {
       await loadTasks(projectId);
     });
     label.append(checkbox);
-    row.append(title, label);
+    row.append(title, renameInput, renameButton, label);
     taskContainer.append(row);
   }
 }

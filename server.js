@@ -114,12 +114,19 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     let data;
     try { data = JSON.parse(body); } catch { return sendJson(res, 400, { error: 'Invalid JSON' }); }
-    if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
-    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(Number(taskMatch[1]));
+    const taskId = Number(taskMatch[1]);
+    const task = database.prepare('SELECT project_id FROM tasks WHERE id = ?').get(taskId);
     if (!task) return sendJson(res, 404, { error: 'Task not found' });
     if (database.prepare('SELECT archived FROM projects WHERE id = ?').get(task.project_id)?.archived) return sendJson(res, 403, { error: 'Archived project' });
-    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, Number(taskMatch[1]));
-    return result.changes ? sendJson(res, 200, { completed: data.completed }) : sendJson(res, 404, { error: 'Task not found' });
+    if (Object.hasOwn(data, 'title')) {
+      const title = typeof data.title === 'string' ? data.title.trim() : '';
+      if (!title) return sendJson(res, 400, { error: 'Task title is required' });
+      database.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(title, taskId);
+      return sendJson(res, 200, { id: taskId, title });
+    }
+    if (typeof data.completed !== 'boolean') return sendJson(res, 400, { error: 'Completion state is required' });
+    database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, taskId);
+    return sendJson(res, 200, { completed: data.completed });
   }
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
