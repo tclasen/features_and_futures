@@ -20,11 +20,12 @@ function page(title, content) {
 </html>`;
 }
 
-export function projectsPage(projects, error = '', filter = 'Active') {
+export function projectsPage(projects, error = '', filter = 'Active', search = '') {
   return page('Projects', `
     <h1>Workboard</h1>
     <form action="/projects" method="post" class="create-project">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <input type="hidden" name="search" value="${escapeHtml(search)}">
       <label for="project-name">Project name</label>
       <div class="form-controls">
         <input id="project-name" name="name" type="text" autocomplete="off">
@@ -33,11 +34,20 @@ export function projectsPage(projects, error = '', filter = 'Active') {
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="/" method="get" class="project-filter" data-auto-submit>
+      <input type="hidden" name="search" value="${escapeHtml(search)}">
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter">
         ${['Active', 'Archived'].map((option) =>
           `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form action="/" method="get" class="project-search">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+      <label for="project-search">Project search</label>
+      <div class="form-controls">
+        <input id="project-search" name="search" type="text" value="${escapeHtml(search)}" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </div>
     </form>
     <section aria-label="Projects" class="project-list">
       ${projects.length ? projects.map((project) => `
@@ -48,6 +58,8 @@ export function projectsPage(projects, error = '', filter = 'Active') {
             <button type="submit">Open project</button>
           </form>
           <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post">
+            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <input type="hidden" name="search" value="${escapeHtml(search)}">
             <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
           </form>
         </div>`).join('') : '<p class="empty">Your projects will appear here.</p>'}
@@ -57,14 +69,16 @@ export function projectsPage(projects, error = '', filter = 'Active') {
 export function projectPage(project, tasks = [], filter = 'All', error = '', priorityFilter = 'All', dueRange = {}, destinations = []) {
   const projectPath = `/projects/${project.id}`;
   const moveDisabled = project.archived || !destinations.length;
-  const { dueFrom = '', dueThrough = '' } = dueRange;
+  const { dueFrom = '', dueThrough = '', search = '' } = dueRange;
+  const searchField = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
   const rangeFields = `
     <input type="hidden" name="dueFrom" value="${escapeHtml(dueFrom)}">
     <input type="hidden" name="dueThrough" value="${escapeHtml(dueThrough)}">`;
-  const filterFields = `
+  const otherFilterFields = `
     <input type="hidden" name="filter" value="${escapeHtml(filter)}">
     <input type="hidden" name="priorityFilter" value="${escapeHtml(priorityFilter)}">
     ${rangeFields}`;
+  const filterFields = `${otherFilterFields}${searchField}`;
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -96,6 +110,7 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form action="${projectPath}" method="get" class="task-filter" data-auto-submit>
       ${rangeFields}
+      ${searchField}
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter">
         ${['All', 'Open', 'Completed'].map((option) =>
@@ -114,6 +129,14 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
       <label for="due-through">Due through</label>
       <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(dueThrough)}" autocomplete="off">
       <button type="submit">Apply due range</button>
+    </form>
+    <form action="${projectPath}" method="get" class="task-search">
+      ${otherFilterFields}
+      <label for="task-search">Task search</label>
+      <div class="form-controls">
+        <input id="task-search" name="search" type="text" value="${escapeHtml(search)}" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
     </form>
     <section aria-label="Tasks" class="task-list">
       ${tasks.length ? tasks.map((task) => `

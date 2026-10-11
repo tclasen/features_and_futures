@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { openProjects } from './projects.js';
 import { projectsPage, projectPage, notFoundPage } from './views.js';
+import { normalizeSearchQuery } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate, normalizeDueRange, INVALID_DUE_DATE_MESSAGE } from './task-dates.js';
 
@@ -20,6 +21,7 @@ function priorityFilter(value) {
 function projectFilters(parameters) {
   const range = normalizeDueRange(parameters.get('dueFrom') || '', parameters.get('dueThrough') || '');
   return {
+    search: normalizeSearchQuery(parameters.get('search') || ''),
     completion: taskFilter(parameters.get('filter')),
     priority: priorityFilter(parameters.get('priorityFilter')),
     dueFrom: range.dueFrom || '',
@@ -38,7 +40,15 @@ function projectLocation(projectId, filters) {
   if (filters.priority !== 'All') query.set('priorityFilter', filters.priority);
   if (filters.dueFrom) query.set('dueFrom', filters.dueFrom);
   if (filters.dueThrough) query.set('dueThrough', filters.dueThrough);
+  if (filters.search) query.set('search', filters.search);
   return `/projects/${projectId}?${query}`;
+}
+
+function projectsLocation(filter, search) {
+  const query = new URLSearchParams();
+  if (filter !== 'Active') query.set('filter', filter);
+  if (search) query.set('search', search);
+  return query.size ? `/?${query}` : '/';
 }
 
 function projectFilter(value) {
@@ -85,21 +95,26 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && path === '/') {
       const filter = projectFilter(url.searchParams.get('filter'));
-      return send(response, 200, 'text/html; charset=utf-8', projectsPage(projects.list(filter), '', filter));
+      const search = normalizeSearchQuery(url.searchParams.get('search') || '');
+      return send(response, 200, 'text/html; charset=utf-8', projectsPage(projects.list(filter, search), '', filter, search));
     }
     if (request.method === 'POST' && path === '/projects') {
       const form = await readForm(request);
       const filter = projectFilter(form.get('filter'));
+      const search = normalizeSearchQuery(form.get('search') || '');
       if (!projects.create(form.get('name') || '')) {
         return send(response, 400, 'text/html; charset=utf-8',
-          projectsPage(projects.list(filter), 'Project name is required', filter));
+          projectsPage(projects.list(filter, search), 'Project name is required', filter, search));
       }
-      return redirect(response, '/');
+      return redirect(response, projectsLocation(filter, search));
     }
     const archiveMatch = path.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
     if (request.method === 'POST' && archiveMatch && Number.isSafeInteger(Number(archiveMatch[1]))) {
+      const form = await readForm(request);
       if (projects.setArchived(Number(archiveMatch[1]), archiveMatch[2] === 'archive')) {
-        return redirect(response, archiveMatch[2] === 'restore' ? '/?filter=Archived' : '/');
+        const filter = projectFilter(form.get('filter') || (archiveMatch[2] === 'restore' ? 'Archived' : 'Active'));
+        const search = normalizeSearchQuery(form.get('search') || '');
+        return redirect(response, projectsLocation(filter, search));
       }
     }
     const match = path.match(/^\/projects\/([1-9]\d*)$/);

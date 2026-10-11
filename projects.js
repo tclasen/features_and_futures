@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { matchesSearch } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate } from './task-dates.js';
 
@@ -124,7 +125,8 @@ export function openProjects(databasePath) {
   const moveTask = database.prepare('UPDATE tasks SET project_id = ? WHERE id = ?');
 
   return {
-    list: (filter = 'Active') => list.all(filter === 'Archived' ? 1 : 0),
+    list: (filter = 'Active', search = '') => list.all(filter === 'Archived' ? 1 : 0)
+      .filter((project) => matchesSearch(project.name, search)),
     find: (id) => find.get(id),
     setArchived(id, archived) {
       return updateArchive.run(archived ? 1 : 0, id).changes > 0;
@@ -147,9 +149,10 @@ export function openProjects(databasePath) {
     listTasks(projectId, filter = 'All', priorityFilter = 'All', dueRange = {}) {
       const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
       const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
-      const { dueFrom = '', dueThrough = '' } = dueRange;
+      const { dueFrom = '', dueThrough = '', search = '' } = dueRange;
       return listTasks.all(projectId, completed, completed, priority, priority,
-        dueFrom, dueFrom, dueThrough, dueThrough);
+        dueFrom, dueFrom, dueThrough, dueThrough)
+        .filter((task) => matchesSearch(task.title, search));
     },
     createTask(projectId, title) {
       const trimmedTitle = title.trim();

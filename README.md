@@ -83,3 +83,12 @@ position history; ownership and new positions are saved atomically and survive
 restarts, project renaming, archive and restore. Archived sources and destinations
 are rejected by the server. Move controls are disabled for archived sources or
 when no destination is eligible.
+
+Project search and Task search apply literal substring queries, ignoring ASCII
+letter case and trimming only surrounding query whitespace. Internal whitespace
+remains significant, and blank queries match all rows. Project search intersects
+Active/Archived; task search intersects completion, priority and applied due range.
+Queries stay in the URL and forms across filter changes and edits, with matching
+rows re-evaluated in their existing order. Search does not change saved data or
+all-task summaries, and remains available on archived projects. Opening a project
+from the list or returning through Projects resets the corresponding search.
