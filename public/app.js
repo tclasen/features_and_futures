@@ -1,4 +1,5 @@
 import { filterTasks, normalizeDueRange } from './task-filters.js';
+import { filterProjects, normalizeSearchQuery } from './search.js';
 
 const app = document.querySelector('#app');
 
@@ -107,6 +108,13 @@ async function renderTasks(project) {
         <button type="submit">Apply due range</button>
       </div>
     </form>
+    <form id="task-search-form" class="search-form">
+      <label for="task-search">Task search</label>
+      <div class="create-controls">
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
+    </form>
     <div id="tasks"></div>
   `;
   app.append(section);
@@ -121,6 +129,9 @@ async function renderTasks(project) {
   const dueThrough = section.querySelector('#due-through');
   // Draft inputs only replace the applied range after successful validation.
   let dueRange = { from: '', through: '' };
+  const searchForm = section.querySelector('#task-search-form');
+  const searchInput = section.querySelector('#task-search');
+  let searchQuery = '';
   const defaultPriority = section.querySelector('#default-task-priority');
   defaultPriority.value = project.default_task_priority;
   defaultPriority.disabled = project.archived;
@@ -149,7 +160,7 @@ async function renderTasks(project) {
 
   function displayTasks() {
     list.replaceChildren();
-    for (const task of filterTasks(tasks, filter.value, priorityFilter.value, dueRange)) {
+    for (const task of filterTasks(tasks, filter.value, priorityFilter.value, dueRange, searchQuery)) {
       const row = document.createElement('div');
       row.dataset.testid = 'task-row';
       row.className = 'task-row';
@@ -213,9 +224,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ title: renameInput.value }),
           });
           task.title = updated.title;
-          title.textContent = task.title;
-          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
-          renameInput.value = task.title;
+          displayTasks();
         } catch (error) {
           showError(alert, error.message);
         } finally {
@@ -344,6 +353,11 @@ async function renderTasks(project) {
 
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = normalizeSearchQuery(searchInput.value);
+    displayTasks();
+  });
   dueRangeForm.addEventListener('submit', (event) => {
     event.preventDefault();
     alert.hidden = true;
@@ -432,6 +446,13 @@ async function render() {
         <option value="archived">Archived</option>
       </select>
     </div>
+    <form id="project-search-form" class="search-form">
+      <label for="project-search">Project search</label>
+      <div class="create-controls">
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </div>
+    </form>
     <section aria-label="Projects" id="projects"></section>
   `;
   const form = app.querySelector('form');
@@ -439,14 +460,22 @@ async function render() {
   const alert = app.querySelector('[role="alert"]');
   const list = app.querySelector('#projects');
   const filter = app.querySelector('select');
+  const searchForm = app.querySelector('#project-search-form');
+  const searchInput = app.querySelector('#project-search');
+  let searchQuery = '';
   let projects = [];
 
   function displayProjects() {
     list.replaceChildren();
-    projects.filter((project) => project.archived === (filter.value === 'archived')).forEach(appendProject);
+    filterProjects(projects, filter.value, searchQuery).forEach(appendProject);
   }
 
   filter.addEventListener('change', displayProjects);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    searchQuery = normalizeSearchQuery(searchInput.value);
+    displayProjects();
+  });
 
   function appendProject(project) {
     const row = document.createElement('div');
