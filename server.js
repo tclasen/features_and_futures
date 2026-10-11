@@ -11,6 +11,7 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (task_id TEXT NOT NULL, project_id TEXT NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id))`);
 // Preserve each task's existing order as its initial position in its current project.
 db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
@@ -22,7 +23,8 @@ const getProject = db.prepare('SELECT id, name, archived, default_priority AS de
 const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const getTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
+const getTasks = db.prepare('SELECT t.id, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY pos.position, t.created_at, t.rowid');
+const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
@@ -160,6 +162,18 @@ const server = http.createServer(async (req, res) => {
     }
     const result = updateDueDate.run(date, decodeURIComponent(dueDateMatch[2]), projectId);
     return result.changes ? json(200, { status: 'ok', dueDate: date }) : json(404, { error: 'Not found' });
+  }
+  const notesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/notes$/);
+  if (req.method === 'PATCH' && notesMatch) {
+    let body;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; body = JSON.parse(raw); } catch { return json(400, { error: 'Invalid request' }); }
+    const projectId = decodeURIComponent(notesMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return json(404, { error: 'Not found' });
+    if (project.archived) return json(403, { error: 'Archived project' });
+    if (typeof body.notes !== 'string') return json(400, { error: 'Invalid notes' });
+    const result = updateNotes.run(body.notes, decodeURIComponent(notesMatch[2]), projectId);
+    return result.changes ? json(200, { status: 'ok', notes: body.notes }) : json(404, { error: 'Not found' });
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (req.method === 'PATCH' && taskMatch) {
