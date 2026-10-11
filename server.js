@@ -32,6 +32,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
 try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -42,7 +43,7 @@ database.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 database.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
   FROM tasks`);
-const listTasks = database.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pos.position, t.created_at), t.created_at, t.rowid');
+const listTasks = database.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id WHERE t.project_id = ? ORDER BY COALESCE(pos.position, t.created_at), t.created_at, t.rowid');
 const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -51,7 +52,7 @@ const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = 
 const moveTask = database.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
 const eligibleDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY created_at, rowid');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  COALESCE(SUM(CASE WHEN t.deleted = 0 THEN 1 ELSE 0 END), 0) AS totalCount, COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 
@@ -120,6 +121,11 @@ const server = createServer(async (request, response) => {
     for await (const chunk of request) input += chunk;
     let data;
     try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    if (typeof data.deleted === 'boolean') {
+      database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(data.deleted ? 1 : 0, taskId, projectId);
+      return send(response, 200, { ok: true });
+    }
+    if (database.prepare('SELECT deleted FROM tasks WHERE id = ?').get(taskId)?.deleted) return send(response, 403, { error: 'Deleted task' });
     if (typeof data.notes === 'string') {
       database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(data.notes, taskId, projectId);
       return send(response, 200, { ok: true });
