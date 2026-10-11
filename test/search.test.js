@@ -25,6 +25,43 @@ async function launch(db) {
   };
 }
 
+test('space/tab normalization is matching-only and survives reload, archival and restart', async () => {
+  const directory = await mkdtemp(path.resolve('data/search-spaces-test-'));
+  let server;
+  try {
+    const db = path.join(directory, 'db.sqlite');
+    server = await launch(db);
+    const post = (route, values = {}) => fetch(server.url + route, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async (route) => (await fetch(server.url + route)).text();
+    const names = ['MiXeD \t  Team', 'mixed Team', 'mixed\u00a0Team', 'mixed\nTeam'];
+    for (const name of names) await post('/projects', { name });
+    for (const title of names) await post('/projects/1/tasks', { title });
+    const projects = (markup) => [...markup.matchAll(/data-testid="project-row">\s*<span>([^<]+)<\/span>/g)].map((match) => match[1]);
+    const tasks = (markup) => [...markup.matchAll(/aria-label="Complete ([^"]+)"/g)].map((match) => match[1]);
+    const query = new URLSearchParams({ searchQuery: ' \tMIXED\t \t TEAm \n' });
+    assert.deepEqual(projects(await html('/?' + query)), names.slice(0, 2));
+    assert.deepEqual(tasks(await html('/projects/1?' + query)), names.slice(0, 2));
+    assert.deepEqual(projects(await html('/')), names);
+    assert.deepEqual(tasks(await html('/projects/1')), names);
+    await post('/projects/1/archive');
+    assert.deepEqual(projects(await html('/?filter=Archived&' + query)), [names[0]]);
+    assert.deepEqual(tasks(await html('/projects/1?' + query)), names.slice(0, 2));
+    await post('/projects/1/restore');
+    await server.stop();
+    server = await launch(db);
+    assert.deepEqual(projects(await html('/?' + query)), names.slice(0, 2));
+    assert.deepEqual(tasks(await html('/projects/1?' + query)), names.slice(0, 2));
+    assert.deepEqual(projects(await html('/')), names);
+    assert.deepEqual(tasks(await html('/projects/1')), names);
+    assert.deepEqual(tasks(await html('/projects/1?' + new URLSearchParams({ searchQuery: ' \t ' }))), names);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('search intersects filters, retains applied queries through edits, and resets on reopening', async () => {
   const directory = await mkdtemp(path.resolve('data/search-test-'));
   let server;
@@ -39,7 +76,7 @@ test('search intersects filters, retains applied queries through edits, and rese
     for (const name of ['Alpha  Team', 'alpha Team', 'Other', 'Ä']) await post('/projects', { name });
     assert.deepEqual(projects(await html('/?searchQuery=%20ALPHA%20')), ['Alpha  Team', 'alpha Team']);
     assert.deepEqual(projects(await html('/?searchQuery=alpha%20%20')), ['Alpha  Team', 'alpha Team']);
-    assert.deepEqual(projects(await html('/?searchQuery=alpha%20%20t')), ['Alpha  Team']);
+    assert.deepEqual(projects(await html('/?searchQuery=alpha%20%20t')), ['Alpha  Team', 'alpha Team']);
     assert.deepEqual(projects(await html('/?searchQuery=ä')), []);
     await post('/projects/2/archive', { projectSearch: 'alpha' });
     assert.deepEqual(projects(await html('/?projectSearch=alpha')), ['Alpha  Team']);
@@ -55,7 +92,7 @@ test('search intersects filters, retains applied queries through edits, and rese
     const state = { filter: 'Open', priorityFilter: 'High', rangeFrom: '2025-04-01', rangeThrough: '2025-04-01', taskSearch: 'read' };
     const route = '/projects/1?' + new URLSearchParams(state);
     assert.deepEqual(rows(await html(route)), ['Read  Notes', 'READ Notes']);
-    assert.deepEqual(rows(await html('/projects/1?searchQuery=read%20%20n')), ['Read  Notes']);
+    assert.deepEqual(rows(await html('/projects/1?searchQuery=read%20%20n')), ['Read  Notes', 'READ Notes']);
     assert.match(await html(route), /name="taskSearch" value="read"/);
     let response = await post('/projects/1/tasks/1/rename', { ...state, title: 'No match' });
     assert.deepEqual(rows(await html(response.headers.get('location'))), ['READ Notes']);

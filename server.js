@@ -97,7 +97,9 @@ const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'A
 const priorityFilter = (value) => ['Low', 'Normal', 'High'].includes(value) ? value : 'All';
 const readSearch = (params, key) => (params.get('searchQuery') ?? params.get(key) ?? '').trim();
 const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+// Normalize only for matching; stored and displayed text remains untouched.
+const normalizeSearch = (value) => asciiLower(value.replace(/[ \t]+/g, ' '));
+const matchesSearch = (value, query) => normalizeSearch(value).includes(normalizeSearch(query));
 const readRange = (params) => ({ from: params.get('rangeFrom') || '', through: params.get('rangeThrough') || '', search: readSearch(params, 'taskSearch') });
 const projectLocation = (id, filter, priority, range = {}) => `/projects/${id}?filter=${filter}${priority === 'All' ? '' : `&priorityFilter=${priority}`}${range.from || range.through ? `&${new URLSearchParams({ rangeFrom: range.from || '', rangeThrough: range.through || '' })}` : ''}${range.search ? `&${new URLSearchParams({ taskSearch: range.search })}` : ''}`;
 const projectsLocation = (filter, search) => `/?${new URLSearchParams({ filter, projectSearch: search })}`;

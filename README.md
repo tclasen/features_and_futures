@@ -31,6 +31,7 @@ due-date migration and independence, inclusive due-range filtering intersecting 
 and priority, range validation and retention across edits, moves between active projects with
 first-arrival append ordering, restored per-project return positions (including reverse-order returns),
 preserved task data, destination eligibility, archive protection, project and task substring
-search with ASCII-only case folding, search/filter intersections and retention through edits,
+search with ASCII-only case folding and space/tab-run normalization (without changing saved text),
+search/filter intersections and retention through edits,
 empty search on reopening, and persistence across server restarts. Test databases are
 created beneath `data/` and removed afterward.
