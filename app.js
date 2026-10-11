@@ -54,19 +54,45 @@ async function populateProjects(list, filter = 'Active') {
   const signature = JSON.stringify(visibleProjects);
   if (renderedProjectLists.get(list) === signature) return;
   renderedProjectLists.set(list, signature);
-  list.replaceChildren(...visibleProjects.map(project => {
-    const row = element('div', undefined, { 'data-testid': 'project-row' });
+  // Reuse existing rows so a background refresh cannot detach a control while
+  // the user (or an accessibility driver) is interacting with it.
+  const rows = new Map([...list.children].map(row => [row.dataset.projectId, row]));
+  const ordered = visibleProjects.map(project => {
+    let row = rows.get(String(project.id));
+    if (row) {
+      rows.delete(String(project.id));
+      row.querySelector('[data-project-name]').textContent = project.name;
+      row.querySelector('[data-testid="project-summary"]').textContent = `${project.completedCount}/${project.totalCount} completed`;
+      const action = row.querySelector('[data-project-action]');
+      const label = project.archived ? 'Restore project' : 'Archive project';
+      if (action.textContent !== label) {
+        const replacement = action.cloneNode();
+        replacement.textContent = label;
+        replacement.addEventListener('click', async () => {
+          await request(`/api/projects/${encodeURIComponent(project.id)}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
+          await populateProjects(list, filter);
+        });
+        action.replaceWith(replacement);
+      }
+      return row;
+    }
+    row = element('div', undefined, { 'data-testid': 'project-row', 'data-project-id': project.id });
     const summary = element('span', `${project.completedCount}/${project.totalCount} completed`, { 'data-testid': 'project-summary' });
     const open = element('button', 'Open project', { type: 'button' });
     open.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(project.id)}`; });
-    const action = element('button', project.archived ? 'Restore project' : 'Archive project', { type: 'button' });
+    const action = element('button', project.archived ? 'Restore project' : 'Archive project', { type: 'button', 'data-project-action': '' });
     action.addEventListener('click', async () => {
       await request(`/api/projects/${encodeURIComponent(project.id)}/${project.archived ? 'restore' : 'archive'}`, { method: 'POST' });
       await populateProjects(list, filter);
     });
-    row.append(element('span', project.name), summary, open, action);
+    row.append(element('span', project.name, { 'data-project-name': '' }), summary, open, action);
     return row;
-  }));
+  });
+  ordered.forEach((row, index) => {
+    const current = list.children[index];
+    if (current !== row) list.insertBefore(row, current || null);
+  });
+  for (const row of rows.values()) row.remove();
 }
 
 async function renderProject(id) {
