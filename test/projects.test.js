@@ -371,10 +371,10 @@ test('projects and tasks: validation, ownership, completion, rename, priority, a
     assert.deepEqual(await tasks(first.id), remaining);
     assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, firstTask, laterTask]);
     assert.deepEqual(await (await get('/api/projects')).json(), [first, second, third]);
-    // A second move appends again; blank due dates also travel unchanged.
+    // Returning restores the original position; blank due dates also travel unchanged.
     assert.equal((await moveTask(second.id, firstTask.id, first.id)).status, 200);
     assert.equal((await moveTask(first.id, afterRestart.id, third.id)).status, 200);
-    const finalFirst = remaining.filter(task => task.id !== afterRestart.id).concat(firstTask);
+    const finalFirst = savedTasks.filter(task => task.id !== afterRestart.id);
     assert.deepEqual(await tasks(first.id), finalFirst);
     assert.deepEqual(await tasks(second.id), [otherTask, otherInherited, laterTask]);
     assert.deepEqual(await tasks(third.id), [afterRestart]);

@@ -51,3 +51,11 @@ both boundaries are empty. Apply due range validates and trims dates, retaining
 the previous applied range if a date is invalid or the boundaries are reversed.
 Task edits re-evaluate all filters without resetting them. Range controls remain
 usable in archived projects, and reopening a project starts with an empty range.
+
+Destination project and Move task move tasks between active projects while
+preserving their current title, completion, priority, and due date. First-time
+arrivals append after all positions established in the destination. Returning
+tasks recover their remembered position there, even when several return in a
+different order. New tasks follow reserved positions of tasks currently away.
+Positions persist across restarts, project renaming, archival, and restoration.
+Moving retains the source page's filters and updates both project summaries.
