@@ -10,8 +10,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Upgrade databases created before archive support without changing IDs or tasks.
+if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
@@ -25,6 +29,11 @@ const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, 
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const taskFilter = (value) => ['Open', 'Completed'].includes(value) ? value : 'All';
+const projectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -48,6 +57,7 @@ function page(title, content) {
   input { width: 100%; padding: 10px; font: inherit; border: 1px solid #687a90; border-radius: 5px; }
   button { padding: 10px 16px; font: inherit; color: white; background: #2459a6; border: 0; border-radius: 5px; cursor: pointer; }
   button:hover { background: #194580; }
+  button:disabled { background: #687a90; cursor: not-allowed; }
   :focus-visible { outline: 3px solid #cc8300; outline-offset: 3px; }
   .create button { margin-top: 12px; }
   .projects { margin-top: 28px; }
@@ -59,19 +69,28 @@ function page(title, content) {
 </style></head><body><main>${content}</main></body></html>`;
 }
 
-function projectsPage(error = '', enteredName = '') {
-  const projects = listProjects.all();
+function projectsPage(error = '', enteredName = '', filter = 'Active') {
+  const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
   return page('Projects', `<h1>Workboard</h1>
     <form class="create" action="/projects" method="post">
+      <input type="hidden" name="filter" value="${filter}">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text" value="${escape(enteredName)}"${error ? ' aria-invalid="true" aria-describedby="project-error"' : ''}>
       ${error ? `<div id="project-error" role="alert">${escape(error)}</div>` : ''}
       <button type="submit">Create project</button>
     </form>
     <section class="projects" aria-label="Projects">
+      <form action="/" method="get">
+        <label for="project-filter">Project filter</label>
+        <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+          ${['Active', 'Archived'].map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
+        </select>
+      </form>
       ${projects.map((project) => `<div class="project-row" data-testid="project-row">
         <span>${escape(project.name)}</span>
+        <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form action="/projects/${project.id}" method="get"><button type="submit">Open project</button></form>
+        <form action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}" method="post"><button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button></form>
       </div>`).join('')}
     </section>`);
 }
@@ -80,13 +99,14 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
   const tasks = listTasks.all(project.id).filter((task) =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `<h1>${escape(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <form class="create" action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text" value="${escape(enteredTitle)}"${error ? ' aria-invalid="true" aria-describedby="task-error"' : ''}>
       ${error ? `<div id="task-error" role="alert">${escape(error)}</div>` : ''}
-      <button type="submit">Create task</button>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <section class="tasks" aria-label="Tasks">
       <form action="/projects/${project.id}" method="get">
@@ -98,7 +118,7 @@ function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
       ${tasks.map((task) => `<div class="task-row" data-testid="task-row">
         <form action="/projects/${project.id}/tasks/${task.id}" method="post">
           <input type="hidden" name="filter" value="${filter}">
-          <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
+          <label><input type="checkbox" name="completed" value="1" aria-label="${escape(`Complete ${task.title}`)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span>${escape(task.title)}</span></label>
         </form>
       </div>`).join('')}
     </section>`);
@@ -130,14 +150,22 @@ const server = http.createServer(async (request, response) => {
       return response.end(JSON.stringify({ status: 'ok' }));
     }
     if (request.method === 'GET' && url.pathname === '/') {
-      return sendHtml(response, 200, projectsPage());
+      return sendHtml(response, 200, projectsPage('', '', projectFilter(url.searchParams.get('filter'))));
     }
     if (request.method === 'POST' && url.pathname === '/projects') {
-      const enteredName = (await readForm(request)).get('name') || '';
+      const form = await readForm(request);
+      const enteredName = form.get('name') || '';
       const name = enteredName.trim();
-      if (!name) return sendHtml(response, 200, projectsPage('Project name is required', enteredName));
+      if (!name) return sendHtml(response, 200, projectsPage('Project name is required', enteredName, projectFilter(form.get('filter'))));
       createProject.run(name);
       response.writeHead(303, { Location: '/' });
+      return response.end();
+    }
+    const archiveMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/(archive|restore)$/);
+    if (request.method === 'POST' && archiveMatch) {
+      if (!getProject.get(archiveMatch[1])) return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
+      setArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, archiveMatch[1]);
+      response.writeHead(303, { Location: archiveMatch[2] === 'archive' ? '/' : '/?filter=Archived' });
       return response.end();
     }
     const taskMatch = url.pathname.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*))?$/);
@@ -146,6 +174,7 @@ const server = http.createServer(async (request, response) => {
       if (!project || (taskMatch[2] && !getTask.get(taskMatch[2], project.id))) {
         return sendHtml(response, 404, page('Not found', '<h1>Not found</h1>'));
       }
+      if (project.archived) return sendHtml(response, 403, page('Archived project', '<h1>Archived project</h1><p>Restore the project to change its tasks.</p>'));
       const form = await readForm(request);
       const filter = taskFilter(form.get('filter'));
       if (taskMatch[2]) {
