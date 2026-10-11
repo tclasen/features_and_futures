@@ -18,6 +18,8 @@ Open `/` to create and open projects, view completion summaries, and switch betw
 
 Active project pages also support renaming with `New project name` and `Rename project`. Names are trimmed and required. Renaming preserves the project URL, list position, tasks, and completion summary. Archived projects must be restored before renaming. Renamed names persist across server restarts.
 
+Each task row provides `New task title` and `Rename task`. Titles are trimmed and required. Renaming updates the visible title and completion checkbox label while preserving ownership, creation order, completion state, filter membership, and project summaries. Archived projects disable task renaming; restoration enables it again. Renamed task titles persist across server restarts.
+
 Run verification:
 
 ```sh
