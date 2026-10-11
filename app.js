@@ -180,7 +180,39 @@ async function loadTasks() {
       });
       if (response.ok) await loadTasks();
     });
-    row.append(title, checkbox, priority, renameForm);
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.value = task.dueDate || '';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.disabled = currentProjectArchived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'submit';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = currentProjectArchived;
+    const dueDateAlert = document.createElement('span');
+    dueDateAlert.setAttribute('role', 'alert');
+    dueDateAlert.hidden = true;
+    dueDateForm.append(dueDateInput, saveDueDate, dueDateAlert);
+    dueDateForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (currentProjectArchived) return;
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dueDate: dueDateInput.value }),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        dueDateAlert.textContent = result.error || 'Unable to save due date';
+        dueDateAlert.hidden = false;
+        return;
+      }
+      dueDateAlert.hidden = true;
+      await loadTasks();
+    });
+    row.append(title, checkbox, priority, renameForm, dueDateForm);
     tasksContainer.append(row);
   }
 }

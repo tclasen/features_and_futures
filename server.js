@@ -20,7 +20,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT
   )
 `);
 // Upgrade databases created by earlier task checkpoints.
@@ -34,6 +35,22 @@ if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+function isValidDueDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthLengths = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= monthLengths[month - 1];
 }
 
 async function readBody(request) {
@@ -116,7 +133,7 @@ const server = createServer(async (request, response) => {
   }
   const tasksPath = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksPath && request.method === 'GET') {
-    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
+    const tasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(Number(tasksPath[1]));
     return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
   }
   if (tasksPath && request.method === 'POST') {
@@ -132,7 +149,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, default_task_priority AS defaultTaskPriority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.defaultTaskPriority);
-    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultTaskPriority });
+    return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultTaskPriority, dueDate: null });
   }
   const taskPath = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
   if (taskPath && request.method === 'PATCH') {
@@ -160,6 +177,13 @@ const server = createServer(async (request, response) => {
       if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot change task priorities' });
       database.prepare('UPDATE tasks SET priority = ? WHERE id = ?').run(changes.priority, taskId);
       return sendJson(response, 200, { id: taskId, priority: changes.priority });
+    }
+    if (typeof changes.dueDate === 'string') {
+      const dueDate = changes.dueDate.trim();
+      if (dueDate && !isValidDueDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      if (task.archived) return sendJson(response, 409, { error: 'Archived projects cannot change due dates' });
+      database.prepare('UPDATE tasks SET due_date = ? WHERE id = ?').run(dueDate || null, taskId);
+      return sendJson(response, 200, { id: taskId, dueDate: dueDate || null });
     }
     if (typeof changes.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
     database.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(changes.completed ? 1 : 0, taskId);
