@@ -90,6 +90,14 @@ export function renderProject(project, tasks = [], filter = 'All', error = '', p
       <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
       <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
     </form>
+    <form class="task-default-priority" method="post" action="${projectPath}/default-priority">
+      ${filterFields}
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        ${['Low', 'Normal', 'High'].map((option) => `<option${project.default_task_priority === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save default priority</button></noscript>
+    </form>
     <form class="create task-create" method="post" action="${projectPath}/tasks">
       ${filterFields}
       <label for="task-title">Task title</label>

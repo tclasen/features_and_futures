@@ -32,6 +32,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+// Project defaults affect only tasks created after the default is saved.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
+}
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -39,12 +43,13 @@ const listProjects = database.prepare(`
   WHERE projects.archived = ?
   GROUP BY projects.position ORDER BY projects.position
 `);
-const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (id, name) VALUES (?, ?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY position');
-const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title) VALUES (?, ?, ?)');
+const insertTask = database.prepare('INSERT INTO tasks (id, project_id, title, priority) VALUES (?, ?, ?, ?)');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -150,6 +155,29 @@ const server = http.createServer(async (request, response) => {
       redirect(response, projectLocation(project, filter, priority));
       return;
     }
+    const defaultPriorityMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/default-priority$/);
+    if (request.method === 'POST' && defaultPriorityMatch) {
+      const project = findProject.get(defaultPriorityMatch[1]);
+      if (!project) {
+        sendHtml(response, 404, renderNotFound());
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      if (project.archived) {
+        sendHtml(response, 403, projectPage(project, filter, 'Archived projects cannot be changed', priority));
+        return;
+      }
+      const defaultPriority = form.get('priority');
+      if (!['Low', 'Normal', 'High'].includes(defaultPriority)) {
+        sendHtml(response, 422, projectPage(project, filter, 'Invalid task priority', priority));
+        return;
+      }
+      updateProjectDefaultPriority.run(defaultPriority, project.id);
+      redirect(response, projectLocation(project, filter, priority));
+      return;
+    }
     const archiveMatch = pathname.match(/^\/projects\/([a-zA-Z0-9-]+)\/(archive|restore)$/);
     if (request.method === 'POST' && archiveMatch) {
       const archived = archiveMatch[2] === 'archive';
@@ -210,7 +238,7 @@ const server = http.createServer(async (request, response) => {
           sendHtml(response, 422, projectPage(project, filter, 'Task title is required', priority));
           return;
         }
-        insertTask.run(randomUUID(), project.id, title);
+        insertTask.run(randomUUID(), project.id, title, project.default_task_priority);
       }
       redirect(response, projectLocation(project, filter, priority));
       return;
