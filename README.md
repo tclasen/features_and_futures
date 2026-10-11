@@ -23,6 +23,11 @@ rows show completion totals and let you archive or restore a project. Archived
 projects remain readable with working task filters; task creation and completion
 changes are disabled until restoration. Existing databases migrate automatically.
 
+Use `New project name` and `Rename project` on an active project page to rename
+it. Names are trimmed and required. Renaming preserves the project's URL,
+creation order, tasks, and completion totals. Archived projects must be restored
+before they can be renamed.
+
 Run the integration checks with:
 
 ```sh

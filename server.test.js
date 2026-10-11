@@ -240,3 +240,78 @@ test('archive migration, summaries, read-only tasks, restoration, and restart pe
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('renaming validates and preserves identity, order, tasks, summaries, and archive restrictions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Original' });
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'Finished task' });
+    await post('/projects/1/tasks', { title: 'Pending task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const initial = await get('/projects/1');
+    assert.match(initial, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(initial, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/rename', { name });
+      assert.equal(invalid.status, 422);
+      assert.match(await invalid.text(), /role="alert">Project name is required/);
+      assert.equal(await get('/projects/1'), initial);
+    }
+    assert.equal((await post('/projects/999/rename', { name: 'Missing' })).status, 404);
+    const renamed = await post('/projects/1/rename', { name: '  Renamed <project> & "name"  ', filter: 'Open' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Open');
+    const detail = await get('/projects/1');
+    assert.match(detail, /<h1>Renamed &lt;project&gt; &amp; &quot;name&quot;<\/h1>/);
+    assert.match(detail, /aria-label="Complete Finished task" checked/);
+    assert.match(detail, /aria-label="Complete Pending task" onchange/);
+    assert.equal((detail.match(/data-testid="task-row"/g) || []).length, 2);
+    const listing = await get('/');
+    assert.ok(listing.indexOf('Renamed &lt;project&gt;') < listing.indexOf('Second project'));
+    assert.match(listing, /action="\/projects\/1"/);
+    assert.match(listing, /data-testid="project-summary">1\/2 completed/);
+    assert.match(await get('/projects/2'), /<h1>Second project<\/h1>/);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    assert.equal(await get('/'), listing);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    assert.match(archived, /id="new-project-name"[^>]* disabled/);
+    assert.match(archived, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post('/projects/1/rename', { name: 'Forbidden rename' })).status, 409);
+    assert.equal(await get('/projects/1'), archived);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), detail);
+    assert.equal((await post('/projects/1/rename', { name: '  Restored name  ' })).status, 303);
+    const restored = await get('/projects/1');
+    assert.match(restored, /<h1>Restored name<\/h1>/);
+    assert.match(restored, /aria-label="Complete Finished task" checked/);
+    assert.match(restored, /aria-label="Complete Pending task" onchange/);
+    assert.doesNotMatch(restored, / disabled/);
+    const restoredListing = await get('/');
+    assert.ok(restoredListing.indexOf('Restored name') < restoredListing.indexOf('Second project'));
+    assert.match(restoredListing, /data-testid="project-summary">1\/2 completed/);
+    await app.stop();
+    app = undefined;
+    app = await launch(dbPath);
+    assert.equal(await get('/projects/1'), restored);
+    assert.equal(await get('/'), restoredListing);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
