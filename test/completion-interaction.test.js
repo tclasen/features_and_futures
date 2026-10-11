@@ -33,7 +33,10 @@ function browserHarness() {
     document: {
       addEventListener(type, listener) { assert.equal(type, 'submit'); onSubmit = listener; },
       createElement() { return { setAttribute() {} }; },
-      querySelector() { return { prepend(alert) { alerts.push(alert.textContent); } }; },
+      querySelector(selector) {
+        if (selector === '.tasks') return null;
+        return { prepend(alert) { alerts.push(alert.textContent); } };
+      },
     },
     window: { location: { assign(url) { navigations.push(url); } } },
     setTimeout(callback, delay) {
@@ -62,10 +65,18 @@ function browserHarness() {
 }
 
 function completionForm(completed = '1') {
-  return { action: '/projects/project/tasks/task', fields: { completed, filter: 'Completed', priorityFilter: 'High' } };
+  return {
+    action: '/projects/project/tasks/task',
+    fields: { completed, filter: 'Completed', priorityFilter: 'High' },
+    removed: false,
+    closest(selector) {
+      assert.equal(selector, '.task');
+      return { remove: () => { this.removed = true; } };
+    },
+  };
 }
 
-test('completion persistence starts immediately but navigation waits for native checkbox interaction', async () => {
+test('completion saves immediately without delayed navigation that can abort a reload', async () => {
   const browser = browserHarness();
   browser.context.deferCompletionSubmit(completionForm());
   assert.deepEqual(browser.navigations, []);
@@ -75,7 +86,8 @@ test('completion persistence starts immediately but navigation waits for native 
   await flush();
   assert.deepEqual(browser.navigations, []);
   await browser.runTimer();
-  assert.deepEqual(browser.navigations, ['/projects/project?filter=Completed']);
+  assert.deepEqual(browser.navigations, []);
+  assert.equal(browser.requests[0].options.keepalive, true);
 
   const html = completionPage();
   assert.match(html, /aria-label="Complete Range completed"[^>]*onchange="deferCompletionSubmit\(this.form\)"/);
@@ -83,6 +95,46 @@ test('completion persistence starts immediately but navigation waits for native 
   for (const [name, value] of Object.entries({ filter: 'Completed', priorityFilter: 'High', dueFrom: '2029-01-01', dueThrough: '2029-01-31' })) {
     assert.ok(form.includes(`name="${name}" value="${value}"`));
   }
+});
+
+test('completion refresh removes only rows leaving the current filter without navigation', async () => {
+  for (const [filter, completed, removed] of [
+    ['Completed', '', true], ['Completed', '1', false],
+    ['Open', '1', true], ['Open', '', false], ['All', '1', false],
+  ]) {
+    const browser = browserHarness();
+    const form = completionForm(completed);
+    form.fields.filter = filter;
+    browser.context.deferCompletionSubmit(form);
+    await flush();
+    assert.equal(form.removed, false);
+    browser.resolve();
+    await browser.runTimer();
+    assert.equal(form.removed, removed);
+    assert.deepEqual(browser.navigations, []);
+  }
+});
+
+test('refresh waits for every queued task save and uses the latest toggle for each row', async () => {
+  const browser = browserHarness();
+  const first = completionForm('');
+  const second = completionForm('');
+  browser.context.deferCompletionSubmit(first);
+  browser.context.deferCompletionSubmit(second);
+  first.fields.completed = '1';
+  browser.context.deferCompletionSubmit(first);
+  await flush();
+  const refreshing = browser.runTimer();
+  browser.resolve(0);
+  await flush();
+  browser.resolve(1);
+  await flush();
+  assert.equal(second.removed, false);
+  browser.resolve(2);
+  await refreshing;
+  assert.equal(first.removed, false);
+  assert.equal(second.removed, true);
+  assert.deepEqual(browser.navigations, []);
 });
 
 test('quick deletion, edits, filters and export wait for completion to be saved', async () => {
@@ -93,7 +145,7 @@ test('quick deletion, edits, filters and export wait for completion to be saved'
     const submitting = browser.submit({ action: nextAction });
     await flush();
     assert.deepEqual(browser.submissions, [], 'later action must not overtake completion');
-    assert.equal(browser.timers.size, 0, 'later action cancels delayed navigation');
+    assert.equal(browser.timers.size, 0, 'later action cancels delayed row refresh');
     browser.resolve();
     await submitting;
     assert.deepEqual(browser.submissions, [nextAction]);
@@ -101,7 +153,7 @@ test('quick deletion, edits, filters and export wait for completion to be saved'
   }
 });
 
-test('a later form also wins while completion navigation is already waiting for its response', async () => {
+test('a later form also wins while row refresh is already waiting for its response', async () => {
   const browser = browserHarness();
   browser.context.deferCompletionSubmit(completionForm());
   await flush();

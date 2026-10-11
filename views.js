@@ -217,12 +217,28 @@ ${escapeHtml(task.notes)}</textarea>
       </li>`;
     }).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
     <script>
-      // Save checkbox changes in order before any later form can navigate away
-      // (especially Delete task). Delay only navigation, not persistence, so
-      // native checkbox interactions can finish even when the row is filtered out.
+      // Persist in order before later actions (especially deletion). Refresh
+      // membership in place: delayed navigation could abort an explicit reload.
+      // Briefly delay row removal so native checkbox interactions can finish.
       let completionSave = null;
-      let completionNavigationTimer;
-      let navigationVersion = 0;
+      let completionRefreshTimer;
+      let updateVersion = 0;
+      const changedForms = new Map();
+      function refreshCompletionRows() {
+        for (const [form, body] of changedForms) {
+          const filter = body.get('filter');
+          const completed = body.get('completed') === '1';
+          if ((filter === 'Open' && completed) || (filter === 'Completed' && !completed)) {
+            form.closest('.task').remove();
+          }
+        }
+        changedForms.clear();
+        const list = document.querySelector('.tasks');
+        if (list && !list.children.length) {
+          list.insertAdjacentHTML('afterend', '<p class="empty">No tasks to show.</p>');
+          list.remove();
+        }
+      }
       function showCompletionError() {
         const alert = document.createElement('p');
         alert.setAttribute('role', 'alert');
@@ -231,34 +247,34 @@ ${escapeHtml(task.notes)}</textarea>
       }
       function deferCompletionSubmit(form) {
         const body = new URLSearchParams(new FormData(form));
-        const version = ++navigationVersion;
-        clearTimeout(completionNavigationTimer);
+        changedForms.set(form, body);
+        const version = ++updateVersion;
+        clearTimeout(completionRefreshTimer);
         completionSave = (completionSave || Promise.resolve()).then(async () => {
-          const response = await fetch(form.action, { method: 'POST', body });
+          const response = await fetch(form.action, { method: 'POST', body, keepalive: true });
           if (!response.ok) throw new Error('Completion save failed');
-          return response.url;
         });
         // A failed save must also prevent subsequent actions from racing ahead.
         completionSave.catch(() => {});
-        completionNavigationTimer = setTimeout(async () => {
+        completionRefreshTimer = setTimeout(async () => {
           try {
-            const url = await completionSave;
-            if (version === navigationVersion) window.location.assign(url);
+            await completionSave;
+            if (version === updateVersion) refreshCompletionRows();
           } catch {
-            if (version === navigationVersion) showCompletionError();
+            if (version === updateVersion) showCompletionError();
           }
         }, 150);
       }
       document.addEventListener('submit', async (event) => {
         if (!completionSave) return;
         event.preventDefault();
-        clearTimeout(completionNavigationTimer);
-        const version = ++navigationVersion;
+        clearTimeout(completionRefreshTimer);
+        const version = ++updateVersion;
         try {
           await completionSave;
-          if (version === navigationVersion) HTMLFormElement.prototype.submit.call(event.target);
+          if (version === updateVersion) HTMLFormElement.prototype.submit.call(event.target);
         } catch {
-          if (version === navigationVersion) showCompletionError();
+          if (version === updateVersion) showCompletionError();
         }
       });
     </script>
