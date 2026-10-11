@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { openProjects } from './projects.js';
 import { projectsPage, projectPage, notFoundPage } from './views.js';
+import { TASK_PRIORITIES } from './task-priorities.js';
 
 const projects = openProjects(process.env.DB_PATH || 'data/workboard.sqlite');
 const stylesheet = readFileSync(new URL('./public/styles.css', import.meta.url));
@@ -97,7 +98,7 @@ const server = createServer(async (request, response) => {
         return redirect(response, `/projects/${project.id}?filter=${filter}`);
       }
     }
-    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename))?$/);
+    const taskMatch = path.match(/^\/projects\/([1-9]\d*)\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?$/);
     if (request.method === 'POST' && taskMatch &&
         Number.isSafeInteger(Number(taskMatch[1])) &&
         (!taskMatch[2] || Number.isSafeInteger(Number(taskMatch[2])))) {
@@ -115,6 +116,15 @@ const server = createServer(async (request, response) => {
               projectPage(project, projects.listTasks(project.id, filter), filter, 'Task title is required'));
           }
           if (!projects.renameTask(project.id, Number(taskMatch[2]), title)) {
+            return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
+          }
+        } else if (taskMatch[3] === 'priority') {
+          const priority = form.get('priority');
+          if (!TASK_PRIORITIES.includes(priority)) {
+            return send(response, 400, 'text/html; charset=utf-8',
+              projectPage(project, projects.listTasks(project.id, filter), filter, 'Invalid task priority'));
+          }
+          if (!projects.setTaskPriority(project.id, Number(taskMatch[2]), priority)) {
             return send(response, 404, 'text/html; charset=utf-8', notFoundPage());
           }
         } else if (taskMatch[2]) {

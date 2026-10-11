@@ -1,4 +1,4 @@
-// Submit filter and completion changes through the same forms as normal navigation.
+// Submit filter, completion, and priority changes through normal form navigation.
 document.querySelectorAll('form[data-auto-submit]').forEach((form) => {
   form.addEventListener('change', () => form.requestSubmit());
 });

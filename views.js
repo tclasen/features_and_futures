@@ -1,3 +1,5 @@
+import { TASK_PRIORITIES } from './task-priorities.js';
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -89,6 +91,14 @@ export function projectPage(project, tasks = [], filter = 'All', error = '') {
           <form action="${projectPath}/tasks/${task.id}/completion" method="post" data-auto-submit>
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">
             <input type="checkbox" name="completed" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''}>
+          </form>
+          <form action="${projectPath}/tasks/${task.id}/priority" method="post" data-auto-submit>
+            <input type="hidden" name="filter" value="${escapeHtml(filter)}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''}>
+              ${TASK_PRIORITIES.map((priority) =>
+                `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}
+            </select>
           </form>
           <form action="${projectPath}/tasks/${task.id}/rename" method="post" class="task-rename">
             <input type="hidden" name="filter" value="${escapeHtml(filter)}">

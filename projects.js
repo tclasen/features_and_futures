@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { TASK_PRIORITIES } from './task-priorities.js';
 
 export function openProjects(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -22,6 +23,9 @@ export function openProjects(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
   }
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+  }
   const list = database.prepare(`
     SELECT projects.id, projects.name, projects.archived,
       COUNT(tasks.id) AS total_count, COALESCE(SUM(tasks.completed), 0) AS completed_count
@@ -33,7 +37,7 @@ export function openProjects(databasePath) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const updateName = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const listTasks = database.prepare(`
-    SELECT id, title, completed FROM tasks
+    SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? IS NULL OR completed = ?) ORDER BY id
   `);
   const insertTask = database.prepare(`
@@ -46,6 +50,10 @@ export function openProjects(databasePath) {
   `);
   const updateTaskTitle = database.prepare(`
     UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?
+      AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
+  `);
+  const updateTaskPriority = database.prepare(`
+    UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?
       AND EXISTS (SELECT 1 FROM projects WHERE id = tasks.project_id AND archived = 0)
   `);
 
@@ -82,6 +90,10 @@ export function openProjects(databasePath) {
       const trimmedTitle = title.trim();
       if (!trimmedTitle) return false;
       return updateTaskTitle.run(trimmedTitle, taskId, projectId).changes > 0;
+    },
+    setTaskPriority(projectId, taskId, priority) {
+      if (!TASK_PRIORITIES.includes(priority)) return false;
+      return updateTaskPriority.run(priority, taskId, projectId).changes > 0;
     },
     close: () => database.close(),
   };
