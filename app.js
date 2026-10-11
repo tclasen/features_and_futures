@@ -13,6 +13,10 @@ const defaultTaskPriority = document.querySelector('#default-task-priority');
 const priorityFilter = document.querySelector('#priority-filter');
 const taskRenameAlert = document.querySelector('#task-rename-alert');
 const taskDateAlert = document.querySelector('#task-date-alert');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
+const dueRangeAlert = document.querySelector('#due-range-alert');
+let appliedDueRange = { from: '', through: '' };
 const projectFilter = document.querySelector('#project-filter');
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project-form');
@@ -72,6 +76,10 @@ async function showProject(id) {
   const project = await response.json();
   taskFilter.value = 'All';
   priorityFilter.value = 'All';
+  dueFromInput.value = '';
+  dueThroughInput.value = '';
+  appliedDueRange = { from: '', through: '' };
+  dueRangeAlert.hidden = true;
   document.querySelector('#detail-heading').textContent = project.name;
   activeProjectId = id;
   activeProjectArchived = project.archived;
@@ -99,6 +107,9 @@ async function refreshTasks() {
   for (const task of tasks) {
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
+    if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
+    if (appliedDueRange.from && task.dueDate < appliedDueRange.from) continue;
+    if (appliedDueRange.through && task.dueDate > appliedDueRange.through) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -283,6 +294,34 @@ renameForm.addEventListener('submit', async (event) => {
 });
 taskFilter.addEventListener('change', refreshTasks);
 priorityFilter.addEventListener('change', refreshTasks);
+document.querySelector('#apply-due-range').addEventListener('click', () => {
+  const from = dueFromInput.value.trim();
+  const through = dueThroughInput.value.trim();
+  const validDate = (value) => {
+    if (!value) return true;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    if (year < 1 || year > 9999) return false;
+    const date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return date.getUTCFullYear() === year
+      && date.getUTCMonth() === month - 1
+      && date.getUTCDate() === day;
+  };
+  if (!validDate(from) || !validDate(through)) {
+    dueRangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    dueRangeAlert.hidden = false;
+    return;
+  }
+  if (from && through && from > through) {
+    dueRangeAlert.textContent = 'Due from must not be after Due through';
+    dueRangeAlert.hidden = false;
+    return;
+  }
+  dueRangeAlert.hidden = true;
+  appliedDueRange = { from, through };
+  refreshTasks();
+});
 defaultTaskPriority.addEventListener('change', async () => {
   const response = await fetch(`/api/projects/${encodeURIComponent(activeProjectId)}`, {
     method: 'PATCH',
