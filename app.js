@@ -154,12 +154,20 @@ let appliedDirectoryQuery = '';
 let appliedDirectoryFrom = '';
 let appliedDirectoryThrough = '';
 async function loadDirectory() {
+  const emptyNotice = document.querySelector('#directory-empty');
+  emptyNotice.hidden = true;
+  const completeButton = document.querySelector('#complete-visible-tasks');
+  const reopenButton = document.querySelector('#reopen-visible-tasks');
+  completeButton.disabled = true;
+  reopenButton.disabled = true;
   const response = await fetch('/api/directory');
   const tasks = await response.json();
   const results = document.querySelector('#directory-results');
   const scope = document.querySelector('#directory-project-scope').value;
   const taskFilter = document.querySelector('#directory-task-filter').value;
   const priorityFilter = document.querySelector('#directory-priority-filter').value;
+  const visibleOpenIds = [];
+  const visibleCompletedIds = [];
   results.replaceChildren();
   for (const task of tasks) {
     if (task.archived !== (scope === 'Archived')) continue;
@@ -171,7 +179,8 @@ async function loadDirectory() {
     if (appliedDirectoryFrom && task.dueDate < appliedDirectoryFrom) continue;
     if (appliedDirectoryThrough && task.dueDate > appliedDirectoryThrough) continue;
     if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedDirectoryQuery))) continue;
-    const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.className = 'task-row';
+    if (!task.deleted) (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
+    const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.dataset.taskId = task.id; row.className = 'task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
     const completion = document.createElement('span'); completion.dataset.testid = 'directory-task-completion'; completion.textContent = task.completed ? 'Completed' : 'Open';
@@ -181,6 +190,22 @@ async function loadDirectory() {
     const open = document.createElement('button'); open.type = 'button'; open.textContent = 'Open project'; open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
     row.append(title, owner, completion, priority, dueDate, notes, open); results.append(row);
   }
+  const actionsAllowed = scope === 'Active' && taskFilter !== 'Deleted';
+  completeButton.disabled = !actionsAllowed || visibleOpenIds.length === 0;
+  reopenButton.disabled = !actionsAllowed || visibleCompletedIds.length === 0;
+  emptyNotice.hidden = results.childElementCount !== 0;
+}
+
+async function updateVisibleCompletion(completed) {
+  const rows = [...document.querySelectorAll('[data-testid="directory-task-row"]')];
+  const taskIds = rows.filter((row) => row.querySelector('[data-testid="directory-task-completion"]').textContent === (completed ? 'Open' : 'Completed'))
+    .map((row) => Number(row.dataset.taskId));
+  if (!taskIds.length) return;
+  const response = await fetch('/api/directory/completion', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ completed, taskIds }),
+  });
+  if (response.ok) await loadDirectory();
 }
 
 async function loadTasks() {
@@ -468,6 +493,8 @@ importForm.addEventListener('submit', async (event) => {
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
 document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
 document.querySelector('#directory-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#complete-visible-tasks').addEventListener('click', () => updateVisibleCompletion(true));
+document.querySelector('#reopen-visible-tasks').addEventListener('click', () => updateVisibleCompletion(false));
 for (const selector of ['#directory-project-scope', '#directory-task-filter', '#directory-priority-filter']) {
   document.querySelector(selector).addEventListener('change', loadDirectory);
 }

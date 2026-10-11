@@ -122,6 +122,27 @@ const server = createServer(async (request, response) => {
     `).all().map((task) => ({ ...task, archived: Boolean(task.archived), completed: Boolean(task.completed), deleted: Boolean(task.deleted), dueDate: task.dueDate || '', notes: task.notes || '' }));
     return sendJson(response, 200, rows);
   }
+  if (request.method === 'PATCH' && url.pathname === '/api/directory/completion') {
+    let input;
+    try { input = await readBody(request); } catch {
+      return sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    if (typeof input.completed !== 'boolean' || !Array.isArray(input.taskIds) ||
+        input.taskIds.some((id) => !Number.isInteger(id) || id < 1)) {
+      return sendJson(response, 400, { error: 'Invalid completion update' });
+    }
+    const update = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+      AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    database.exec('BEGIN');
+    try {
+      for (const taskId of new Set(input.taskIds)) update.run(input.completed ? 1 : 0, taskId);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    return sendJson(response, 200, { updated: input.taskIds.length });
+  }
   const projectExportPath = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
   if (projectExportPath && request.method === 'GET') {
     const projectId = Number(projectExportPath[1]);
