@@ -17,7 +17,9 @@
     button:hover { background: #19479f; }
     #error { color: #b42318; min-height: 1.5em; }
     #projects { margin-top: 20px; display: grid; gap: 10px; }
-    .project-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2eb; border-radius: 8px; }
+    .project-row, .task-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; background: white; border: 1px solid #dce2eb; border-radius: 8px; }
+    #tasks { margin-top: 20px; display: grid; gap: 10px; }
+    .task-row label { display: flex; align-items: center; gap: 10px; }
   </style>
 </head>
 <body>
@@ -54,8 +56,32 @@
       const projects = await (await fetch('/api/projects')).json();
       const project = projects.find(item => String(item.id) === id);
       if (!project) { location.replace('/'); return; }
-      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+      app.innerHTML = `<button type="button" id="back">Projects</button><h1>${escapeHtml(project.name)}</h1><form id="create-task"><label for="task-title">Task title</label><input id="task-title" name="title" type="text"><button type="submit">Create task</button></form><p id="task-error" role="alert"></p><label for="task-filter">Task filter</label><select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select><section id="tasks" aria-label="Tasks"></section>`;
       document.querySelector('#back').addEventListener('click', () => location.href = '/');
+      const taskList = document.querySelector('#tasks');
+      const taskError = document.querySelector('#task-error');
+      async function refreshTasks() {
+        const tasks = await (await fetch(`/api/projects/${id}/tasks`)).json();
+        const filter = document.querySelector('#task-filter').value;
+        taskList.innerHTML = tasks.filter(task => filter === 'All' || (filter === 'Completed') === task.completed).map(task => `<div class="task-row" data-testid="task-row"><span>${escapeHtml(task.title)}</span><label><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task="${task.id}" ${task.completed ? 'checked' : ''}></label></div>`).join('');
+      }
+      document.querySelector('#create-task').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = document.querySelector('#task-title');
+        const title = input.value.trim();
+        if (!title) { taskError.textContent = 'Task title is required'; return; }
+        const response = await fetch(`/api/projects/${id}/tasks`, {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({title})});
+        if (!response.ok) { taskError.textContent = 'Task title is required'; return; }
+        taskError.textContent = ''; input.value = ''; await refreshTasks();
+      });
+      document.querySelector('#task-filter').addEventListener('change', refreshTasks);
+      taskList.addEventListener('change', async event => {
+        const checkbox = event.target.closest('[data-task]');
+        if (!checkbox) return;
+        await fetch(`/api/tasks/${checkbox.dataset.task}`, {method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({completed:checkbox.checked})});
+        await refreshTasks();
+      });
+      await refreshTasks();
     }
     const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
     if (match) projectPage(match[1]); else projectsPage();
