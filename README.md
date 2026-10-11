@@ -66,6 +66,14 @@ Edits and filter changes retain the range, and archived projects allow range
 filtering. Opening a project from the list starts with empty range boundaries.
 Filtering never changes saved task data or the all-task completion summary.
 
+Each task row provides `Destination project` and `Move task` to move it to
+another active project. Destinations use current project names in project
+creation order. Moves append after the destination's existing tasks, preserve
+title, completion, priority and due date, and retain the source page's filters.
+Both completion summaries reflect the new ownership. Task order and ownership
+persist across restarts. Archived projects cannot send or receive tasks; move
+controls are also disabled when there are no eligible destinations.
+
 Run the integration checks with:
 
 ```sh

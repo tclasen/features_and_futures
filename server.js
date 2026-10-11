@@ -34,12 +34,20 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
+  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE id = ? AND project_id = ?`);
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -151,6 +159,8 @@ function html(res, status, content) {
 }
 
 function projectPage(project, filter = 'All', error = '', renameError = '', taskRenameError = null, priority = 'All', dueDateError = null, range = { from: '', through: '' }, rangeError = '', rangeDraft = range) {
+  const eligibleDestinations = destinations.all(project.id);
+  const moveDisabled = project.archived || !eligibleDestinations.length;
   const tasks = listTasks.all(project.id).filter((task) =>
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
@@ -233,6 +243,16 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             ${priorities.map((priority) => `<option${task.priority === priority ? ' selected' : ''}>${priority}</option>`).join('')}
           </select>
+        </form>
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priority}">
+          ${rangeFields}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destination"${moveDisabled ? ' disabled' : ''}>
+            ${eligibleDestinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
         </form>
         <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
           <input type="hidden" name="filter" value="${filter}">
@@ -371,6 +391,31 @@ const server = http.createServer(async (req, res) => {
       const archived = path.endsWith('/archive');
       setProjectArchived.run(archived ? 1 : 0, id);
       redirect(res, archived ? '/' : '/?filter=Archived');
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/move$/.test(path)) {
+      const [, , projectId, , taskId] = path.split('/');
+      const id = Number(projectId);
+      const taskNumber = Number(taskId);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project || !Number.isSafeInteger(taskNumber) || !findTask.get(taskNumber, id)) {
+        html(res, 404, page('Task not found', '<h1>Task not found</h1>'));
+        return;
+      }
+      const form = await readForm(req);
+      const filter = taskFilter(form.get('filter'));
+      const selectedPriority = priorityFilter(form.get('priorityFilter'));
+      const range = dueRange(form);
+      const destinationId = Number(form.get('destination'));
+      const destination = Number.isSafeInteger(destinationId) ? findProject.get(destinationId) : undefined;
+      if (project.archived || destination?.archived) {
+        html(res, 409, projectPage(project, filter, 'Archived projects cannot move tasks', '', null, selectedPriority, null, range));
+        return;
+      }
+      if (!destination || destinationId === id) {
+        html(res, 422, projectPage(project, filter, 'Choose another active destination project', '', null, selectedPriority, null, range));
+        return;
+      }
+      moveTask.run(destinationId, destinationId, taskNumber, id);
+      redirect(res, projectLocation(id, filter, selectedPriority, range));
     } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/due-date$/.test(path)) {
       const [, , projectId, , taskId] = path.split('/');
       const id = Number(projectId);
@@ -490,7 +535,7 @@ const server = http.createServer(async (req, res) => {
           html(res, 422, projectPage(project, filter, 'Task title is required', '', null, selectedPriority, null, range));
           return;
         }
-        createTask.run(id, title, project.default_priority);
+        createTask.run(id, title, project.default_priority, id);
       }
       redirect(res, projectLocation(id, filter, selectedPriority, range));
     } else if (req.method === 'GET' && /^\/projects\/\d+$/.test(path)) {
