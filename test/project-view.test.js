@@ -151,6 +151,8 @@ test('Archived filter survives reload and opening a read-only project then retur
   await settled();
   assert.equal(app.querySelector('h1').textContent, projects[0].name);
   assert.equal(app.querySelector('#archive-status').hidden, false);
+  assert.equal(app.querySelector('#new-project-name').disabled, true);
+  assert.equal(app.querySelector('#rename-form').querySelector('button').disabled, true);
   assert.equal(app.querySelector('form').querySelector('button').disabled, true);
   assert.equal(rows(app)[0].querySelector('input').disabled, true);
   await app.querySelector('#projects').emit('click');
@@ -163,9 +165,37 @@ test('Archived filter survives reload and opening a read-only project then retur
   await control(rows(app)[0], 'Open project').emit('click');
   await settled();
   assert.equal(app.querySelector('form').querySelector('button').disabled, false);
+  assert.equal(app.querySelector('#new-project-name').disabled, false);
+  assert.equal(app.querySelector('#rename-form').querySelector('button').disabled, false);
   assert.equal(rows(app)[0].querySelector('input').disabled, false);
   assert.equal(rows(app)[0].querySelector('input').checked, true);
   await app.querySelector('#projects').emit('click');
   await settled();
   assert.equal(app.querySelector('select').value, 'Active');
+});
+
+test('rename validates input and updates the heading and list while preserving tasks', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Second project' }];
+  const app = await browser(new Map(), projects);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  const form = app.querySelector('#rename-form');
+  const input = app.querySelector('#new-project-name');
+  const savedRow = rows(app)[0];
+  input.value = ' \t\n ';
+  await form.emit('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(app.querySelector('[role="alert"]').hidden, false);
+  assert.equal(app.querySelector('h1').textContent, 'Archive lifecycle');
+  input.value = '  New project name  ';
+  await form.emit('submit');
+  assert.equal(app.querySelector('h1').textContent, 'New project name');
+  assert.equal(app.querySelector('[role="alert"]').hidden, true);
+  assert.equal(rows(app)[0], savedRow);
+  assert.equal(savedRow.querySelector('input').checked, true);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  assert.equal(rows(app)[0].children[0].textContent, 'New project name');
+  assert.equal(rows(app)[1].children[0].textContent, 'Second project');
+  assert.ok(control(rows(app)[0], '1/1 completed'));
 });

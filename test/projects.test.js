@@ -105,15 +105,30 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     assert.equal(completedResponse.status, 200);
     const completedTask = await completedResponse.json();
     assert.deepEqual(completedTask, { ...firstTask, completed: true });
-    const firstWithTasks = { ...first, total_count: 2, completed_count: 1 };
+    let firstWithTasks = { ...first, total_count: 2, completed_count: 1 };
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), firstWithTasks);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, second]);
+    for (const name of ['', ' \t\n ', null]) {
+      const response = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { name });
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), firstWithTasks);
+    }
+    const renamed = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { name: '  Renamed project  ' });
+    assert.equal(renamed.status, 200);
+    firstWithTasks = { ...firstWithTasks, name: 'Renamed project' };
+    assert.deepEqual(await renamed.json(), firstWithTasks);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, second]);
+    assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
     assert.equal((await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: 'yes' })).status, 400);
     assert.equal((await taskRequest('/api/projects/999999', 'PATCH', { archived: true })).status, 404);
     const archiveResponse = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: true });
     assert.equal(archiveResponse.status, 200);
     const archived = { ...firstWithTasks, archived: true };
     assert.deepEqual(await archiveResponse.json(), archived);
+    const blockedRename = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { name: 'Blocked rename' });
+    assert.equal(blockedRename.status, 409);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), archived);
     assert.equal((await taskRequest(taskPath, 'POST', { title: 'Blocked' })).status, 409);
     assert.equal((await taskRequest(`${taskPath}/${firstTask.id}`, 'PATCH', { completed: false })).status, 409);
     assert.deepEqual(await (await fetch(base + taskPath)).json(), [completedTask, secondTask]);
@@ -133,6 +148,10 @@ test('projects and tasks validate, stay ordered and isolated, archive and restor
     const restored = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { archived: false });
     assert.equal(restored.status, 200);
     assert.deepEqual(await restored.json(), firstWithTasks);
+    const renameAfterRestore = await taskRequest(`/api/projects/${first.id}`, 'PATCH', { name: '  Restored and renamed  ' });
+    assert.equal(renameAfterRestore.status, 200);
+    firstWithTasks = { ...firstWithTasks, name: 'Restored and renamed' };
+    assert.deepEqual(await renameAfterRestore.json(), firstWithTasks);
     await stop();
     await start();
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [firstWithTasks, second]);

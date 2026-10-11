@@ -65,6 +65,13 @@ async function render() {
           <button type="submit" disabled>Create task</button>
         </div>
       </form>
+      <form id="rename-form">
+        <label for="new-project-name">New project name</label>
+        <div class="create-controls">
+          <input id="new-project-name" type="text" autocomplete="off" disabled>
+          <button type="submit" disabled>Rename project</button>
+        </div>
+      </form>
       <p role="alert" hidden></p>
       <div class="task-filter">
         <label for="task-filter">Task filter</label>
@@ -79,9 +86,40 @@ async function render() {
     const submit = form.querySelector('button');
     const filter = app.querySelector('select');
     const list = app.querySelector('ul');
+    const renameForm = app.querySelector('#rename-form');
+    const renameInput = app.querySelector('#new-project-name');
+    const renameSubmit = renameForm.querySelector('button');
     const endpoint = `/api/projects/${match[1]}/tasks`;
     let tasks = [];
     let archived = false;
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (renameSubmit.disabled) return;
+      const name = renameInput.value.trim();
+      if (!name) {
+        alertMessage('Project name is required');
+        renameInput.focus();
+        return;
+      }
+      renameSubmit.disabled = true;
+      alertMessage('');
+      try {
+        const project = await request(`/api/projects/${match[1]}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!renameForm.isConnected) return;
+        app.querySelector('h1').textContent = project.name;
+        document.title = `${project.name} · Workboard`;
+        renameInput.value = '';
+        renameInput.focus();
+      } catch (error) {
+        if (renameForm.isConnected) alertMessage(error.message);
+      } finally {
+        renameSubmit.disabled = archived;
+      }
+    });
     function displayTasks() {
       const visible = tasks.filter(task => filter.value === 'All' ||
         (filter.value === 'Completed' ? task.completed : !task.completed));
@@ -151,6 +189,8 @@ async function render() {
       if (!form.isConnected) return;
       app.querySelector('h1').textContent = project.name;
       archived = project.archived;
+      renameInput.disabled = archived;
+      renameSubmit.disabled = archived;
       app.querySelector('#archive-status').hidden = !archived;
       document.title = `${project.name} · Workboard`;
       tasks = await request(endpoint);
