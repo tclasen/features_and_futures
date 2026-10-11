@@ -179,3 +179,12 @@ refresh task rows, owner totals, global totals and action eligibility together.
 Archived scope and ineligible or empty views disable these actions. Bulk deletion
 and restoration preserve all other fields, ownership and remembered positions,
 and persist across restarts. Project summaries continue to count only live tasks.
+
+Use `Visible tasks priority` (Low, Normal, High) and `Set visible priority` to
+set the priority of every matching live task in an Active directory view. The
+selection starts at Normal on each fresh visit. The action retains filters,
+search, due range and ordering, and refreshes rows, totals and bulk eligibility
+from the saved result. Archived, Deleted and empty views disable the action;
+invalid or missing priority submissions leave all data unchanged. Bulk priority
+changes preserve all other fields, ownership and remembered positions, and
+persist across reloads and server restarts.

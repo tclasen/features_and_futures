@@ -316,7 +316,7 @@ function orderDirectoryTasks(tasks, order) {
   return tasks;
 }
 
-function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range, order = 'Original') {
+function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range, order = 'Original', visiblePriority = 'Normal') {
   const tasks = directoryTasks(scope, filter, priority, range, search);
   // Group the resolved Original result by identity before sorting task rows.
   // Map insertion order keeps owners in project creation order, even with duplicate names.
@@ -332,6 +332,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
   orderDirectoryTasks(tasks, order);
   const bulkDisabled = scope === 'Archived' || filter === 'Deleted';
   const state = `<input type="hidden" name="scope" value="${scope}">
+    <input type="hidden" name="visiblePriority" value="${visiblePriority}">
     <input type="hidden" name="order" value="${order}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">
@@ -341,6 +342,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
   return page('Task directory', `<form method="get" action="/"><button type="submit">Projects</button></form>
     <h1>Task directory</h1>
     <form class="filter" method="get" action="/directory">
+      <input type="hidden" name="visiblePriority" value="${visiblePriority}">
       <input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">
       <input type="hidden" name="searchQuery" value="${escapeHtml(search)}">
@@ -377,6 +379,14 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       ${state}
       <button type="submit" name="deleted" value="1"${bulkDisabled || !tasks.length ? ' disabled' : ''}>Delete visible tasks</button>
       <button type="submit" name="deleted" value="0"${scope === 'Archived' || filter !== 'Deleted' || !tasks.length ? ' disabled' : ''}>Restore visible tasks</button>
+    </form>
+    <form class="filter" method="post" action="/directory/priority">
+      ${state}
+      <label for="visible-tasks-priority">Visible tasks priority</label>
+      <select id="visible-tasks-priority" name="priority">
+        ${priorities.map((option) => `<option${visiblePriority === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <button type="submit"${bulkDisabled || !tasks.length ? ' disabled' : ''}>Set visible priority</button>
     </form>
     <section class="projects" aria-label="Directory owners">
       ${[...owners.values()].map((owner) => `<div class="project" data-testid="directory-owner-row">
@@ -596,13 +606,15 @@ const server = http.createServer(async (req, res) => {
       html(res, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
         dueRange(url.searchParams), searchQuery(url.searchParams), '', undefined,
-        directoryOrder(url.searchParams.get('order'))));
-    } else if (req.method === 'POST' && ['/directory/search', '/directory/due-range', '/directory/completion', '/directory/deletion'].includes(path)) {
+        directoryOrder(url.searchParams.get('order')),
+        priorities.includes(url.searchParams.get('visiblePriority')) ? url.searchParams.get('visiblePriority') : 'Normal'));
+    } else if (req.method === 'POST' && ['/directory/search', '/directory/due-range', '/directory/completion', '/directory/deletion', '/directory/priority'].includes(path)) {
       const form = await readForm(req);
       const scope = projectFilter(form.get('scope'));
       const order = directoryOrder(form.get('order'));
       const filter = taskFilter(form.get('filter'));
       const priority = priorityFilter(form.get('priorityFilter'));
+      let visiblePriority = priorities.includes(form.get('visiblePriority')) ? form.get('visiblePriority') : 'Normal';
       let range = dueRange(form);
       let search = searchQuery(form);
       if (path === '/directory/search') {
@@ -630,6 +642,19 @@ const server = http.createServer(async (req, res) => {
             }
           });
         }
+      } else if (path === '/directory/priority') {
+        const chosen = form.get('priority');
+        if (priorities.includes(chosen)) {
+          visiblePriority = chosen;
+          if (scope === 'Active' && filter !== 'Deleted') {
+            transaction(() => {
+              // Resolve matches before editing so changed priorities cannot alter the target set.
+              for (const task of directoryTasks(scope, filter, priority, range, search)) {
+                setTaskPriority.run(chosen, task.id, task.project_id);
+              }
+            });
+          }
+        }
       } else {
         const draft = {
           from: (form.get('rangeFrom') || '').trim(),
@@ -642,12 +667,13 @@ const server = http.createServer(async (req, res) => {
           error = 'Due from must not be after Due through';
         }
         if (error) {
-          html(res, 422, directoryPage(scope, filter, priority, range, search, error, draft, order));
+          html(res, 422, directoryPage(scope, filter, priority, range, search, error, draft, order, visiblePriority));
           return;
         }
         range = draft;
       }
       const query = new URLSearchParams();
+      if (visiblePriority !== 'Normal') query.set('visiblePriority', visiblePriority);
       if (scope !== 'Active') query.set('scope', scope);
       if (order !== 'Original') query.set('order', order);
       if (filter !== 'All') query.set('filter', filter);

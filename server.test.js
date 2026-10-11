@@ -8,6 +8,111 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { runInNewContext } from 'node:vm';
 
+test('directory bulk priority uses the current live intersections and preserves all other data across restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-priority-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try {
+        return Object.fromEntries(['projects', 'tasks', 'task_positions'].map((table) =>
+          [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map((row) => ({ ...row }))]));
+      } finally { db.close(); }
+    };
+    const task = (title, extra = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  literal 雪 <b> &\n trailing  ', deleted: false, ...extra });
+    for (const [name, archived, tasks] of [
+      ['Duplicate', false, [task('Match  first'), task('Match completed', { completed: true }),
+        task('Match low', { priority: 'Low' }), task('Match undated', { dueDate: '' }),
+        task('Match outside', { dueDate: '2024-03-01' }), task('Other'), task('Match deleted', { deleted: true })]],
+      ['Duplicate', false, [task('Match\t second', { completed: true })]],
+      ['Archive', true, [task('Match archived'), task('Match archived deleted', { deleted: true })]],
+    ]) {
+      await post('/projects/import', { name, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks },
+      }) });
+    }
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const initial = await get('/directory');
+    const select = initial.match(/<select id="visible-tasks-priority"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.deepEqual([...select.matchAll(/<option(?: selected)?>([^<]*)<\/option>/g)].map((m) => m[1]), ['Low', 'Normal', 'High']);
+    assert.match(select, /<option selected>Normal/);
+    assert.match(initial, /<label for="visible-tasks-priority">Visible tasks priority/);
+    const pathFor = (fields) => '/directory?' + new URLSearchParams(fields);
+    const selected = { scope: 'Active', filter: 'All', priorityFilter: 'High',
+      dueFrom: '2024-02-29', dueThrough: '2024-02-29', searchQuery: 'MATCH', order: 'Title' };
+    const before = snapshot();
+    for (const fields of [
+      { scope: 'Archived' }, { filter: 'Deleted' }, { searchQuery: 'absent' },
+    ]) assert.match(await get(pathFor(fields)), /<button type="submit" disabled>Set visible priority/);
+    for (const extra of [
+      { scope: 'Archived', priority: 'Low' }, { filter: 'Deleted', priority: 'Low' },
+      { searchQuery: 'absent', priority: 'Low' }, { priority: 'invalid' },
+      { priority: 'high' }, { priority: '' }, {},
+    ]) {
+      await post('/directory/priority', { ...selected, ...extra });
+      assert.deepEqual(snapshot(), before);
+    }
+    // Open, Completed and All each use their own resolved result across independent owners.
+    let expected = structuredClone(before);
+    for (const [filter, priority, ids] of [
+      ['Open', 'Low', [1]], ['Completed', 'Normal', [2, 8]], ['All', 'Low', [1, 2, 8]],
+    ]) {
+      const fields = { ...selected, filter, priorityFilter: filter === 'All' ? 'All' : 'High' };
+      const response = await post('/directory/priority', { ...fields, priority });
+      assert.equal(response.status, 303);
+      const location = new URL(response.headers.get('location'), app.url);
+      for (const [key, value] of Object.entries(fields)) {
+        assert.equal(location.searchParams.get(key) || (key === 'scope' ? 'Active' : 'All'), value);
+      }
+      for (const row of expected.tasks) if (ids.includes(row.id)) row.priority = priority;
+      assert.deepEqual(snapshot(), expected);
+      const body = await get(location.pathname + location.search);
+      if (filter !== 'All') {
+        assert.match(body, /data-testid="directory-summary">0\/0 completed/);
+        assert.doesNotMatch(body, /data-testid="directory-owner-row"/);
+        assert.match(body, /No matching tasks/);
+        assert.match(body, /disabled>Set visible priority/);
+        assert.match(body, /disabled>Complete visible tasks/);
+        assert.match(body, /disabled>Reopen visible tasks/);
+        assert.match(body, /disabled>Delete visible tasks/);
+        assert.match(body, /disabled>Restore visible tasks/);
+      } else {
+        assert.match(body, /data-testid="directory-summary">2\/4 completed/);
+        assert.match(body, /data-testid="directory-owner-summary">1\/3 completed/);
+        assert.match(body, /data-testid="directory-owner-summary">1\/1 completed/);
+      }
+    }
+    // View ordering reflects saved priorities; exporting still uses the original positions.
+    const ordered = await get('/directory?order=Priority');
+    const titles = [...ordered.matchAll(/data-testid="directory-task-title"[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
+    assert.deepEqual(titles, ['Match undated', 'Match outside', 'Other', 'Match  first', 'Match completed', 'Match low', 'Match\t second']);
+    assert.match(await get('/'), /data-testid="project-summary">1\/6 completed/);
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(snapshot(), expected);
+    const exported = (await (await fetch(app.url + '/projects/1/download')).json()).project;
+    assert.deepEqual(exported.tasks[0], task('Match  first', { priority: 'Low' }));
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(snapshot(), expected);
+    assert.equal(await get('/directory?order=Priority'), ordered);
+    assert.match(await get('/directory'), /<option selected>Normal/);
+    assert.deepEqual(await (await fetch(app.url + '/health')).json(), { status: 'ok' });
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('directory bulk deletion and restoration preserve owners, fields, filters and reserved positions across restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-deletion-'));
   const dbPath = join(dir, 'workboard.sqlite');
@@ -508,7 +613,7 @@ test('directory ordering is stable across owners, retained by actions, and never
       dueFrom: '2025-01-01', dueThrough: '2025-01-01', searchQuery: 'alpha', order: 'Title' };
     const html = await get(pathFor(selected));
     assert.deepEqual(titles(html), ['alpha', 'ALPHA']);
-    assert.equal([...html.matchAll(/name="order" value="Title"/g)].length, 4);
+    assert.equal([...html.matchAll(/name="order" value="Title"/g)].length, 5);
     for (const [path, extra] of [
       ['/directory/search', { query: ' ALPHA ' }],
       ['/directory/due-range', { rangeFrom: '2025-01-01', rangeThrough: '2025-01-01' }],
