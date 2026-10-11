@@ -383,6 +383,38 @@ async function showProject(projectId) {
         }
       });
       row.append(dueDateForm);
+      const notesForm = element('form', { className: 'task-notes-form' });
+      const notesLabel = element('label', { text: 'Task notes' });
+      const notesInput = element('textarea');
+      notesInput.name = `taskNotes-${task.id}`;
+      notesInput.value = task.notes;
+      notesInput.disabled = project.archived;
+      notesLabel.append(notesInput);
+      const saveNotes = element('button', { text: 'Save notes', className: 'secondary-button' });
+      saveNotes.type = 'submit';
+      saveNotes.disabled = project.archived;
+      notesForm.append(notesLabel, saveNotes);
+      notesForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const notes = notesInput.value;
+        saveNotes.disabled = true;
+        try {
+          const response = await fetch(`/api/projects/${projectId}/tasks/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ notes }),
+          });
+          if (!response.ok) throw new Error('Could not save notes');
+          task.notes = notes;
+          alert.hidden = true;
+          await loadTasks();
+        } catch {
+          alert.textContent = 'Could not save notes';
+          alert.hidden = false;
+          saveNotes.disabled = project.archived;
+        }
+      });
+      row.append(notesForm);
       const destinations = activeProjects.filter((candidate) => String(candidate.id) !== projectId);
       const moveForm = element('form', { className: 'task-move-form' });
       const destinationLabel = element('label', { text: 'Destination project' });

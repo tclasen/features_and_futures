@@ -29,7 +29,8 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    notes TEXT NOT NULL DEFAULT ''
   )
 `);
 // Add priorities to databases created before Task 006.
@@ -39,6 +40,9 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 }
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 database.exec('PRAGMA foreign_keys = ON');
 // Remember each task's position in every project it has visited. The current
@@ -184,7 +188,7 @@ const server = createServer(async (request, response) => {
   if (tasksRoute && request.method === 'GET') {
     const tasks = database.prepare(
       `SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
-        t.due_date AS dueDate
+        t.due_date AS dueDate, t.notes
        FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
        WHERE t.project_id = ? ORDER BY p.position`
     ).all(Number(tasksRoute[1])).map((task) => ({ ...task, completed: Boolean(task.completed) }));
@@ -314,6 +318,10 @@ const server = createServer(async (request, response) => {
         result = database.prepare(
           'UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?'
         ).run(dueDate || null, taskId, projectId);
+      } else if (typeof payload.notes === 'string') {
+        result = database.prepare(
+          'UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?'
+        ).run(payload.notes, taskId, projectId);
       } else {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid task update' }));
         return;
