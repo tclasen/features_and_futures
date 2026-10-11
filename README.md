@@ -22,6 +22,7 @@ The integration tests cover project and task validation, trimming, ordered rows,
 detail navigation, task filtering and ownership, completion updates, HTML escaping,
 health, archive/restore, completion summaries, migration of existing databases,
 project and task renaming with stable identity, ownership, completion, and archived-project protection,
-priority defaults and migration, independent priority edits, archive protection, and persistence
+priority defaults and migration, independent priority edits, combined completion/priority
+filtering, retained filter selections through edits, archive protection, and persistence
 across server restarts. Test databases are
 created beneath `data/` and removed afterward.
