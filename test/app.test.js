@@ -112,3 +112,93 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   assert.equal(checkbox.disabled, false);
   assert.equal(element('#task-alert').textContent, 'Save failed');
 });
+
+test('project UI filters, summarizes, archives, and restores rows in creation order', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  element('#project-form').button = new Element();
+  element('#task-form').button = new Element();
+  element('#project-filter').value = 'active';
+  const projects = [
+    { id: 'one', name: 'First', archived: false, completed: 1, total: 2 },
+    { id: 'two', name: 'Second', archived: false, completed: 0, total: 0 },
+  ];
+  const location = { pathname: '/' };
+  await runInNewContext(source, {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location },
+    fetch: async (path, options) => {
+      if (!options) return { ok: true, json: async () => structuredClone(projects) };
+      const project = projects.find(project => path.endsWith(`/${project.id}`));
+      project.archived = JSON.parse(options.body).archived;
+      return { ok: true, json: async () => ({ ...project }) };
+    },
+  });
+  const rows = () => element('#project-list').children;
+  assert.deepEqual(rows().map(row => row.children[0].textContent), ['First', 'Second']);
+  assert.equal(rows()[0].dataset.testid, 'project-row');
+  assert.equal(rows()[0].children[1].dataset.testid, 'project-summary');
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+  assert.equal(rows()[1].children[1].textContent, '0/0 completed');
+  assert.equal(rows()[0].children[3].textContent, 'Archive project');
+  await rows()[0].children[3].dispatch('click');
+  assert.deepEqual(rows().map(row => row.children[0].textContent), ['Second']);
+  element('#project-filter').value = 'archived';
+  await element('#project-filter').dispatch('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+  assert.equal(rows()[0].children[2].textContent, 'Open project');
+  await rows()[0].children[2].dispatch('click');
+  assert.equal(location.href, '/projects/one');
+  assert.equal(rows()[0].children[3].textContent, 'Restore project');
+  await rows()[0].children[3].dispatch('click');
+  assert.equal(rows().length, 0);
+  element('#project-filter').value = 'active';
+  await element('#project-filter').dispatch('change');
+  assert.deepEqual(rows().map(row => row.children[0].textContent), ['First', 'Second']);
+});
+
+test('archived project UI disables task changes while keeping filters usable', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  element('#project-form').button = new Element();
+  element('#task-form').button = new Element();
+  element('#task-filter').value = 'all';
+  let writes = 0;
+  await runInNewContext(source, {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location: { pathname: '/projects/one' } },
+    fetch: async (path, options) => {
+      if (options) writes++;
+      const body = path.endsWith('/tasks') ? [
+        { id: 'a', title: 'Open task', completed: false },
+        { id: 'b', title: 'Done task', completed: true },
+      ] : { id: 'one', name: 'Archived example', archived: true };
+      return { ok: true, json: async () => body };
+    },
+  });
+  const rows = () => element('#task-list').children;
+  assert.equal(element('#archived-message').hidden, false);
+  assert.equal(element('#task-form').button.disabled, true);
+  assert.equal(rows().length, 2);
+  assert.ok(rows().every(row => row.children[0].disabled));
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').dispatch('change');
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[1].textContent, 'Done task');
+  assert.equal(rows()[0].children[0].disabled, true);
+  element('#task-filter').value = 'open';
+  await element('#task-filter').dispatch('change');
+  assert.equal(rows()[0].children[1].textContent, 'Open task');
+  element('#task-title').value = 'Attempt';
+  await element('#task-form').dispatch('submit');
+  assert.equal(writes, 0);
+});
