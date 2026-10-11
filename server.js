@@ -12,15 +12,17 @@ if (dbPath !== ':memory:') {
   await mkdir(path.dirname(path.resolve(dbPath)), { recursive: true });
 }
 const db = new DatabaseSync(dbPath);
-db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+db.exec(`CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High')));
 CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High')))`);
 if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))");
 if (!db.prepare("PRAGMA table_info(tasks)").all().some(column => column.name === 'priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
 db.exec('PRAGMA foreign_keys = ON');
-const listProjects = db.prepare('SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid');
+const listProjects = db.prepare('SELECT p.id, p.name, p.archived, p.default_priority, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.created_at, p.rowid');
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
-const getProject = db.prepare('SELECT id, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -62,6 +64,21 @@ const server = http.createServer(async (req, res) => {
     } catch { res.writeHead(400); res.end('Invalid request'); }
     return;
   }
+  const defaultPriorityRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (defaultPriorityRoute && req.method === 'PATCH') {
+    const projectId = decodeURIComponent(defaultPriorityRoute[1]);
+    const project = getProject.get(projectId);
+    if (!project) { res.writeHead(404); res.end('Not found'); return; }
+    if (project.archived) { res.writeHead(403); res.end('Archived project'); return; }
+    try {
+      let body = ''; for await (const chunk of req) body += chunk;
+      const priority = JSON.parse(body).priority;
+      if (!['Low', 'Normal', 'High'].includes(priority)) { res.writeHead(400); res.end('Invalid priority'); return; }
+      updateProjectDefault.run(priority, projectId);
+      res.writeHead(204); res.end();
+    } catch { res.writeHead(400); res.end('Invalid request'); }
+    return;
+  }
   const archiveRoute = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
   if (archiveRoute && req.method === 'POST') {
     const projectId = decodeURIComponent(archiveRoute[1]);
@@ -80,8 +97,9 @@ const server = http.createServer(async (req, res) => {
         let body = ''; for await (const chunk of req) body += chunk;
         const title = String(JSON.parse(body).title ?? '').trim();
         if (!title) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Task title is required' })); return; }
-        const task = { id: randomUUID(), title, completed: 0, priority: 'Normal' };
-        createTask.run(task.id, projectId, title, Date.now());
+        const priority = getProject.get(projectId).default_priority;
+        const task = { id: randomUUID(), title, completed: 0, priority };
+        db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, Date.now(), priority);
         res.writeHead(201, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(task)); return;
       } catch { res.writeHead(400); res.end('Invalid request'); return; }
     }
