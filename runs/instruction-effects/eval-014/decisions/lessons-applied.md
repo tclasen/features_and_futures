@@ -77,3 +77,7 @@ L065 observed: task025/b004/attempt002 fails before inference with oversized Pi 
 - L062 broader002 first launch EPERM retained: no browser/model execution; unchanged fixture rerun with authorized local-network execution. Behavioral verification remains pending.
 
 - L060 broader002 first form/reload-reset variant independently verified:140 canonical cases, twenty actual resets and two process-local assertion probes pass; source and closed file hashes sealed. Remaining four full variants and actual native lifecycle checks remain separate and pending.
+
+- L066 observed: prospective async prototype submits stale hidden directory_mode=Phrase after user selects Starts with; original failure, full closure and request trace preserved. Correct only prospective prototype; directed old/new proof and revised broader execution pending.
+
+L066 paired race verification: three original failures and three corrected passes; broader003 launch gated on proof. Full broader/native lifecycle verification remains pending.
