@@ -658,6 +658,136 @@ test('projects and tasks: migration, validation, filters, archiving, renaming, p
     assert.equal(await (await fetch(baseUrl)).text(), dueSummary);
     assert.equal(await projectHtml(paths[1]), otherBeforeDates);
 
+    // Due ranges intersect both filters, retain order, and never mutate saved tasks.
+    await create('Range project');
+    const rangeProject = [...(await (await fetch(baseUrl)).text()).matchAll(/action="(\/projects\/\d+)"/g)].at(-1)[1];
+    const rangeTasks = [
+      { title: 'Undated', date: '', priority: 'Normal', completed: false },
+      { title: 'First boundary', date: '2024-02-29', priority: 'High', completed: false },
+      { title: 'Inside', date: '2024-03-01', priority: 'Low', completed: true },
+      { title: 'Last boundary', date: '2024-03-02', priority: 'High', completed: true },
+      { title: 'Outside', date: '2024-03-03', priority: 'Normal', completed: false },
+    ];
+    for (const task of rangeTasks) {
+      await post(`${rangeProject}/tasks`, { title: task.title });
+      const row = rows(await projectHtml(rangeProject)).at(-1);
+      task.path = /action="([^"]+?)\/completion"/.exec(row)[1];
+      await post(`${task.path}/due-date`, { dueDate: task.date });
+      await post(`${task.path}/priority`, { priority: task.priority });
+      if (task.completed) await post(`${task.path}/completion`, { completed: '1' });
+    }
+    const rangeSummary = await (await fetch(baseUrl)).text();
+    const unfilteredRange = await projectHtml(rangeProject);
+    const boundaryValue = (html, id) => new RegExp(`<input id="${id}"[^>]*value="([^"]*)"`).exec(html)[1];
+    assert.equal(boundaryValue(unfilteredRange, 'due-from'), '');
+    assert.equal(boundaryValue(unfilteredRange, 'due-through'), '');
+    assert.match(unfilteredRange, /<label for="due-from">Due from<\/label>/);
+    assert.match(unfilteredRange, /<label for="due-through">Due through<\/label>/);
+    assert.match(unfilteredRange, />Apply due range<\/button>/);
+    for (const [from, through] of [
+      ['', ''], ['2024-02-29', ''], ['', '2024-03-02'],
+      ['2024-02-29', '2024-03-02'], ['2024-03-01', '2024-03-01'],
+      ['0001-01-01', '9999-12-31'], ['2025-01-01', ''],
+    ]) {
+      for (const filter of ['All', 'Open', 'Completed']) {
+        for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
+          const applied = await post(`${rangeProject}/due-range`, {
+            filter, priorityFilter, rangeFrom: ` ${from} `, rangeThrough: ` ${through} `,
+          });
+          assert.equal(applied.status, 303);
+          const html = await projectHtml(applied.headers.get('location'));
+          assert.equal(boundaryValue(html, 'due-from'), from);
+          assert.equal(boundaryValue(html, 'due-through'), through);
+          assert.equal(selectedFilter(html, 'task-filter'), filter);
+          assert.equal(selectedFilter(html, 'priority-filter'), priorityFilter);
+          assert.deepEqual(taskTitles(html), rangeTasks.filter(task =>
+            (filter === 'All' || task.completed === (filter === 'Completed')) &&
+            (priorityFilter === 'All' || task.priority === priorityFilter) &&
+            ((!from && !through) || (task.date && (!from || task.date >= from) &&
+              (!through || task.date <= through)))).map(task => task.title));
+        }
+      }
+    }
+    assert.equal(await projectHtml(rangeProject), unfilteredRange);
+    assert.equal(await (await fetch(baseUrl)).text(), rangeSummary);
+
+    const rangeState = { filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-02' };
+    const rangeUrl = `${rangeProject}?${new URLSearchParams(rangeState)}`;
+    const rangeHtml = await projectHtml(rangeUrl);
+    assert.deepEqual(taskTitles(rangeHtml), ['First boundary']);
+    // All editing and combobox forms carry the applied range independently of draft inputs.
+    for (const form of rangeHtml.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/g)) {
+      if (!/name="filter"/.test(form[1])) continue;
+      assert.match(form[1], /name="dueFrom" value="2024-02-29"/);
+      assert.match(form[1], /name="dueThrough" value="2024-03-02"/);
+      assert.match(form[1], /name="priorityFilter"/);
+    }
+    for (const [from, through, message] of [
+      ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '1900-02-29', 'Due range must use valid YYYY-MM-DD dates'],
+      ['0000-01-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['', '10000-01-01', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-3-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['<invalid>', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-03-03', '2024-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const rejected = await post(`${rangeProject}/due-range`, { ...rangeState, rangeFrom: from, rangeThrough: through });
+      assert.equal(rejected.status, 422);
+      const html = await rejected.text();
+      assert.ok(html.includes(`<p role="alert">${message}</p>`));
+      assert.deepEqual(rows(html), rows(rangeHtml));
+      assert.equal(boundaryValue(html, 'due-from'), rangeState.dueFrom);
+      assert.equal(boundaryValue(html, 'due-through'), rangeState.dueThrough);
+      assert.equal(selectedFilter(html, 'task-filter'), 'Open');
+      assert.equal(selectedFilter(html, 'priority-filter'), 'High');
+    }
+    async function rangeEdit(path, values) {
+      const result = await post(path, { ...rangeState, ...values });
+      assert.equal(result.status, 303);
+      assert.equal(result.headers.get('location'), rangeUrl);
+      return projectHtml(rangeUrl);
+    }
+    const boundaryPath = rangeTasks[1].path;
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/rename`, { title: 'Renamed boundary' })), ['Renamed boundary']);
+    assert.deepEqual(taskTitles(await rangeEdit(`${rangeProject}/rename`, { name: 'Renamed range project' })), ['Renamed boundary']);
+    assert.deepEqual(taskTitles(await rangeEdit(`${rangeProject}/default-task-priority`, { priority: 'High' })), ['Renamed boundary']);
+    assert.deepEqual(taskTitles(await rangeEdit(`${rangeProject}/tasks`, { title: 'Undated inherited high' })), ['Renamed boundary']);
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/due-date`, { dueDate: '2024-03-03' })), []);
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/due-date`, { dueDate: '2024-03-02' })), ['Renamed boundary']);
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/due-date`, { dueDate: '  ' })), []);
+    await rangeEdit(`${boundaryPath}/due-date`, { dueDate: '2024-02-29' });
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/priority`, { priority: 'Low' })), []);
+    await rangeEdit(`${boundaryPath}/priority`, { priority: 'High' });
+    assert.deepEqual(taskTitles(await rangeEdit(`${boundaryPath}/completion`, { completed: '1' })), []);
+    const completedRangeUrl = `${rangeProject}?${new URLSearchParams({ ...rangeState, filter: 'Completed' })}`;
+    assert.deepEqual(taskTitles(await projectHtml(completedRangeUrl)), ['Renamed boundary', 'Last boundary']);
+    await rangeEdit(`${boundaryPath}/completion`, {});
+    const savedRange = await projectHtml(rangeUrl);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(rangeUrl), savedRange);
+    await post(`${rangeProject}/archive`, {});
+    const archivedRange = await projectHtml(rangeUrl);
+    for (const id of ['due-from', 'due-through']) {
+      assert.doesNotMatch(new RegExp(`<input id="${id}"[^>]*>`).exec(archivedRange)[0], /disabled/);
+    }
+    assert.match(archivedRange, /<button type="submit">Apply due range<\/button>/);
+    assert.match(rows(archivedRange)[0], /name="dueDate"[^>]* disabled/);
+    assert.match(rows(archivedRange)[0], /name="priority"[^>]* disabled/);
+    const archivedApply = await post(`${rangeProject}/due-range`, { ...rangeState, rangeFrom: '', rangeThrough: '' });
+    assert.equal(archivedApply.status, 303);
+    assert.deepEqual(taskTitles(await projectHtml(archivedApply.headers.get('location'))), ['Renamed boundary', 'Undated inherited high']);
+    await stop();
+    await start();
+    assert.equal(await projectHtml(rangeUrl), archivedRange);
+    await post(`${rangeProject}/restore`, {});
+    assert.equal(await projectHtml(rangeUrl), savedRange);
+    const reopenedRange = await projectHtml(rangeProject);
+    assert.equal(boundaryValue(reopenedRange, 'due-from'), '');
+    assert.equal(boundaryValue(reopenedRange, 'due-through'), '');
+    assert.equal(rows(reopenedRange).length, 6);
+    assert.match(await (await fetch(baseUrl)).text(), /data-testid="project-summary">2\/6 completed/);
+
     // Replace the fixture with a populated Task 005 database to check backfilled priorities.
     await stop();
     await rm(join(directory, 'projects.sqlite'));
