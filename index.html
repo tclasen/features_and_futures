@@ -128,10 +128,12 @@
       list.dataset.requestId = requestId;
       const projects = await fetch('/api/projects').then(response => response.json());
       if (list.dataset.requestId !== requestId || !list.isConnected) return;
-      const visibleProjects = projects.filter(project => project.archived === (filter === 'Archived'));
       const rows = new Map([...list.querySelectorAll('[data-project-id]')]
         .map(row => [row.dataset.projectId, row]));
-      const orderedRows = visibleProjects.map(project => {
+      // Keep project rows mounted across filter changes and archive/restore
+      // refreshes. This gives controls a stable DOM identity while requests
+      // finish and lets the browser keep an in-progress interaction intact.
+      for (const project of projects) {
         let row = rows.get(String(project.id));
         if (!row) {
           row = element('div', undefined, {
@@ -163,21 +165,18 @@
           });
           actions.append(summary, open, action);
           row.append(name, actions);
+          list.append(row);
         }
         rows.delete(String(project.id));
+        row.hidden = project.archived !== (filter === 'Archived');
         row.querySelector('.project-name').textContent = project.name;
         row.querySelector('[data-testid="project-summary"]').textContent =
           `${project.completedCount}/${project.totalCount} completed`;
         const action = row.querySelector('.project-actions button.secondary');
         action.textContent = project.archived ? 'Restore project' : 'Archive project';
         action.dataset.archived = String(project.archived);
-        return row;
-      });
-      for (const obsolete of rows.values()) obsolete.remove();
-      for (const [index, row] of orderedRows.entries()) {
-        const current = list.children[index];
-        if (current !== row) list.insertBefore(row, current || null);
       }
+      for (const obsolete of rows.values()) obsolete.remove();
     }
     async function loadTasks(projectId, list, filter, archived = false) {
       const tasks = await fetch(`/api/projects/${projectId}/tasks`).then(response => response.json());
