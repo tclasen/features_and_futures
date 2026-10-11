@@ -147,3 +147,11 @@ state. Each action is disabled when no visible task needs that change, and both
 are disabled for Archived scope or Deleted tasks. Other fields and remembered
 positions remain unchanged. Empty resolved results show `No matching tasks`;
 the announcement is hidden while a new directory page is loading.
+
+Use `Directory order` to view results in Original, Priority (High first), Due date
+(earliest first, undated last), or Title order. Title ordering folds only ASCII
+uppercase letters and compares Unicode code points, preserving literal internal
+whitespace. Ties retain original project/task order. The selection stays through
+filtering, searches, date ranges and bulk actions; each new directory opening
+starts at Original. Ordering never changes stored order, exports or remembered
+return positions.

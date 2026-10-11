@@ -288,10 +288,38 @@ function directoryTasks(scope, filter, priority, range, search) {
     .filter((task) => matchesTask(task, filter, priority, range, search));
 }
 
-function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range) {
+const directoryOrders = ['Original', 'Priority', 'Due date', 'Title'];
+const directoryOrder = (value) => directoryOrders.includes(value) ? value : 'Original';
+const foldTitle = (title) => title.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+
+function compareCodePoints(left, right) {
+  const a = Array.from(left, (character) => character.codePointAt(0));
+  const b = Array.from(right, (character) => character.codePointAt(0));
+  for (let index = 0; index < Math.min(a.length, b.length); index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return a.length - b.length;
+}
+
+function orderDirectoryTasks(tasks, order) {
+  // Stable sorting preserves Original order for ties; these rows are view data only.
+  if (order === 'Priority') {
+    tasks.sort((a, b) => priorities.indexOf(b.priority) - priorities.indexOf(a.priority));
+  } else if (order === 'Due date') {
+    tasks.sort((a, b) => a.due_date === b.due_date ? 0 :
+      !a.due_date ? 1 : !b.due_date ? -1 : a.due_date < b.due_date ? -1 : 1);
+  } else if (order === 'Title') {
+    tasks.sort((a, b) => compareCodePoints(foldTitle(a.title), foldTitle(b.title)));
+  }
+  return tasks;
+}
+
+function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, search = '', error = '', draft = range, order = 'Original') {
   const tasks = directoryTasks(scope, filter, priority, range, search);
+  orderDirectoryTasks(tasks, order);
   const bulkDisabled = scope === 'Archived' || filter === 'Deleted';
   const state = `<input type="hidden" name="scope" value="${scope}">
+    <input type="hidden" name="order" value="${order}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priority}">
     <input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
@@ -307,6 +335,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
         ['Project scope', 'scope', scope, ['Active', 'Archived']],
         ['Task filter', 'filter', filter, ['All', 'Open', 'Completed', 'Deleted']],
         ['Priority filter', 'priorityFilter', priority, ['All', ...priorities]],
+        ['Directory order', 'order', order, directoryOrders],
       ].map(([label, name, selected, options]) => `<label for="directory-${name}">${label}</label>
         <select id="directory-${name}" name="${name}" onchange="this.form.requestSubmit()">
           ${options.map((option) => `<option${selected === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -536,10 +565,12 @@ const server = http.createServer(async (req, res) => {
     } else if (req.method === 'GET' && path === '/directory') {
       html(res, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
-        dueRange(url.searchParams), searchQuery(url.searchParams)));
+        dueRange(url.searchParams), searchQuery(url.searchParams), '', undefined,
+        directoryOrder(url.searchParams.get('order'))));
     } else if (req.method === 'POST' && ['/directory/search', '/directory/due-range', '/directory/completion'].includes(path)) {
       const form = await readForm(req);
       const scope = projectFilter(form.get('scope'));
+      const order = directoryOrder(form.get('order'));
       const filter = taskFilter(form.get('filter'));
       const priority = priorityFilter(form.get('priorityFilter'));
       let range = dueRange(form);
@@ -569,13 +600,14 @@ const server = http.createServer(async (req, res) => {
           error = 'Due from must not be after Due through';
         }
         if (error) {
-          html(res, 422, directoryPage(scope, filter, priority, range, search, error, draft));
+          html(res, 422, directoryPage(scope, filter, priority, range, search, error, draft, order));
           return;
         }
         range = draft;
       }
       const query = new URLSearchParams();
       if (scope !== 'Active') query.set('scope', scope);
+      if (order !== 'Original') query.set('order', order);
       if (filter !== 'All') query.set('filter', filter);
       if (priority !== 'All') query.set('priorityFilter', priority);
       if (range.from) query.set('dueFrom', range.from);

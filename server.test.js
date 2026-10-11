@@ -7,6 +7,113 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('directory ordering is stable across owners, retained by actions, and never changes stored positions', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
+  const dbPath = join(dir, 'workboard.sqlite');
+  let app;
+  try {
+    app = await launch(dbPath);
+    const post = (path, fields = {}) => fetch(app.url + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async (path) => (await fetch(app.url + path)).text();
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title"[^>]*>([^<]*)<\/h2>/g)].map((m) => m[1]);
+    const pathFor = (fields) => '/directory?' + new URLSearchParams(fields);
+    const snapshot = () => {
+      const db = new DatabaseSync(dbPath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) => db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()); }
+      finally { db.close(); }
+    };
+    const task = (title, priority, dueDate) => ({ title, priority, dueDate,
+      completed: false, notes: ' literal\n雪 ', deleted: false });
+    const first = [task('Zebra', 'Low', ''), task('alpha', 'High', '2025-01-01'),
+      task('a  b', 'Normal', '0001-01-01'), task('\u{10000}', 'Normal', '')];
+    const second = [task('ALPHA', 'High', '2025-01-01'), task('a b', 'Low', '9999-12-31'),
+      task('\ue000', 'Normal', '')];
+    for (const [name, tasks] of [['First', first], ['Second', second]]) {
+      const document = { format: 'workboard-project', version: 1,
+        project: { name, archived: false, defaultPriority: 'Normal', tasks } };
+      await post('/projects/import', { name, json: JSON.stringify(document) });
+    }
+    const original = [...first, ...second].map((task) => task.title);
+    const expected = {
+      Original: original,
+      Priority: ['alpha', 'ALPHA', 'a  b', '\u{10000}', '\ue000', 'Zebra', 'a b'],
+      'Due date': ['a  b', 'alpha', 'ALPHA', 'a b', 'Zebra', '\u{10000}', '\ue000'],
+      Title: ['a  b', 'a b', 'alpha', 'ALPHA', 'Zebra', '\ue000', '\u{10000}'],
+    };
+    const before = snapshot();
+    const exportBefore = await (await fetch(app.url + '/projects/1/download')).json();
+    const initial = await get('/directory');
+    const options = initial.match(/<select id="directory-order"[^>]*>([\s\S]*?)<\/select>/)[1];
+    assert.deepEqual([...options.matchAll(/<option(?: selected)?>([^<]*)<\/option>/g)].map((m) => m[1]), Object.keys(expected));
+    assert.match(initial, /<label for="directory-order">Directory order<\/label>/);
+    assert.match(options, /<option selected>Original/);
+    for (const [order, names] of Object.entries(expected)) {
+      assert.deepEqual(titles(await get(pathFor({ order }))), names);
+    }
+    assert.deepEqual(titles(await get('/directory?order=unknown')), original);
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual(await (await fetch(app.url + '/projects/1/download')).json(), exportBefore);
+    assert.deepEqual([... (await get('/projects/1')).matchAll(/<span>([^<]*)<\/span>/g)].map((m) => m[1]), first.map((t) => t.title));
+
+    const selected = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2025-01-01', dueThrough: '2025-01-01', searchQuery: 'alpha', order: 'Title' };
+    const html = await get(pathFor(selected));
+    assert.deepEqual(titles(html), ['alpha', 'ALPHA']);
+    assert.equal([...html.matchAll(/name="order" value="Title"/g)].length, 3);
+    for (const [path, extra] of [
+      ['/directory/search', { query: ' ALPHA ' }],
+      ['/directory/due-range', { rangeFrom: '2025-01-01', rangeThrough: '2025-01-01' }],
+    ]) {
+      const response = await post(path, { ...selected, ...extra });
+      const location = new URL(response.headers.get('location'), app.url);
+      for (const key of ['scope', 'filter', 'priorityFilter', 'dueFrom', 'dueThrough', 'order']) {
+        if (key !== 'scope') assert.equal(location.searchParams.get(key), selected[key]);
+      }
+      assert.deepEqual(titles(await get(location.pathname + location.search)), ['alpha', 'ALPHA']);
+    }
+    const invalid = await post('/directory/due-range', { ...selected, rangeFrom: '2025-02-29' });
+    assert.equal(invalid.status, 422);
+    const invalidHtml = await invalid.text();
+    assert.match(invalidHtml, /<option selected>Title/);
+    assert.deepEqual(titles(invalidHtml), ['alpha', 'ALPHA']);
+    assert.deepEqual(snapshot(), before);
+    const complete = await post('/directory/completion', { ...selected, completed: '1' });
+    const completedLocation = new URL(complete.headers.get('location'), app.url);
+    assert.equal(completedLocation.searchParams.get('order'), 'Title');
+    assert.deepEqual(titles(await get(completedLocation.pathname + completedLocation.search)), []);
+    assert.match(await get(completedLocation.pathname + completedLocation.search), /No matching tasks/);
+    assert.deepEqual(titles(await get(pathFor({ order: 'Priority', filter: 'Completed' }))), ['alpha', 'ALPHA']);
+    const reopen = await post('/directory/completion', { ...selected, filter: 'Completed', order: 'Due date', completed: '0' });
+    assert.equal(new URL(reopen.headers.get('location'), app.url).searchParams.get('order'), 'Due date');
+    assert.deepEqual(snapshot(), before);
+
+    // Sorting cannot revise the reserved positions used by subsequent moves and returns.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await get('/directory?order=Title');
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(titles(await get('/directory')), original);
+    for (const id of [1, 2, 3, 4]) await post(`/projects/1/tasks/${id}/delete`);
+    assert.deepEqual(titles(await get('/directory?filter=Deleted&order=Title')), ['a  b', 'alpha', 'Zebra', '\u{10000}']);
+    await post('/projects/1/archive');
+    assert.deepEqual(titles(await get('/directory?scope=Archived&filter=Deleted&order=Priority')), ['alpha', 'a  b', '\u{10000}', 'Zebra']);
+    const saved = snapshot();
+    await app.stop();
+    app = await launch(dbPath);
+    assert.deepEqual(titles(await get('/directory?scope=Archived&filter=Deleted&order=Due+date')), ['a  b', 'alpha', 'Zebra', '\u{10000}']);
+    assert.match(await get('/directory'), /<option selected>Original/);
+    assert.deepEqual(snapshot(), saved);
+    await post('/projects/1/restore');
+    for (const id of [1, 2, 3, 4]) await post(`/projects/1/tasks/${id}/restore`);
+    assert.deepEqual(titles(await get('/directory')), original);
+    assert.deepEqual(await (await fetch(app.url + '/projects/1/download')).json(), exportBefore);
+  } finally {
+    if (app) await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('directory bulk completion changes only eligible matching tasks and persists without changing fields or positions', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-directory-bulk-'));
   const dbPath = join(dir, 'workboard.sqlite');
