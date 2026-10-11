@@ -92,7 +92,7 @@ async function render() {
       <div class="task-filter">
         <label for="task-filter">Task filter</label>
         <select id="task-filter">
-          <option>All</option><option>Open</option><option>Completed</option>
+          <option>All</option><option>Open</option><option>Completed</option><option>Deleted</option>
         </select>
       </div>
       <div class="task-filter">
@@ -197,14 +197,16 @@ async function render() {
     });
     function displayTasks() {
       const visible = tasks.filter(task =>
-        (filter.value === 'All' ||
-          (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+        (filter.value === 'Deleted' ? task.deleted :
+          !task.deleted && (filter.value === 'All' ||
+            (filter.value === 'Completed' ? task.completed : !task.completed))) &&
         (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
         searchKey(task.title).includes(appliedQuery) &&
         ((!appliedFrom && !appliedThrough) ||
           (task.due_date && (!appliedFrom || task.due_date >= appliedFrom) &&
             (!appliedThrough || task.due_date <= appliedThrough))));
       list.replaceChildren(...visible.map(task => {
+        const readOnly = archived || Boolean(task.deleted);
         const row = document.createElement('li');
         row.dataset.testid = 'task-row';
         const title = document.createElement('span');
@@ -212,9 +214,10 @@ async function render() {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = task.completed;
-        checkbox.disabled = archived;
+        checkbox.disabled = readOnly;
         checkbox.setAttribute('aria-label', `Complete ${task.title}`);
         checkbox.addEventListener('change', async () => {
+          if (checkbox.disabled) return;
           checkbox.disabled = true;
           alertMessage('');
           try {
@@ -229,7 +232,7 @@ async function render() {
             checkbox.checked = task.completed;
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            checkbox.disabled = archived;
+            checkbox.disabled = readOnly;
           }
         });
         const taskRenameForm = document.createElement('form');
@@ -238,11 +241,11 @@ async function render() {
         taskRenameInput.type = 'text';
         taskRenameInput.autocomplete = 'off';
         taskRenameInput.setAttribute('aria-label', 'New task title');
-        taskRenameInput.disabled = archived;
+        taskRenameInput.disabled = readOnly;
         const taskRenameSubmit = document.createElement('button');
         taskRenameSubmit.type = 'submit';
         taskRenameSubmit.textContent = 'Rename task';
-        taskRenameSubmit.disabled = archived;
+        taskRenameSubmit.disabled = readOnly;
         taskRenameForm.addEventListener('submit', async event => {
           event.preventDefault();
           if (taskRenameSubmit.disabled) return;
@@ -265,7 +268,7 @@ async function render() {
           } catch (error) {
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            taskRenameSubmit.disabled = archived;
+            taskRenameSubmit.disabled = readOnly;
           }
         });
         taskRenameForm.append(taskRenameInput, taskRenameSubmit);
@@ -280,8 +283,9 @@ async function render() {
           priority.append(option);
         }
         priority.value = task.priority;
-        priority.disabled = archived;
+        priority.disabled = readOnly;
         priority.addEventListener('change', async () => {
+          if (priority.disabled) return;
           priority.disabled = true;
           alertMessage('');
           try {
@@ -296,7 +300,7 @@ async function render() {
             priority.value = task.priority;
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            priority.disabled = archived;
+            priority.disabled = readOnly;
           }
         });
         priorityLabel.append(priority);
@@ -309,12 +313,12 @@ async function render() {
         dueDateInput.autocomplete = 'off';
         dueDateInput.setAttribute('aria-label', 'Task due date');
         dueDateInput.value = task.due_date || '';
-        dueDateInput.disabled = archived;
+        dueDateInput.disabled = readOnly;
         dueDateLabel.append(dueDateInput);
         const dueDateSubmit = document.createElement('button');
         dueDateSubmit.type = 'submit';
         dueDateSubmit.textContent = 'Save due date';
-        dueDateSubmit.disabled = archived;
+        dueDateSubmit.disabled = readOnly;
         dueDateForm.addEventListener('submit', async event => {
           event.preventDefault();
           if (dueDateSubmit.disabled) return;
@@ -331,7 +335,7 @@ async function render() {
           } catch (error) {
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            dueDateSubmit.disabled = archived;
+            dueDateSubmit.disabled = readOnly;
           }
         });
         dueDateForm.append(dueDateLabel, dueDateSubmit);
@@ -343,12 +347,12 @@ async function render() {
         notesInput.setAttribute('aria-label', 'Task notes');
         notesInput.rows = 4;
         notesInput.value = task.notes ?? '';
-        notesInput.disabled = archived;
+        notesInput.disabled = readOnly;
         notesLabel.append(notesInput);
         const notesSubmit = document.createElement('button');
         notesSubmit.type = 'submit';
         notesSubmit.textContent = 'Save notes';
-        notesSubmit.disabled = archived;
+        notesSubmit.disabled = readOnly;
         notesForm.addEventListener('submit', async event => {
           event.preventDefault();
           if (notesSubmit.disabled) return;
@@ -365,7 +369,7 @@ async function render() {
           } catch (error) {
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            notesSubmit.disabled = archived;
+            notesSubmit.disabled = readOnly;
           }
         });
         notesForm.append(notesLabel, notesSubmit);
@@ -385,7 +389,7 @@ async function render() {
         const moveSubmit = document.createElement('button');
         moveSubmit.type = 'submit';
         moveSubmit.textContent = 'Move task';
-        destination.disabled = moveSubmit.disabled = archived || !destinations.length;
+        destination.disabled = moveSubmit.disabled = readOnly || !destinations.length;
         destinationLabel.append(destination);
         moveForm.append(destinationLabel, moveSubmit);
         moveForm.addEventListener('submit', async event => {
@@ -404,10 +408,32 @@ async function render() {
           } catch (error) {
             if (list.isConnected) alertMessage(error.message);
           } finally {
-            destination.disabled = moveSubmit.disabled = archived || !destinations.length;
+            destination.disabled = moveSubmit.disabled = readOnly || !destinations.length;
           }
         });
-        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm, notesForm);
+        const deletion = document.createElement('button');
+        deletion.type = 'button';
+        deletion.textContent = task.deleted ? 'Restore task' : 'Delete task';
+        deletion.disabled = archived;
+        deletion.addEventListener('click', async () => {
+          if (deletion.disabled) return;
+          deletion.disabled = true;
+          alertMessage('');
+          try {
+            const saved = await request(`${endpoint}/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deleted: !task.deleted }),
+            });
+            tasks = tasks.map(item => item.id === saved.id ? saved : item);
+            if (list.isConnected) displayTasks();
+          } catch (error) {
+            if (list.isConnected) alertMessage(error.message);
+          } finally {
+            deletion.disabled = archived;
+          }
+        });
+        row.append(title, checkbox, priorityLabel, taskRenameForm, dueDateForm, moveForm, notesForm, deletion);
         return row;
       }));
     }

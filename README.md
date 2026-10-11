@@ -1,5 +1,14 @@
 # Workboard
 
+Tasks can be deleted and restored without losing their saved fields or remembered
+project positions. Task filter offers All, Open, Completed, and Deleted; the first
+three show only live tasks. Deleted intersects priority, due range, and title
+search, with task editing and movement disabled. Restore task returns the task to
+its reserved position, including before newer tasks. Project summaries count only
+live tasks. Archived projects allow reading all views but disable deletion and
+restoration. Deletion persists through restarts; upgrades initialize existing
+tasks as live.
+
 Each task row provides a multiline Task notes textarea and Save notes button.
 Notes are optional plain text, saved exactly as entered, including whitespace,
 line breaks, Unicode and literal markup. Empty text clears them. Notes persist
@@ -58,7 +67,7 @@ subsequently created tasks in that project, preserve both selected task filters,
 and persist across reloads, server restarts, renaming, archive and restore.
 Archived projects show the saved default with the selector disabled.
 
-Project pages provide Task filter (All, Open, Completed) and Priority filter
+Project pages provide Task filter (All, Open, Completed, Deleted) and Priority filter
 (All, Low, Normal, High). Both initially select All and display tasks matching
 both selections in creation order. Edits immediately reapply both filters without
 resetting either selection; renaming preserves membership. Filtering leaves saved
@@ -92,7 +101,7 @@ Open `http://localhost:8080/` to create and open projects. Within a project,
 create tasks, toggle their completion, and filter by All, Open, or Completed.
 Project URLs can be reloaded directly. Projects and tasks persist in SQLite.
 The project list defaults to Active and can show Archived projects. Archive or
-restore a project from its row; its completion summary includes all its tasks.
+restore a project from its row; its completion summary includes all its live tasks.
 The selected project filter is kept when returning from a project page using
 Projects. Each fresh page load, including a reload after a server restart,
 starts with Active.

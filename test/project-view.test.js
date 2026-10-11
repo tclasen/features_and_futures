@@ -1203,3 +1203,110 @@ test('multiline notes retain literal text, filters, ownership, order, and archiv
   await create.emit('submit');
   assert.equal(notesForm(rows(app)[2]).querySelector('textarea').value, '');
 });
+
+test('Deleted filter intersects all controls, restores reserved order and disables editing', async () => {
+  const projects = [project(), { ...project(), id: 2, name: 'Destination' }];
+  const pending = { tasks: [
+    { id: 1, project_id: 1, title: 'Plan first', completed: true, priority: 'High', due_date: '2024-02-29', notes: '  Notes\n雪 <b>literal</b>  ', deleted: false },
+    { id: 2, project_id: 1, title: 'Plan second', completed: false, priority: 'Low', due_date: '', notes: '', deleted: false },
+    { id: 3, project_id: 1, title: 'Other', completed: false, priority: 'High', due_date: '2024-03-01', notes: '', deleted: false },
+  ] };
+  const originals = structuredClone(pending.tasks);
+  const app = await browser(new Map(), projects, pending);
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.deepEqual(app.querySelector('#task-filter').children.map(option => option.textContent),
+    ['All', 'Open', 'Completed', 'Deleted']);
+  await filter(app, 'Completed');
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  await search(app, 'task', 'plan');
+  await control(rows(app)[0], 'Delete task').emit('click');
+  assert.equal(rows(app).length, 0);
+  function retained(completion) {
+    assert.equal(app.querySelector('#task-filter').value, completion);
+    assert.equal(app.querySelector('#priority-filter').value, 'High');
+    assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+    assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+    assert.equal(app.querySelector('#task-search').value, 'plan');
+  }
+  retained('Completed');
+  assert.deepEqual(pending.tasks[0], { ...originals[0], deleted: true });
+  await filter(app, 'All');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'Open');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'Deleted');
+  assert.deepEqual(taskTitles(app), ['Plan first']);
+  const deletedRow = rows(app)[0];
+  function disabledControls(element) {
+    for (const child of element.children) {
+      if (['input', 'textarea', 'select', 'button'].includes(child.tag)) {
+        assert.equal(child.disabled, child.textContent !== 'Restore task');
+      }
+      disabledControls(child);
+    }
+  }
+  disabledControls(deletedRow);
+  assert.equal(notesForm(deletedRow).querySelector('textarea').value, originals[0].notes);
+  assert.equal(deletedRow.querySelector('input').checked, true);
+  await notesForm(deletedRow).emit('submit');
+  await moveForm(deletedRow).emit('submit');
+  assert.deepEqual(pending.tasks[0], { ...originals[0], deleted: true });
+  await priorityFilter(app, 'Low');
+  assert.equal(rows(app).length, 0);
+  await priorityFilter(app, 'High');
+  await dueRange(app, '2024-03-01', '');
+  assert.equal(rows(app).length, 0);
+  await dueRange(app, '2024-02-29', '2024-03-01');
+  await search(app, 'task', 'other');
+  assert.equal(rows(app).length, 0);
+  await search(app, 'task', 'plan');
+  const defaults = app.querySelector('#default-task-priority');
+  defaults.value = 'Low';
+  await defaults.emit('change');
+  const create = app.querySelector('form');
+  create.querySelector('input').value = 'New task';
+  await create.emit('submit');
+  retained('Deleted');
+  await control(rows(app)[0], 'Restore task').emit('click');
+  assert.equal(rows(app).length, 0);
+  retained('Deleted');
+  assert.deepEqual(pending.tasks[0], originals[0]);
+  await filter(app, 'Completed');
+  assert.deepEqual(taskTitles(app), ['Plan first']);
+  assert.equal(notesForm(rows(app)[0]).querySelector('textarea').disabled, false);
+  await filter(app, 'All');
+  await priorityFilter(app, 'All');
+  await dueRange(app, '', '');
+  await search(app, 'task', '');
+  assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second', 'Other', 'New task']);
+  await control(rows(app)[0], 'Delete task').emit('click');
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Archive project').emit('click');
+  await filter(app, 'Archived');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  assert.equal(control(rows(app)[0], 'Delete task').disabled, true);
+  await filter(app, 'Deleted');
+  assert.deepEqual(taskTitles(app), ['Plan first']);
+  assert.equal(control(rows(app)[0], 'Restore task').disabled, true);
+  await control(rows(app)[0], 'Restore task').emit('click');
+  assert.equal(pending.tasks[0].deleted, true);
+  await search(app, 'task', 'plan');
+  assert.deepEqual(taskTitles(app), ['Plan first']);
+  await app.querySelector('#projects').emit('click');
+  await settled();
+  await control(rows(app)[0], 'Restore project').emit('click');
+  await filter(app, 'Active');
+  await control(rows(app)[0], 'Open project').emit('click');
+  await settled();
+  await filter(app, 'Deleted');
+  assert.equal(control(rows(app)[0], 'Restore task').disabled, false);
+  await control(rows(app)[0], 'Restore task').emit('click');
+  assert.equal(rows(app).length, 0);
+  await filter(app, 'All');
+  assert.deepEqual(taskTitles(app), ['Plan first', 'Plan second', 'Other', 'New task']);
+  assert.deepEqual(pending.tasks.slice(0, 3), originals);
+});
