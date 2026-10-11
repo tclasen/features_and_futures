@@ -140,6 +140,14 @@ export function projectPage(project, tasks = [], filter = 'All', priorityFilter 
           <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
         </form>
+        <form class="task-rename" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+          ${errors.taskDueDate?.id === task.id ? `<p role="alert">${escapeHtml(errors.taskDueDate.message)}</p>` : ''}
+          <input type="hidden" name="filter" value="${filter}">
+          <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
       </div>`).join('')}
     </div>`);
 }
