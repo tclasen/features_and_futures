@@ -68,7 +68,10 @@ Filtering never changes saved task data or the all-task completion summary.
 
 Each task row provides `Destination project` and `Move task` to move it to
 another active project. Destinations use current project names in project
-creation order. Moves append after the destination's existing tasks, preserve
+creation order. First visits append after all positions established in the
+destination; returning tasks resume their remembered position in that project.
+Positions are saved independently for each project, even while a task is away,
+and survive restarts, project renaming, archival and restoration. Moves preserve
 title, completion, priority and due date, and retain the source page's filters.
 Both completion summaries reflect the new ownership. Task order and ownership
 persist across restarts. Archived projects cannot send or receive tasks; move
