@@ -18,6 +18,10 @@ const dueThroughInput = document.querySelector('#due-through');
 const dueRangeAlert = document.querySelector('#due-range-alert');
 let appliedDueRange = { from: '', through: '' };
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchInput = document.querySelector('#project-search');
+const taskSearchInput = document.querySelector('#task-search');
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
 const archivedNotice = document.querySelector('#archived-notice');
 const renameForm = document.querySelector('#rename-project-form');
 const renameInput = document.querySelector('#new-project-name');
@@ -35,7 +39,8 @@ async function fetchProjects() {
 function renderProjects(projects) {
   projectList.replaceChildren();
   const archived = projectFilter.value === 'Archived';
-  for (const project of projects.filter((item) => item.archived === archived)) {
+  for (const project of projects.filter((item) => item.archived === archived
+    && includesSearch(item.name, appliedProjectQuery))) {
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -61,9 +66,16 @@ function renderProjects(projects) {
   }
 }
 
+function includesSearch(value, query) {
+  const asciiLower = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return asciiLower(value).includes(asciiLower(query));
+}
+
 async function showList() {
   listView.hidden = false;
   detailView.hidden = true;
+  appliedProjectQuery = '';
+  projectSearchInput.value = '';
   renderProjects(await fetchProjects());
 }
 
@@ -76,6 +88,8 @@ async function showProject(id) {
   const project = await response.json();
   taskFilter.value = 'All';
   priorityFilter.value = 'All';
+  appliedTaskQuery = '';
+  taskSearchInput.value = '';
   dueFromInput.value = '';
   dueThroughInput.value = '';
   appliedDueRange = { from: '', through: '' };
@@ -106,6 +120,7 @@ async function refreshTasks() {
   const selectedPriority = priorityFilter.value;
   taskList.replaceChildren();
   for (const task of tasks) {
+    if (!includesSearch(task.title, appliedTaskQuery)) continue;
     if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
     if (selectedPriority !== 'All' && task.priority !== selectedPriority) continue;
     if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
@@ -302,6 +317,16 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-to-projects').addEventListener('click', () => navigate('/'));
+document.querySelector('#project-search-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearchInput.value.trim();
+  renderProjects(await fetchProjects());
+});
+document.querySelector('#task-search-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearchInput.value.trim();
+  refreshTasks();
+});
 renameForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const name = renameInput.value.trim();
