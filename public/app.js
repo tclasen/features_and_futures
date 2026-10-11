@@ -25,6 +25,31 @@ async function request(path, options) {
   return body;
 }
 
+// Fold only ASCII letters; non-ASCII characters and internal whitespace stay exact.
+function searchMatches(text, query) {
+  const fold = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return fold(text).includes(fold(query));
+}
+
+function searchForm(kind, onSearch) {
+  const form = element('form');
+  const label = element('label', `${kind} search`);
+  const input = element('input');
+  input.id = `${kind.toLowerCase()}-search`;
+  input.type = 'text';
+  label.htmlFor = input.id;
+  const submit = element('button', kind === 'Project' ? 'Search projects' : 'Search tasks');
+  submit.type = 'submit';
+  form.append(label, input, submit);
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const query = input.value.trim();
+    input.value = query;
+    onSearch(query);
+  });
+  return form;
+}
+
 function projectsButton() {
   const button = element('button', 'Projects');
   button.type = 'button';
@@ -349,13 +374,19 @@ async function renderTasks(project) {
   let appliedThrough = '';
   const list = element('ul');
   list.setAttribute('aria-label', 'Tasks');
-  app.append(defaultPriorityControl(project), form, filterControls, dueRangeForm, list);
+  let appliedSearch = '';
+  const taskSearch = searchForm('Task', query => {
+    appliedSearch = query;
+    displayTasks();
+  });
+  app.append(defaultPriorityControl(project), form, filterControls, dueRangeForm, taskSearch, list);
   const [tasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
   const destinations = projects.filter(destination => !destination.archived && destination.id !== project.id);
 
   function displayTasks() {
     list.replaceChildren();
     for (const task of tasks) {
+      if (!searchMatches(task.title, appliedSearch)) continue;
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -489,12 +520,17 @@ async function render() {
   const filterControls = element('div');
   filterControls.className = 'task-filter';
   filterControls.append(filterLabel, filter);
-  app.append(form, filterControls, list);
+  let appliedSearch = '';
+  const projectSearch = searchForm('Project', query => {
+    appliedSearch = query;
+    displayProjects();
+  });
+  app.append(form, filterControls, projectSearch, list);
   const projects = await request('/api/projects');
   function displayProjects() {
     list.replaceChildren();
     for (const project of projects) {
-      if (project.archived === (filter.value === 'Archived')) {
+      if (project.archived === (filter.value === 'Archived') && searchMatches(project.name, appliedSearch)) {
         list.append(projectRow(project, displayProjects));
       }
     }

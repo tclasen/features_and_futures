@@ -27,7 +27,7 @@ class Element {
   querySelector() { return null; }
 }
 
-async function setup(fetch) {
+async function setup(fetch, keepProjectList = false) {
   const app = new Element('main');
   const context = vm.createContext({
     document: {
@@ -42,7 +42,7 @@ async function setup(fetch) {
   vm.runInContext(`${source.replace(/^import .*;\n/, '')}\nglobalThis.priorityControl = taskPriorityControl;\nglobalThis.renderTasks = renderTasks;`, context);
   // Let the initial project-list render finish before exercising project controls.
   await new Promise(resolve => setImmediate(resolve));
-  app.replaceChildren();
+  if (!keepProjectList) app.replaceChildren();
   return { control: context.priorityControl, renderTasks: context.renderTasks, app };
 }
 
@@ -490,5 +490,84 @@ test('archived due ranges remain usable and reopening starts with empty boundari
   assert.equal(reopened.byId('due-through').value, '');
   assert.equal(reopened.byId('task-filter').value, 'All');
   assert.equal(reopened.byId('priority-filter').value, 'All');
+  assert.equal(reopened.rows().length, 6);
+});
+
+function submitSearch(app, kind, query) {
+  const input = descendants(app).find(node => node.id === `${kind}-search`);
+  input.value = query;
+  const form = descendants(app).find(node => node.children.includes(input));
+  form.listeners.submit({ preventDefault() {} });
+  return input;
+}
+
+test('project search is applied, ASCII-only, and intersects archive filtering', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha  Team', archived: false, total: 2, completed: 1 },
+    { id: 2, name: 'ALPHA Team', archived: false, total: 0, completed: 0 },
+    { id: 3, name: 'Alpha archive', archived: true, total: 3, completed: 2 },
+    { id: 4, name: 'Älpha', archived: false, total: 0, completed: 0 },
+  ];
+  const fetch = async () => ({ ok: true, json: async () => projects });
+  const { app } = await setup(fetch, true);
+  const rows = () => descendants(app).filter(node => node.dataset.testid === 'project-row');
+  const names = () => rows().map(row => row.children[0].textContent);
+  assert.deepEqual(names(), ['Alpha  Team', 'ALPHA Team', 'Älpha']);
+  const input = descendants(app).find(node => node.id === 'project-search');
+  assert.equal(input.type, 'text');
+  assert.equal(descendants(app).find(node => node.htmlFor === input.id).textContent, 'Project search');
+  input.value = 'not applied';
+  assert.equal(rows().length, 3);
+  submitSearch(app, 'project', '  aLpHa  ');
+  assert.deepEqual(names(), ['Alpha  Team', 'ALPHA Team']);
+  assert.equal(rows()[0].children[1].textContent, '1/2 completed');
+  const filter = descendants(app).find(node => node.id === 'project-filter');
+  filter.value = 'Archived';
+  filter.listeners.change();
+  assert.deepEqual(names(), ['Alpha archive']);
+  assert.equal(input.value, 'aLpHa');
+  filter.value = 'Active';
+  filter.listeners.change();
+  submitSearch(app, 'project', 'alpha  team');
+  assert.deepEqual(names(), ['Alpha  Team']);
+  submitSearch(app, 'project', 'älpha');
+  assert.deepEqual(names(), []);
+  submitSearch(app, 'project', '  ');
+  assert.equal(rows().length, 3);
+  const reopened = await setup(fetch, true);
+  assert.equal(descendants(reopened.app).find(node => node.id === 'project-search').value, '');
+});
+
+test('task search intersects all filters and edits reapply the retained query', async () => {
+  const ui = await projectUI(false, ['2024-01-01', '', '', '2024-01-02']);
+  const original = JSON.stringify(ui.tasks);
+  const input = submitSearch(ui.app, 'task', '  hIGh  ');
+  assert.equal(input.value, 'hIGh');
+  assert.deepEqual(ui.titles(), ['High open', 'High done']);
+  assert.equal(JSON.stringify(ui.tasks), original);
+  await ui.change('task-filter', 'Open');
+  await ui.change('priority-filter', 'High');
+  ui.byId('due-from').value = '2024-01-01';
+  const range = ui.nodes().find(node => node.children.includes(ui.byId('due-from')));
+  range.listeners.submit({ preventDefault() {} });
+  assert.deepEqual(ui.titles(), ['High open']);
+  const rename = ui.rows()[0].children.find(node => node.tagName === 'form');
+  rename.children[1].value = 'No longer matches';
+  await rename.listeners.submit({ preventDefault() {} });
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(input.value, 'hIGh');
+  assert.equal(ui.byId('task-filter').value, 'Open');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2024-01-01');
+  submitSearch(ui.app, 'task', '   ');
+  assert.deepEqual(ui.titles(), ['No longer matches']);
+  submitSearch(ui.app, 'task', 'no  longer');
+  assert.deepEqual(ui.titles(), []);
+  const archived = await projectUI(true);
+  submitSearch(archived.app, 'task', 'LOW');
+  assert.deepEqual(archived.titles(), ['Low done', 'Low open']);
+  assert.equal(archived.byId('task-search').disabled, undefined);
+  const reopened = await projectUI();
+  assert.equal(reopened.byId('task-search').value, '');
   assert.equal(reopened.rows().length, 6);
 });

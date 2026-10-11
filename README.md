@@ -72,6 +72,14 @@ The order migration preserves existing tasks' current order; visits before this
 feature was introduced cannot be reconstructed. Project renaming, archival and
 restoration preserve remembered positions.
 
+Project search and Task search apply trimmed substring queries with ASCII-only
+case-insensitive matching; internal whitespace remains significant. Blank queries
+match all rows. Project search intersects Active/Archived; task search intersects
+completion, priority, and applied due range. Edits immediately reapply the retained
+query without changing other filters, ordering, saved data, or summaries. Search
+remains usable in archived projects. Opening either page (including returning via
+Projects) starts with an empty query; queries are page-local, not persisted.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -85,4 +93,5 @@ clearing, independence, filter retention and archive protection, inclusive due-r
 invalid-range preservation, live membership updates, archived range controls, shared date-validator serving,
 legacy database migration, move destination eligibility, first-arrival append ordering,
 remembered per-project positions, reverse-order returns, reserved absent positions,
-source filter retention, ownership and summary updates, and persistence through process restarts.
+source filter retention, ownership and summary updates, search matching and filter intersections,
+search retention after edits, and persistence through process restarts.
