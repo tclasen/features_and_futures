@@ -132,7 +132,8 @@ async function renderProject(id) {
       renameAlert.hidden = false;
       return;
     }
-    renderProject(id);
+    project.name = name;
+    view.querySelector('h1').textContent = name;
   });
   const form = element('form');
   const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', autocomplete: 'off' });
@@ -305,8 +306,8 @@ async function renderProject(id) {
         }
         const saved = await result.json();
         task.dueDate = saved.dueDate;
-        dueDateInput.value = task.dueDate || '';
         dueDateAlert.hidden = true;
+        drawTasks();
       });
       row.append(dueDateForm, dueDateAlert);
       tasks.append(row);
