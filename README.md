@@ -99,3 +99,12 @@ creating a new independent project and opens that project on success. Invalid
 documents leave all data and submitted inputs unchanged. Imports preserve task
 order and saved fields, including deleted tasks, archived state and the default
 priority; notes line endings become LF. Extra fields cannot set internal IDs.
+
+Task directory on the home page opens a read-only list across projects. Project
+scope selects Active or Archived owners; completion/deletion, priority, inclusive
+due range and title search intersect using the same rules as project pages.
+Rows show the saved title, owner, completion, priority, date and literal notes in
+project creation order and remembered task order. Open project navigates to the
+owner with fresh project-page filters. Opening the directory starts with Active,
+All tasks, All priorities, and empty search and due range. Viewing and filtering
+never change stored data.

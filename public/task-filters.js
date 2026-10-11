@@ -36,3 +36,8 @@ export function filterTasks(tasks, completion, priority, range = { from: '', thr
       (!range.through || task.due_date <= range.through))) &&
     matchesSearch(task.title || '', query));
 }
+
+export function filterDirectory(tasks, scope, completion, priority, range = { from: '', through: '' }, query = '') {
+  return filterTasks(tasks.filter(task => Boolean(task.project_archived) === (scope === 'archived')),
+    completion, priority, range, query);
+}

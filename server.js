@@ -69,6 +69,10 @@ const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?'
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC');
+const listDirectoryTasks = db.prepare(`SELECT t.id, t.project_id, p.name AS project_name,
+  p.archived AS project_archived, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
+  FROM projects p JOIN tasks t ON t.project_id = p.id
+  ORDER BY p.id ASC, t.position ASC, t.id ASC`);
 const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
@@ -102,6 +106,7 @@ const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/task-filters.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/task-filters.js', import.meta.url))]],
+  ['/directory.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/directory.js', import.meta.url))]],
   ['/due-date.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./due-date.js', import.meta.url))]],
   ['/style.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/style.css', import.meta.url))]],
 ]);
@@ -130,6 +135,11 @@ const server = http.createServer(async (request, response) => {
   try {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && pathname === '/health') return json(response, 200, { status: 'ok' });
+    if (request.method === 'GET' && pathname === '/api/task-directory') {
+      return json(response, 200, listDirectoryTasks.all().map(task => ({
+        ...taskJSON(task), project_archived: Boolean(task.project_archived),
+      })));
+    }
     if (request.method === 'GET' && pathname === '/api/projects') return json(response, 200, listProjects.all());
     if (request.method === 'POST' && pathname === '/api/projects/import') {
       let input;
@@ -288,7 +298,7 @@ const server = http.createServer(async (request, response) => {
       }
     }
     if (request.method === 'GET') {
-      const asset = assets.get(/^\/projects\/\d+$/.test(pathname) ? '/' : pathname);
+      const asset = assets.get(pathname === '/directory' || /^\/projects\/\d+$/.test(pathname) ? '/' : pathname);
       if (asset) {
         response.writeHead(200, { 'Content-Type': asset[0] });
         return response.end(asset[1]);

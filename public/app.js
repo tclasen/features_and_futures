@@ -1,4 +1,5 @@
 import { filterProjects, filterTasks, normalizeDueRange } from './task-filters.js';
+import { renderDirectory } from './directory.js';
 
 const app = document.getElementById('app');
 
@@ -448,6 +449,10 @@ async function renderProject(projectId) {
 }
 
 async function render() {
+  if (location.pathname === '/directory') {
+    await renderDirectory(app, request, showError);
+    return;
+  }
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   if (match) {
     await renderProject(match[1]);
@@ -456,6 +461,7 @@ async function render() {
   let projects = await request('/api/projects');
   app.innerHTML = `
     <h1>Workboard</h1>
+    <button type="button" id="task-directory">Task directory</button>
     <form id="project-form">
       <label for="project-name">Project name</label>
       <div class="form-controls">
@@ -488,6 +494,7 @@ async function render() {
     </select>
     <p id="empty">No projects to show.</p>
     <ul id="projects"></ul>`;
+  document.getElementById('task-directory').addEventListener('click', () => location.assign('/directory'));
   const list = document.getElementById('projects');
   const empty = document.getElementById('empty');
   const filter = document.getElementById('project-filter');
