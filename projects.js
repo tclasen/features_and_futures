@@ -6,6 +6,19 @@ import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate } from './task-dates.js';
 import { parseProjectImport } from './project-import.js';
 
+// Project pages and the directory share the same live/deleted and date rules.
+const taskFilterConditions = `deleted = ? AND (? IS NULL OR completed = ?)
+  AND (? IS NULL OR priority = ?)
+  AND (? = '' OR due_date >= ?)
+  AND (? = '' OR (due_date != '' AND due_date <= ?))`;
+
+function taskFilterParameters(filter, priorityFilter, { dueFrom = '', dueThrough = '' }) {
+  const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
+  const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
+  return [filter === 'Deleted' ? 1 : 0, completed, completed, priority, priority,
+    dueFrom, dueFrom, dueThrough, dueThrough];
+}
+
 export function openProjects(databasePath) {
   mkdirSync(dirname(databasePath), { recursive: true });
   const database = new DatabaseSync(databasePath);
@@ -102,10 +115,17 @@ export function openProjects(databasePath) {
     SELECT tasks.id, title, completed, priority, due_date, notes, deleted FROM tasks
     JOIN task_project_positions AS ordering
       ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
-    WHERE tasks.project_id = ? AND deleted = ? AND (? IS NULL OR completed = ?)
-      AND (? IS NULL OR priority = ?)
-      AND (? = '' OR due_date >= ?)
-      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY ordering.position, tasks.id
+    WHERE tasks.project_id = ? AND ${taskFilterConditions}
+    ORDER BY ordering.position, tasks.id
+  `);
+  const directoryTasks = database.prepare(`
+    SELECT tasks.id, tasks.project_id, projects.name AS project_name,
+      title, completed, priority, due_date, notes, deleted FROM tasks
+    JOIN projects ON projects.id = tasks.project_id
+    JOIN task_project_positions AS ordering
+      ON ordering.task_id = tasks.id AND ordering.project_id = tasks.project_id
+    WHERE projects.archived = ? AND ${taskFilterConditions}
+    ORDER BY projects.id, ordering.position, tasks.id
   `);
   const insertTask = database.prepare(`
     INSERT INTO tasks (project_id, title, priority)
@@ -213,12 +233,13 @@ export function openProjects(databasePath) {
       return updateDefaultPriority.run(priority, id).changes > 0;
     },
     listTasks(projectId, filter = 'All', priorityFilter = 'All', dueRange = {}) {
-      const completed = filter === 'Open' ? 0 : filter === 'Completed' ? 1 : null;
-      const priority = TASK_PRIORITIES.includes(priorityFilter) ? priorityFilter : null;
-      const { dueFrom = '', dueThrough = '', search = '' } = dueRange;
-      return listTasks.all(projectId, filter === 'Deleted' ? 1 : 0, completed, completed, priority, priority,
-        dueFrom, dueFrom, dueThrough, dueThrough)
-        .filter((task) => matchesSearch(task.title, search));
+      return listTasks.all(projectId, ...taskFilterParameters(filter, priorityFilter, dueRange))
+        .filter((task) => matchesSearch(task.title, dueRange.search || ''));
+    },
+    listDirectoryTasks(scope = 'Active', filters = {}) {
+      return directoryTasks.all(scope === 'Archived' ? 1 : 0,
+        ...taskFilterParameters(filters.completion, filters.priority, filters))
+        .filter((task) => matchesSearch(task.title, filters.search || ''));
     },
     createTask(projectId, title) {
       const trimmedTitle = title.trim();

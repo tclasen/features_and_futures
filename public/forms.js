@@ -3,6 +3,7 @@
 document.querySelectorAll('form').forEach((form) => {
   form.addEventListener('submit', () => {
     const filters = [
+      ['scope', document.getElementById('project-scope')],
       ['filter', document.getElementById('task-filter') || document.getElementById('project-filter')],
       ['priorityFilter', document.getElementById('priority-filter')],
     ];

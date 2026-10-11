@@ -1719,3 +1719,124 @@ test('delete and restore controls retain intersecting filters, disable deleted e
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory intersects read-only cross-project filters, preserves range errors and starts fresh on opening', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-http-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const store = openProjects(databasePath);
+    store.create('Owner only');
+    store.create('Second owner');
+    store.create('Archived owner');
+    store.createTask(1, 'Match  first');
+    store.createTask(1, 'MATCH\tsecond');
+    store.createTask(1, 'Removed');
+    store.createTask(2, 'Match other');
+    store.createTask(3, 'Archived live');
+    store.createTask(3, 'Archived deleted');
+    store.setTaskCompleted(1, 1, true);
+    store.setTaskPriority(1, 1, 'High');
+    store.setTaskDueDate(1, 1, '2024-02-29');
+    const notes = '\n  café 😀\n\t<script>literal</script> &  \n';
+    store.setTaskNotes(1, 1, notes);
+    store.setTaskNotes(1, 2, 'notes-only match');
+    store.setTaskDeleted(1, 3, true);
+    store.setTaskDeleted(3, 6, true);
+    store.setArchived(3, true);
+    const before = [1, 2, 3].map((id) => store.exportProject(id));
+    store.close();
+    server = await start(databasePath);
+    const page = async (path) => {
+      const response = await fetch(`${server.url}${path}`);
+      assert.equal(response.status, 200);
+      return response.text();
+    };
+    const titles = (html) => [...html.matchAll(/data-testid="directory-task-title">(.*?)<\/span>/g)].map((m) => m[1]);
+    const route = (values) => `/directory?${new URLSearchParams(values)}`;
+    const form = (html, className) => html.match(new RegExp(`<form[^>]*class="${className}"[^>]*>([\\s\\S]*?)<\\/form>`))[1];
+    assert.match(await page('/'), /action="\/directory" method="get"><button type="submit">Task directory/);
+    const initial = await page('/directory');
+    assert.deepEqual(titles(initial), ['Match  first', 'MATCH\tsecond', 'Match other']);
+    assert.match(initial, /data-testid="directory-project-name">Owner only/);
+    assert.match(initial, /data-testid="directory-task-completion">Completed/);
+    assert.match(initial, /data-testid="directory-task-priority">High/);
+    assert.match(initial, /data-testid="directory-task-due-date">2024-02-29/);
+    assert.match(initial, /data-testid="directory-task-due-date"><\/span>/);
+    assert.ok(initial.includes('class="directory-task-notes">\n  café 😀\n\t&lt;script&gt;literal&lt;/script&gt; &amp;  \n</div>'));
+    for (const [id, expected] of [
+      ['project-scope', ['Active', 'Archived']],
+      ['task-filter', ['All', 'Open', 'Completed', 'Deleted']],
+      ['priority-filter', ['All', 'Low', 'Normal', 'High']],
+    ]) {
+      const select = initial.match(new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)<\\/select>`))[1];
+      assert.deepEqual([...select.matchAll(/<option[^>]*>(.*?)<\/option>/g)].map((m) => m[1]), expected);
+      assert.ok(select.includes(`<option selected>${expected[0]}</option>`));
+    }
+    for (const row of initial.matchAll(/data-testid="directory-task-row"[\s\S]*?<\/form>\s*<\/div>/g)) {
+      assert.doesNotMatch(row[0], /<(?:input|select|textarea)\b/);
+      assert.deepEqual([...row[0].matchAll(/<button[^>]*>(.*?)<\/button>/g)].map((m) => m[1]), ['Open project']);
+      assert.match(row[0], /action="\/projects\/\d+" method="get"/);
+    }
+    assert.deepEqual(titles(await page(route({ filter: 'Open' }))), ['MATCH\tsecond', 'Match other']);
+    assert.deepEqual(titles(await page(route({ filter: 'Completed' }))), ['Match  first']);
+    assert.deepEqual(titles(await page(route({ filter: 'Deleted' }))), ['Removed']);
+    assert.deepEqual(titles(await page(route({ scope: 'Archived' }))), ['Archived live']);
+    assert.deepEqual(titles(await page(route({ scope: 'Archived', filter: 'Deleted' }))), ['Archived deleted']);
+    for (const search of ['Owner only', 'notes-only', 'literal']) {
+      assert.deepEqual(titles(await page(route({ search }))), []);
+    }
+    assert.deepEqual(titles(await page(route({ search: '  match \t SECOND  ' }))), ['MATCH\tsecond']);
+    const filters = { scope: 'Active', filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: 'mAtCh' };
+    const filtered = await page(route(filters));
+    assert.deepEqual(titles(filtered), ['Match  first']);
+    for (const [key, value] of Object.entries(filters)) {
+      assert.ok(form(filtered, 'due-range').includes(`name="${key}" value="${value}"`));
+    }
+    for (const key of ['scope', 'filter', 'priorityFilter', 'dueFrom', 'dueThrough']) {
+      assert.ok(form(filtered, 'directory-search').includes(`name="${key}" value="${filters[key]}"`));
+    }
+    for (const key of ['dueFrom', 'dueThrough', 'search']) {
+      assert.ok(form(filtered, 'directory-filter').includes(`name="${key}" value="${filters[key]}"`));
+    }
+    assert.deepEqual(titles(await page(route({ ...filters, dueFrom: '2024-03-01', dueThrough: '' }))), []);
+    assert.deepEqual(titles(await page(route({ dueThrough: '2024-02-29' }))), ['Match  first']);
+    const apply = (rangeFrom, rangeThrough) => fetch(`${server.url}/directory/due-range`, {
+      method: 'POST', body: new URLSearchParams({ ...filters, rangeFrom, rangeThrough }), redirect: 'manual',
+    });
+    for (const [from, through, message] of [
+      ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['0000-01-01', '', 'Due range must use valid YYYY-MM-DD dates'],
+      ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+    ]) {
+      const response = await apply(from, through);
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.ok(html.includes(`<p role="alert">${message}</p>`));
+      assert.deepEqual(titles(html), ['Match  first']);
+      assert.equal(form(html, 'directory-filter'), form(filtered, 'directory-filter'));
+    }
+    const applied = await apply(' 2024-02-29 ', ' 2024-02-29 ');
+    assert.equal(applied.status, 303);
+    assert.equal(applied.headers.get('location'), route(filters));
+    const cleared = await apply(' ', '');
+    assert.equal(cleared.status, 303);
+    assert.deepEqual(titles(await page(cleared.headers.get('location'))), ['Match  first']);
+    assert.match(await page('/projects/1'), /<option selected>All<\/option>/);
+    assert.match(await page('/projects/3'), /Archived project/);
+    assert.match(initial, /action="\/" method="get"><button type="submit">Projects/);
+    assert.equal(await page('/directory'), initial);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await page('/directory'), initial);
+    assert.equal(await page(route(filters)), filtered);
+    await server.stop();
+    server = undefined;
+    const reopened = openProjects(databasePath);
+    assert.deepEqual([1, 2, 3].map((id) => reopened.exportProject(id)), before);
+    reopened.close();
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

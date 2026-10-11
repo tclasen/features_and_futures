@@ -133,3 +133,13 @@ fields and change no saved data. Imported titles retain their exact text, notes
 use LF line endings, and archive/deletion flags, explicit priorities and task order
 are preserved. Additional properties cannot set internal identities. Successful
 imports open the new project with the usual empty search/range and All filters.
+
+Task directory on the home page opens `/directory`, a read-only view across
+projects. Project scope (Active/Archived), live/deleted completion, priority,
+inclusive due range and title-only search intersect using the project-page rules.
+Each opening starts with Active scope, All task/priority filters and empty range
+and search. Results retain project creation order and each project's remembered
+task order, displaying original titles, owner names, saved fields and literal
+multiline notes. Open project starts the owner's usual default detail view;
+Projects returns to the home page. Directory viewing and filtering never write
+project or task data.

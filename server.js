@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { openProjects } from './projects.js';
-import { projectsPage, projectPage, notFoundPage } from './views.js';
+import { projectsPage, projectPage, directoryPage, notFoundPage } from './views.js';
 import { normalizeSearchQuery } from './search.js';
 import { TASK_PRIORITIES } from './task-priorities.js';
 import { normalizeDueDate, normalizeDueRange, INVALID_DUE_DATE_MESSAGE } from './task-dates.js';
@@ -51,6 +51,17 @@ function projectsLocation(filter, search) {
   return query.size ? `/?${query}` : '/';
 }
 
+function directoryLocation(scope, filters) {
+  const query = new URLSearchParams({ scope, filter: filters.completion,
+    priorityFilter: filters.priority, dueFrom: filters.dueFrom,
+    dueThrough: filters.dueThrough, search: filters.search });
+  return `/directory?${query}`;
+}
+
+function renderDirectory(scope, filters, error = '') {
+  return directoryPage(projects.listDirectoryTasks(scope, filters), scope, filters, error);
+}
+
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
@@ -92,6 +103,21 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && path === '/forms.js') {
       return send(response, 200, 'text/javascript; charset=utf-8', formScript);
+    }
+    if (request.method === 'GET' && path === '/directory') {
+      const scope = projectFilter(url.searchParams.get('scope'));
+      return send(response, 200, 'text/html; charset=utf-8',
+        renderDirectory(scope, projectFilters(url.searchParams)));
+    }
+    if (request.method === 'POST' && path === '/directory/due-range') {
+      const form = await readForm(request);
+      const scope = projectFilter(form.get('scope'));
+      const filters = projectFilters(form);
+      const range = normalizeDueRange(form.get('rangeFrom') || '', form.get('rangeThrough') || '');
+      if (range.error) {
+        return send(response, 400, 'text/html; charset=utf-8', renderDirectory(scope, filters, range.error));
+      }
+      return redirect(response, directoryLocation(scope, { ...filters, ...range }));
     }
     if (request.method === 'GET' && path === '/') {
       const filter = projectFilter(url.searchParams.get('filter'));

@@ -29,6 +29,7 @@ function page(title, content) {
 export function projectsPage(projects, error = '', filter = 'Active', search = '', importFields = {}) {
   return page('Projects', `
     <h1>Workboard</h1>
+    <form action="/directory" method="get"><button type="submit">Task directory</button></form>
     <form action="/projects" method="post" class="create-project">
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <input type="hidden" name="search" value="${escapeHtml(search)}">
@@ -210,4 +211,59 @@ export function projectPage(project, tasks = [], filter = 'All', error = '', pri
 
 export function notFoundPage() {
   return page('Page not found', '<h1>Page not found</h1><a href="/">Projects</a>');
+}
+
+export function directoryPage(tasks, scope, filters, error = '') {
+  const { completion, priority, dueFrom, dueThrough, search } = filters;
+  const scopeField = `<input type="hidden" name="scope" value="${escapeHtml(scope)}">`;
+  const selectionFields = `${scopeField}
+    <input type="hidden" name="filter" value="${escapeHtml(completion)}">
+    <input type="hidden" name="priorityFilter" value="${escapeHtml(priority)}">`;
+  const rangeFields = `
+    <input type="hidden" name="dueFrom" value="${escapeHtml(dueFrom)}">
+    <input type="hidden" name="dueThrough" value="${escapeHtml(dueThrough)}">`;
+  const searchField = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
+  const options = (values, selected) => values.map((value) =>
+    `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
+  return page('Task directory', `
+    <form action="/" method="get"><button type="submit">Projects</button></form>
+    <h1>Task directory</h1>
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form action="/directory" method="get" class="directory-filter" data-auto-submit>
+      ${rangeFields}${searchField}
+      <label for="project-scope">Project scope</label>
+      <select id="project-scope" name="scope">${options(['Active', 'Archived'], scope)}</select>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter">${options(['All', 'Open', 'Completed', 'Deleted'], completion)}</select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter">${options(['All', ...TASK_PRIORITIES], priority)}</select>
+    </form>
+    <form action="/directory/due-range" method="post" class="due-range">
+      ${selectionFields}${rangeFields}${searchField}
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(dueFrom)}" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(dueThrough)}" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
+    <form action="/directory" method="get" class="directory-search">
+      ${selectionFields}${rangeFields}
+      <label for="directory-search">Directory search</label>
+      <div class="form-controls">
+        <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}" autocomplete="off">
+        <button type="submit">Search directory</button>
+      </div>
+    </form>
+    <section aria-label="Directory tasks" class="task-list">
+      ${tasks.length ? tasks.map((task) => `
+        <div data-testid="directory-task-row" class="directory-task-row">
+          <span data-testid="directory-task-title">${escapeHtml(task.title)}</span>
+          <span data-testid="directory-project-name">${escapeHtml(task.project_name)}</span>
+          <span data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</span>
+          <span data-testid="directory-task-priority">${escapeHtml(task.priority)}</span>
+          <span data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</span>
+          <div data-testid="directory-task-notes" class="directory-task-notes">${escapeHtml(task.notes)}</div>
+          <form action="/projects/${task.project_id}" method="get"><button type="submit">Open project</button></form>
+        </div>`).join('') : '<p class="empty">No tasks match these filters.</p>'}
+    </section>`);
 }

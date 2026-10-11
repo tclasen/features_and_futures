@@ -105,3 +105,21 @@ test('navigation forms without filter fields still submit without adding query p
   navigation.requestSubmit();
   assert.deepEqual(navigation.submissions, [{}]);
 });
+
+test('directory range and search submissions retain live scope and selections with applied boundaries', () => {
+  const saved = { scope: 'Active', filter: 'All', priorityFilter: 'All', dueFrom: '2024-02-29', dueThrough: '', search: 'saved' };
+  const range = new Form(saved);
+  const search = new Form(saved);
+  loadForms([range, search], {
+    'project-scope': { value: 'Archived' },
+    'task-filter': { value: 'Deleted' },
+    'priority-filter': { value: 'High' },
+    'due-from': { value: 'unsaved' },
+    'directory-search': { value: 'unsaved' },
+  });
+  range.requestSubmit();
+  search.requestSubmit();
+  const expected = { ...saved, scope: 'Archived', filter: 'Deleted', priorityFilter: 'High' };
+  assert.deepEqual(range.submissions, [expected]);
+  assert.deepEqual(search.submissions, [expected]);
+});
