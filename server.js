@@ -17,7 +17,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal'
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -37,17 +38,20 @@ const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
 }
+if (!projectColumns.some((column) => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount,
   COALESCE(SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.created_at, p.rowid`);
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const updateArchive = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
-const createTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -138,10 +142,25 @@ async function handle(req, res) {
       }
       const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
       if (!title) return sendJson(res, 400, { error: 'Task title is required' });
-      const task = { id: randomUUID(), title, completed: 0 };
-      createTask.run(task.id, projectId, title, Date.now());
+      const task = { id: randomUUID(), title, completed: 0, priority: getProject.get(projectId).defaultPriority };
+      db.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)')
+        .run(task.id, projectId, title, task.priority, Date.now());
       return sendJson(res, 201, task);
     }
+  }
+
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (req.method === 'PATCH' && defaultPriorityMatch) {
+    const projectId = decodeURIComponent(defaultPriorityMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return sendJson(res, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(res, 409, { error: 'Archived projects cannot be changed' });
+    let payload;
+    try { let raw = ''; for await (const chunk of req) raw += chunk; payload = JSON.parse(raw); }
+    catch { return sendJson(res, 400, { error: 'Invalid request body' }); }
+    if (!['Low', 'Normal', 'High'].includes(payload?.priority)) return sendJson(res, 400, { error: 'Invalid task priority' });
+    updateDefaultPriority.run(payload.priority, projectId);
+    return sendJson(res, 200, { id: projectId, defaultPriority: payload.priority });
   }
 
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);

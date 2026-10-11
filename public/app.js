@@ -156,6 +156,35 @@ async function renderProject(id) {
     }
   });
 
+  const defaultPriorityLabel = element('label', 'filter-label', 'Default task priority');
+  defaultPriorityLabel.htmlFor = 'default-task-priority';
+  const defaultPriority = element('select', 'default-task-priority');
+  defaultPriority.id = 'default-task-priority';
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', '', value);
+    option.value = value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.value = project.defaultPriority || 'Normal';
+  defaultPriority.disabled = Boolean(project.archived);
+  defaultPriorityLabel.append(defaultPriority);
+  app.append(defaultPriorityLabel);
+  defaultPriority.addEventListener('change', async () => {
+    defaultPriority.disabled = true;
+    try {
+      await request(`/api/projects/${encodeURIComponent(id)}/default-priority`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: defaultPriority.value }),
+      });
+    } catch (error) {
+      alert.textContent = error.message;
+      alert.hidden = false;
+      defaultPriority.value = project.defaultPriority || 'Normal';
+    } finally {
+      defaultPriority.disabled = Boolean(project.archived);
+    }
+  });
+
   const form = element('form', 'create-form');
   const label = element('label', '', 'Task title');
   label.htmlFor = 'task-title';
