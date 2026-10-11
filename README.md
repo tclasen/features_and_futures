@@ -12,11 +12,15 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0`. Defaults are port 8
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
+Choose Task directory on the home page to open `/directory`, a read-only view across projects. Project scope (Active/Archived), Task filter (All/Open/Completed/Deleted), Priority filter, Directory search, and the inclusive due range intersect without changing stored data. Search matches only task titles using the ordinary search rules. Results show the owner, original title, completion, priority, due date, and literal multiline notes in project creation order and stored task order. Open project resets that project's filters; Projects returns home. Each fresh directory opening starts with Active scope, All task/priority filters, and empty search/range.
+
 ## Verify
 
 ```sh
 npm test
 ```
+
+Directory tests also verify intersecting filters, read-only rendering, literal notes, invalid-range preservation, ownership and return ordering, navigation defaults, and restart persistence.
 
 Tests launch isolated servers and temporary SQLite databases, checking project and task creation, validation, ordering, HTML escaping, navigation markup, combined completion/priority filters and selection retention, project isolation, archive/restore, renaming and identity preservation, completion summaries, independent task priorities and project defaults, new-task inheritance, optional due dates and Gregorian validation, inclusive due-range filtering and invalid-range preservation, task moves and destination ordering, archive restrictions, legacy database migration, health, and persistence across process restarts.
 
