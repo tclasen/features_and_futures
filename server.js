@@ -37,6 +37,8 @@ const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE
 const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskTitle = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?');
+const eligibleDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY created_at, rowid');
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -105,6 +107,13 @@ const server = createServer(async (request, response) => {
     for await (const chunk of request) input += chunk;
     let data;
     try { data = JSON.parse(input); } catch { return send(response, 400, { error: 'Invalid request' }); }
+    if (typeof data.destinationProjectId === 'string') {
+      const destination = findProject.get(data.destinationProjectId);
+      if (!destination || destination.archived || data.destinationProjectId === projectId) return send(response, 400, { error: 'Invalid destination project' });
+      const latest = database.prepare('SELECT MAX(created_at) AS latest FROM tasks WHERE project_id = ?').get(data.destinationProjectId).latest;
+      moveTask.run(data.destinationProjectId, Math.max(Date.now(), (latest ?? 0) + 1), taskId, projectId);
+      return send(response, 200, { ok: true });
+    }
     if (typeof data.completed === 'boolean') {
       updateTask.run(data.completed ? 1 : 0, taskId, projectId);
       return send(response, 200, { ok: true });
