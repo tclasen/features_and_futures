@@ -38,9 +38,10 @@ filters and summaries, rename preservation, restart persistence, and archive/res
 Due-range checks cover inclusive and unbounded boundaries, undated tasks, intersections
 with completion and priority filters, invalid applications preserving the applied range,
 selection retention and immediate re-filtering across edits, and archived filtering.
-Project and task searches use trimmed substring queries with ASCII-only case folding.
-Search intersects existing filters, preserves internal whitespace, and remains applied
-through edits. Search controls work in archived projects. Returning through Projects
+Project and task searches use trimmed substring queries with ASCII-only case folding
+and collapse runs of ASCII spaces and tabs for matching only. Stored names and titles
+retain their original whitespace and case. Search intersects existing filters and remains
+applied through edits. Search controls work in archived projects. Returning through Projects
 resets project search; reopening a project from the list resets task search, all task
 filters and due-range boundaries. Search tests cover these rules, filter intersections,
 edit re-evaluation, movement, unchanged summaries, and navigation resets.

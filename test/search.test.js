@@ -29,7 +29,7 @@ test('search intersects filters, folds ASCII only, preserves edits and resets on
     const projectIds = text => [...text.matchAll(/method="get" action="\/projects\/(\d+)"/g)].map(m => Number(m[1]));
     for (const name of ['Alpha Board', 'ALPHA  Board', 'Other', 'Ärea']) await post('/projects', { name });
     assert.deepEqual(projectIds(await html('/?search=%20alpha%20')), [1, 2]);
-    assert.deepEqual(projectIds(await html('/?search=alpha%20board')), [1]);
+    assert.deepEqual(projectIds(await html('/?search=alpha%20board')), [1, 2]);
     assert.deepEqual(projectIds(await html('/?search=%C3%A4rea')), []);
     assert.deepEqual(projectIds(await html('/?search=%20')), [1, 2, 3, 4]);
     await post('/projects/2/archive', { search: 'alpha' });
@@ -45,7 +45,7 @@ test('search intersects filters, folds ASCII only, preserves edits and resets on
     const selection = { search: '  ALPHA ', filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29' };
     const path = '/projects/1?' + new URLSearchParams(selection);
     assert.deepEqual(taskIds(await html(path)), [1, 4]);
-    assert.deepEqual(taskIds(await html('/projects/1?search=alpha%20two')), []);
+    assert.deepEqual(taskIds(await html('/projects/1?search=alpha%20two')), [2]);
     const follow = async (endpoint, values) => {
       const response = await post('/projects/1' + endpoint, { ...selection, ...values });
       assert.equal(response.status, 303);
