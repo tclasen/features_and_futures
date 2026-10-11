@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 
+// Inline the shared module when running browser code in the dependency-free DOM harness.
+async function appSource() {
+  const [dates, app] = await Promise.all([
+    readFile(new URL('../public/dates.js', import.meta.url), 'utf8'),
+    readFile(new URL('../public/app.js', import.meta.url), 'utf8'),
+  ]);
+  return dates.replace('export function', 'function') + app.replace(/^import .*;\n/, '');
+}
+
 // Only the DOM operations used by the app are needed for these interaction checks.
 class Element {
   children = [];
@@ -22,7 +31,7 @@ class Element {
 }
 
 test('project rename validates, updates the heading, preserves the URL and tasks, and reports save failures', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -84,7 +93,7 @@ test('project rename validates, updates the heading, preserves the URL and tasks
 });
 
 test('task UI validates titles, filters in creation order, and saves checkbox changes', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -235,7 +244,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
 });
 
 test('project UI filters, summarizes, archives, and restores rows in creation order', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -285,7 +294,7 @@ test('project UI filters, summarizes, archives, and restores rows in creation or
 });
 
 test('archived project UI disables task changes while keeping filters usable', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const elements = new Map();
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -341,7 +350,7 @@ test('archived project UI disables task changes while keeping filters usable', a
 });
 
 test('combined filters retain selections and creation order across task edits and page loads', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const savedTasks = [
     { id: 'a', title: 'Open low', completed: false, priority: 'Low' },
     { id: 'b', title: 'Done normal', completed: true, priority: 'Normal' },
@@ -462,7 +471,7 @@ test('priority filter has an accessible label and exactly the required ordered o
 });
 
 test('default priority saves without changing filters or existing rows and loads in archived and restored pages', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const project = { id: 'example', name: 'Example', archived: false, default_task_priority: 'Normal' };
   const savedTasks = [
     { id: 'one', title: 'Original', completed: false, priority: 'Normal' },
@@ -563,7 +572,7 @@ test('default task priority has an accessible label and exactly the required ord
 });
 
 test('due-date controls preserve filters, saved values, and archived restrictions across page loads', async () => {
-  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const source = await appSource();
   const tasks = [
     { id: 'a', title: 'First', completed: true, priority: 'High', due_date: '' },
     { id: 'b', title: 'Second', completed: false, priority: 'Low', due_date: '0001-01-01' },
@@ -651,4 +660,217 @@ test('due-date controls preserve filters, saved values, and archived restriction
   assert.equal(tasks[0].priority, 'High');
   element = await loadPage();
   assert.equal(rows()[0].children[4].children[0].value, '');
+});
+
+test('due ranges intersect filters inclusively, validate without changing membership, and remain usable when archived', async () => {
+  const source = await appSource();
+  const savedTasks = [
+    { id: 'a', title: 'Undated', completed: false, priority: 'Normal', due_date: '' },
+    { id: 'b', title: 'Early', completed: false, priority: 'Low', due_date: '0001-01-01' },
+    { id: 'c', title: 'From', completed: false, priority: 'High', due_date: '2024-02-29' },
+    { id: 'd', title: 'Inside', completed: true, priority: 'High', due_date: '2024-03-01' },
+    { id: 'e', title: 'Through', completed: true, priority: 'Normal', due_date: '2024-03-31' },
+    { id: 'f', title: 'Late', completed: false, priority: 'Low', due_date: '9999-12-31' },
+  ];
+  const original = structuredClone(savedTasks);
+  const loadPage = async archived => {
+    const elements = new Map();
+    const element = selector => {
+      if (!elements.has(selector)) elements.set(selector, new Element());
+      return elements.get(selector);
+    };
+    for (const form of ['#project-form', '#task-form', '#rename-form']) element(form).button = new Element();
+    element('#task-filter').value = 'all';
+    element('#priority-filter').value = 'all';
+    await runInNewContext(source, {
+      document: { querySelector: element, createElement: () => new Element() },
+      window: { location: { pathname: '/projects/example' } },
+      fetch: async (path, options) => {
+        assert.equal(options, undefined, 'Filtering must not write saved data');
+        return { ok: true, json: async () => path.endsWith('/tasks')
+          ? structuredClone(savedTasks)
+          : { id: 'example', name: 'Example', archived, default_task_priority: 'Normal' } };
+      },
+    });
+    return element;
+  };
+  for (const archived of [false, true]) {
+    const element = await loadPage(archived);
+    const titles = () => element('#task-list').children.map(row => row.children[1].textContent);
+    const apply = async (from, through) => {
+      element('#due-from').value = from;
+      element('#due-through').value = through;
+      await element('#due-range-form').dispatch('submit');
+    };
+    assert.equal(element('#due-from').value, '');
+    assert.equal(element('#due-through').value, '');
+    assert.deepEqual(titles(), original.map(task => task.title));
+    await apply(' 2024-02-29 ', '\t2024-03-31 ');
+    assert.deepEqual(titles(), ['From', 'Inside', 'Through']);
+    assert.equal(element('#due-from').value, '2024-02-29');
+    assert.equal(element('#due-through').value, '2024-03-31');
+    for (const completion of ['all', 'open', 'completed']) {
+      element('#task-filter').value = completion;
+      await element('#task-filter').dispatch('change');
+      for (const priority of ['all', 'Low', 'Normal', 'High']) {
+        element('#priority-filter').value = priority;
+        await element('#priority-filter').dispatch('change');
+        const expected = original.slice(2, 5).filter(task =>
+          (completion === 'all' || task.completed === (completion === 'completed')) &&
+          (priority === 'all' || task.priority === priority));
+        assert.deepEqual(titles(), expected.map(task => task.title));
+        assert.equal(element('#task-filter').value, completion);
+        assert.equal(element('#due-from').value, '2024-02-29');
+        assert.equal(element('#due-through').value, '2024-03-31');
+      }
+    }
+    element('#task-filter').value = 'all';
+    await element('#task-filter').dispatch('change');
+    element('#priority-filter').value = 'all';
+    await element('#priority-filter').dispatch('change');
+    const invalidDates = ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29',
+      '2023-02-29', '2024-04-31', '2024-00-01', '2024-13-01', '2024-01-00',
+      '2024-01-32', '2024-2-29', '2024-02-29T00:00:00Z', 'invalid'];
+    for (const date of invalidDates) {
+      for (const boundaries of [[date, ''], ['', date]]) {
+        await apply(...boundaries);
+        assert.equal(element('#due-range-alert').textContent, 'Due range must use valid YYYY-MM-DD dates');
+        assert.equal(element('#due-range-alert').hidden, false);
+        assert.deepEqual(titles(), ['From', 'Inside', 'Through']);
+        // Changing a combobox uses the applied range, even with invalid draft fields.
+        await element('#priority-filter').dispatch('change');
+        assert.deepEqual(titles(), ['From', 'Inside', 'Through']);
+      }
+    }
+    await apply('2024-04-01', '2024-03-31');
+    assert.equal(element('#due-range-alert').textContent, 'Due from must not be after Due through');
+    assert.deepEqual(titles(), ['From', 'Inside', 'Through']);
+    await apply('2024-02-29', '2024-02-29');
+    assert.deepEqual(titles(), ['From']);
+    assert.equal(element('#due-range-alert').hidden, true);
+    await apply('', '2024-02-29');
+    assert.deepEqual(titles(), ['Early', 'From']);
+    await apply('2024-03-31', '');
+    assert.deepEqual(titles(), ['Through', 'Late']);
+    await apply('0001-01-01', '9999-12-31');
+    assert.deepEqual(titles(), original.slice(1).map(task => task.title));
+    await apply('2000-02-29', '2000-02-29');
+    assert.deepEqual(titles(), []);
+    await apply(' \t ', '');
+    assert.deepEqual(titles(), original.map(task => task.title));
+    assert.ok(element('#task-list').children.every(row => row.children[0].disabled === archived));
+    assert.deepEqual(savedTasks, original);
+  }
+});
+
+test('task edits re-evaluate the applied range and preserve selections through creation and renames', async () => {
+  const source = await appSource();
+  const tasks = [
+    { id: 'a', title: 'First', completed: false, priority: 'High', due_date: '2024-03-01' },
+    { id: 'b', title: 'Second', completed: false, priority: 'High', due_date: '2024-03-15' },
+    { id: 'c', title: 'Third', completed: false, priority: 'High', due_date: '2024-03-31' },
+  ];
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  for (const form of ['#project-form', '#task-form', '#rename-form']) element(form).button = new Element();
+  element('#task-filter').value = 'all';
+  element('#priority-filter').value = 'all';
+  await runInNewContext(source, {
+    document: { querySelector: element, createElement: () => new Element() },
+    window: { location: { pathname: '/projects/example' } },
+    fetch: async (path, options) => {
+      let body;
+      if (!options) {
+        body = path.endsWith('/tasks') ? structuredClone(tasks)
+          : { id: 'example', name: 'Example', default_task_priority: 'Normal' };
+      } else {
+        const input = JSON.parse(options.body);
+        if (options.method === 'POST') {
+          body = { id: 'new', title: input.title, completed: false, priority: 'Normal', due_date: '' };
+          tasks.push(body);
+        } else if (path === '/api/projects/example') {
+          body = { id: 'example', ...input };
+        } else {
+          const task = tasks.find(task => path.endsWith(`/${task.id}`));
+          Object.assign(task, input);
+          body = { ...task };
+        }
+      }
+      return { ok: true, json: async () => body };
+    },
+  });
+  const rows = () => element('#task-list').children;
+  const titles = () => rows().map(row => row.children[1].textContent);
+  element('#task-filter').value = 'open';
+  await element('#task-filter').dispatch('change');
+  element('#priority-filter').value = 'High';
+  await element('#priority-filter').dispatch('change');
+  element('#due-from').value = '2024-03-01';
+  element('#due-through').value = '2024-03-31';
+  await element('#due-range-form').dispatch('submit');
+  const retained = () => {
+    assert.equal(element('#task-filter').value, 'open');
+    assert.equal(element('#priority-filter').value, 'High');
+    assert.equal(element('#due-from').value, '2024-03-01');
+    assert.equal(element('#due-through').value, '2024-03-31');
+  };
+  const rename = rows()[0].children[2];
+  rename.children[0].value = 'Renamed';
+  await rename.dispatch('submit');
+  retained();
+  assert.deepEqual(titles(), ['Renamed', 'Second', 'Third']);
+  assert.equal(rows()[0].children[4].children[0].value, '2024-03-01');
+  element('#new-project-name').value = 'Renamed project';
+  await element('#rename-form').dispatch('submit');
+  element('#default-task-priority').value = 'Low';
+  await element('#default-task-priority').dispatch('change');
+  element('#task-title').value = 'New task';
+  await element('#task-form').dispatch('submit');
+  retained();
+  assert.deepEqual(titles(), ['Renamed', 'Second', 'Third']);
+  // Unapplied text must not affect the membership used by edits.
+  element('#due-from').value = '9999-12-31';
+  const due = rows()[0].children[4];
+  due.children[0].value = '2024-04-01';
+  await due.dispatch('submit');
+  assert.deepEqual(titles(), ['Second', 'Third']);
+  element('#due-from').value = '2024-03-01';
+  retained();
+  const priority = rows()[0].children[3];
+  priority.value = 'Low';
+  await priority.dispatch('change');
+  assert.deepEqual(titles(), ['Third']);
+  retained();
+  const checkbox = rows()[0].children[0];
+  checkbox.checked = true;
+  await checkbox.dispatch('change');
+  assert.deepEqual(titles(), []);
+  retained();
+  element('#task-filter').value = 'completed';
+  await element('#task-filter').dispatch('change');
+  assert.deepEqual(titles(), ['Third']);
+  const clear = rows()[0].children[4];
+  clear.children[0].value = '';
+  await clear.dispatch('submit');
+  assert.deepEqual(titles(), []);
+  element('#due-from').value = '';
+  element('#due-through').value = '';
+  await element('#due-range-form').dispatch('submit');
+  assert.deepEqual(titles(), ['Third']);
+  assert.equal(tasks[0].due_date, '2024-04-01');
+  assert.equal(tasks[1].priority, 'Low');
+  assert.equal(tasks[2].completed, true);
+  assert.equal(tasks[2].due_date, '');
+});
+
+test('due-range textboxes and button have the required accessible labels', async () => {
+  const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  for (const [id, label] of [['due-from', 'Due from'], ['due-through', 'Due through']]) {
+    assert.ok(html.includes(`<label for="${id}">${label}</label>`));
+    assert.ok(html.includes(`<input id="${id}" type="text"`));
+  }
+  assert.match(html, /<button type="submit">Apply due range<\/button>/);
 });

@@ -59,6 +59,15 @@ and preserve the saved date. Dates are stored as calendar-day text without timez
 conversion. Saving dates leaves task identity, other fields, filters, and summaries
 unchanged. Archived projects disable both controls until restored.
 
+Each project page provides Due from and Due through textboxes and Apply due range.
+Applied boundaries are inclusive and intersect completion and priority filters.
+Blank boundaries are unbounded; undated tasks match only when both are blank.
+Invalid dates or reversed boundaries show an alert and retain the last applied range.
+Task edits immediately refresh matching rows. Renames, creation, and default changes
+retain all applied filters. Range controls work in archived projects, and reopening
+a project starts with empty boundaries. Calendar validation is shared with due-date
+saving so both use the same Gregorian rules without timezone conversions.
+
 The integration test uses an isolated database, exercises project and task validation,
 creation order, project isolation, and completion updates, and restarts the server to
 verify persistence, database migration, archive/restore, and completion summaries.
@@ -79,3 +88,7 @@ Due-date checks cover empty defaults and migration, leap years and calendar boun
 invalid-value rejection, trimming, clearing, independent values, unchanged task data
 and summaries, retained filters, rename preservation, archived controls, and restart
 persistence.
+Due-range checks cover inclusive and one-sided boundaries, undated tasks, every
+completion/priority combination, invalid calendar dates and reversed ranges,
+unapplied text, edit-triggered membership changes, selection retention, archived
+filtering, empty initial boundaries, and accessible controls.

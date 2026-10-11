@@ -1,3 +1,4 @@
+import { validDueDate } from './public/dates.js';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -53,6 +54,7 @@ const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const assets = new Map([
   ['/', ['public/index.html', 'text/html; charset=utf-8']],
+  ['/dates.js', ['public/dates.js', 'text/javascript; charset=utf-8']],
   ['/app.js', ['public/app.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['public/style.css', 'text/css; charset=utf-8']],
 ]);
@@ -83,16 +85,6 @@ function taskResult(task) {
 
 function projectResult(project) {
   return { ...project, archived: Boolean(project.archived) };
-}
-
-function validDueDate(value) {
-  if (value === '') return true;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  if (year < 1 || month < 1 || month > 12) return false;
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day >= 1 && day <= daysInMonth[month - 1];
 }
 
 const server = http.createServer(async (request, response) => {
