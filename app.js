@@ -399,6 +399,44 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
+document.querySelector('#import-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const jsonInput = document.querySelector('#project-json');
+  const nameInput = document.querySelector('#imported-project-name');
+  const importAlert = document.querySelector('#import-alert');
+  const importedName = nameInput.value.trim();
+  if (!importedName) {
+    importAlert.textContent = 'Project name is required';
+    importAlert.hidden = false;
+    nameInput.focus();
+    return;
+  }
+  let documentValue;
+  try { documentValue = JSON.parse(jsonInput.value); } catch {
+    importAlert.textContent = 'Invalid project JSON';
+    importAlert.hidden = false;
+    return;
+  }
+  const response = await fetch('/api/projects/import', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ document: documentValue, importedName }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    importAlert.textContent = error.error || 'Invalid project JSON';
+    importAlert.hidden = false;
+    return;
+  }
+  const project = await response.json();
+  importAlert.hidden = true;
+  taskFilter.value = 'all';
+  priorityFilter.value = 'all';
+  appliedTaskQuery = '';
+  taskSearchInput.value = '';
+  history.pushState({}, '', `/projects/${project.id}`);
+  await showRoute();
+});
+
 document.querySelector('#back-button').addEventListener('click', () => {
   appliedProjectQuery = '';
   projectSearchInput.value = '';
