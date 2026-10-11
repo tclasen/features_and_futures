@@ -1,6 +1,6 @@
 const app = document.querySelector('#app');
 const projectViewState = new Map();
-const asciiSearch = value => value.replace(/[A-Z]/g, character => character.toLowerCase());
+const normalizeSearch = value => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, character => character.toLowerCase());
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -101,7 +101,7 @@ async function render() {
       const items = await request(`/api/projects/${encodeURIComponent(match[1])}/tasks`);
       tasks.replaceChildren();
       for (const task of items) {
-        if (!asciiSearch(task.title).includes(asciiSearch(taskQuery))) continue;
+        if (!normalizeSearch(task.title).includes(normalizeSearch(taskQuery))) continue;
         if ((filter.value === 'Open' && task.completed) || (filter.value === 'Completed' && !task.completed)) continue;
         if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
         if ((appliedFrom || appliedThrough) && (!task.dueDate ||
@@ -231,9 +231,9 @@ async function render() {
   const renderProjects = async () => {
     const projects = await request(`/api/projects?archived=${filter.value === 'Archived'}`);
     list.replaceChildren();
-    const query = asciiSearch(projectQuery);
+    const query = normalizeSearch(projectQuery);
     for (const project of projects) {
-      if (!asciiSearch(project.name).includes(query)) continue;
+      if (!normalizeSearch(project.name).includes(query)) continue;
       const row = element('div', { 'data-testid': 'project-row', class: 'project-row' });
       row.append(element('span', {}, project.name));
       row.append(element('span', { 'data-testid': 'project-summary' }, `${project.completedCount}/${project.totalCount} completed`));
