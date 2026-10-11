@@ -29,3 +29,5 @@ L028 monitoring at task020/b011: four rejected submissions have two source trees
 L062 recovery verifier adopted: `scripts/verify-checkpoint-recoveries.py` derives accepted identities from events, restores both task019/task020 before-reversion committed/native archives and working files, and passes its no-overwrite guard. Use alongside closed-prefix originals verification for extra recovery snapshots. Evidence: `preflight/checkpoint-recovery-audits/verified-f3f36d91d5cce8ba`.
 
 L062 publication preparation: both legacy-schema and stale-count failures are retained before snapshot creation. Derive the actual full ref set and directly bind new-run indexes; corrected immutable scan is live, not yet verified. Evidence: `preflight/publication-controller-failures/`.
+
+L062 publication recovery verified: computed7092ref scan and direct284new-index binding pass; exact a2f3c271a publication verifies568neworiginalrefs and6524earlierheads unchanged. Snapshot removed; both failed preparations retained. Evidence: `reports/publication-checkpoint020.json` and `preflight/publication-checkpoint020/`.
