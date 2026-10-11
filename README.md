@@ -14,7 +14,9 @@ Projects, tasks, completion, and archive state persist in that SQLite file.
 Existing databases are migrated automatically.
 Use Project filter to view Active or Archived projects; archive or restore from each row.
 Rows summarize completed/total tasks. Archived projects remain readable with task filtering,
-but cannot create tasks or change completion.
+but cannot create tasks, change completion, or rename.
+Use New project name and Rename project on active project pages to rename without
+changing the URL, creation order, or tasks. Names are trimmed and must not be blank.
 Open an active project to create tasks, toggle completion, or filter All/Open/Completed. `GET /health` returns
 `{"status":"ok"}`.
 
@@ -26,6 +28,6 @@ npm test
 
 The integration tests use temporary databases and verify project/task validation,
 creation order, escaped names and titles, navigation, project ownership, task
-filters and completion, archive/restore, summaries, database migration, health,
+filters and completion, archive/restore, summaries, renaming and identity preservation, database migration, health,
 and persistence across server restarts.
 Temporary files are removed afterward.
