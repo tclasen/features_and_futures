@@ -79,3 +79,11 @@ tasks; move controls also disable when there are no eligible destinations.
 Upgrading preserves each project's current task order and starts remembering
 positions from that point onward. Historical memberships before the upgrade
 cannot be reconstructed.
+Project search and Task search apply literal substring queries with ASCII letters
+matched without case sensitivity. Only surrounding query whitespace is trimmed;
+internal whitespace remains significant. Blank queries match all rows. Project
+search intersects Active/Archived, and task search intersects completion, priority,
+and due-range filters without changing stored data or all-task summaries. Search
+and other applied filters are retained through edits and moves, and search remains
+usable in archived projects. Queries are page state in the URL; opening a project
+from the list or returning through Projects starts with an empty query.
