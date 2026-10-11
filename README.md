@@ -19,8 +19,7 @@ and High. Tasks must match both filters and any applied due range, and appear in
 either filter preserves the other selection; task edits immediately update the
 matching rows and retain both selections. Opening a project from the list starts
 with both filters set to All. Filters remain usable in archived projects and do
-not change saved data or completion summaries. Tasks belong only to the project
-where they were created.
+not change saved data or completion summaries. Tasks belong to one project at a time.
 
 The project list starts with Active projects. Use Project filter to view Archived
 projects and restore them. Archived project pages show their tasks and allow
@@ -66,6 +65,15 @@ and retain the previously applied range and matching rows. Range controls remain
 usable in archived projects. Opening a project from the list starts with both
 boundaries empty. Filters never change saved tasks or completion summaries.
 
+Each task row has Destination project and Move task controls. Destinations are
+other active projects, using their current names in project creation order.
+Moving appends the task to the destination and preserves its identity, title,
+completion, priority, and due date. The source page stays open with its filters
+and applied range retained; both project summaries reflect the move. New tasks
+append after existing and moved tasks. Moves persist across restarts. Archived
+projects cannot send or receive tasks. Move controls are disabled in archived
+projects and when no eligible destination exists.
+
 Run the integration checks:
 
 ```sh
@@ -80,4 +88,5 @@ priority defaults and independence, project default migration and inheritance,
 combined completion and priority filtering,
 due-date calendar validation and clearing, selection preservation through edits
 and validation, inclusive due-range intersections and invalid-range preservation,
-and persistence after server restarts.
+task moves with append ordering, destination eligibility, filter retention and
+data preservation, and persistence after server restarts.
