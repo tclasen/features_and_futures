@@ -51,6 +51,7 @@ const server = http.createServer(async (req, res) => {
     if (!project) return json(404, { error: 'Not found' });
     return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\r\n?/g, '\n'), deleted: Boolean(t.deleted) })) } });
   }
+  if (req.method === 'GET' && url.pathname === '/api/directory') return json(200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, COALESCE(t.due_date,'') AS dueDate, COALESCE(t.notes,'') AS notes, t.deleted, p.name AS projectName, p.archived FROM projects p JOIN tasks t ON t.project_id=p.id JOIN task_project_positions pos ON pos.task_id=t.id AND pos.project_id=p.id ORDER BY p.created_at,p.rowid,pos.position,t.created_at,t.rowid`).all());
   if (req.method === 'GET' && url.pathname === '/api/projects') return json(200, getProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
@@ -237,7 +238,7 @@ const server = http.createServer(async (req, res) => {
     const project = getProject.get(decodeURIComponent(match[1]));
     return project ? json(200, project) : json(404, { error: 'Not found' });
   }
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || url.pathname.startsWith('/projects/'))) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return res.end(page);
   }
