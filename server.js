@@ -36,6 +36,7 @@ const listProjects = db.prepare(`${projectSelect} ORDER BY p.id`);
 const findProject = db.prepare(`${projectSelect} WHERE p.id = ?`);
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const projectJson = project => ({ ...project, archived: Boolean(project.archived) });
 
 const assets = new Map([
@@ -119,10 +120,22 @@ const server = http.createServer(async (request, response) => {
       if (!project) return json(response, 404, { error: 'Project not found' });
       if (request.method === 'PATCH') {
         const body = await readJson(request);
-        if (typeof body?.archived !== 'boolean') {
-          return json(response, 400, { error: 'Project archive state must be a boolean' });
+        if (Object.hasOwn(body ?? {}, 'name')) {
+          if (Object.hasOwn(body, 'archived')) {
+            return json(response, 400, { error: 'Rename and archive must be separate changes' });
+          }
+          if (project.archived) {
+            return json(response, 409, { error: 'Archived project cannot be changed' });
+          }
+          const name = typeof body.name === 'string' ? body.name.trim() : '';
+          if (!name) return json(response, 400, { error: 'Project name is required' });
+          renameProject.run(name, projectId);
+        } else {
+          if (typeof body?.archived !== 'boolean') {
+            return json(response, 400, { error: 'Project archive state must be a boolean' });
+          }
+          archiveProject.run(Number(body.archived), projectId);
         }
-        archiveProject.run(Number(body.archived), projectId);
       }
       return json(response, 200, projectJson(findProject.get(projectId)));
     }

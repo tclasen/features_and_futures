@@ -17,10 +17,14 @@ or Completed. Each project has its own tasks; filtering does not change saved da
 The project list defaults to Active; switch to Archived to open or restore archived
 projects. Archived projects retain their tasks but cannot create tasks or change
 completion until restored. Project rows summarize completed tasks out of all tasks.
+Active project pages also let you rename a project. Names are trimmed and must not
+be blank; renaming preserves the URL, creation order, tasks, and summary. Archived
+projects cannot be renamed until restored. Renamed names persist across restarts.
 
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated HTTP and persistence tests with `npm test`. Tests use a temporary
 SQLite database and verify validation, creation order, project lookup, page/asset
 routes, task ownership, completion updates, archive/restore restrictions, summaries,
-legacy database migration, and persistence through process restarts.
+rename validation and identity preservation, legacy database migration, and
+persistence through process restarts.

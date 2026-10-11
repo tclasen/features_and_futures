@@ -61,6 +61,49 @@ function projectRow(project, onArchive) {
   return row;
 }
 
+function renderRename(project, heading) {
+  const form = element('form');
+  const label = element('label', 'New project name');
+  label.htmlFor = 'new-project-name';
+  const input = element('input');
+  input.id = 'new-project-name';
+  input.name = 'name';
+  input.type = 'text';
+  input.disabled = project.archived;
+  const submit = element('button', 'Rename project');
+  submit.type = 'submit';
+  submit.disabled = project.archived;
+  form.append(label, input, submit);
+  app.append(form);
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (project.archived) return;
+    if (!input.value.trim()) {
+      showError('Project name is required');
+      return;
+    }
+    submit.disabled = true;
+    try {
+      const updated = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: input.value }),
+      });
+      Object.assign(project, updated);
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = '';
+      app.querySelector('[role="alert"]')?.remove();
+      input.focus();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = project.archived;
+    }
+  });
+}
+
 async function renderTasks(project) {
   const endpoint = `/api/projects/${project.id}/tasks`;
   const form = element('form');
@@ -162,8 +205,10 @@ async function render() {
     app.append(projectsButton());
     const project = await request(`/api/projects/${match[1]}`);
     document.title = `${project.name} · Workboard`;
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     if (project.archived) app.append(element('p', 'Archived project'));
+    renderRename(project, heading);
     await renderTasks(project);
     return;
   }
