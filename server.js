@@ -34,6 +34,7 @@ const listProjects = db.prepare(`
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -132,13 +133,21 @@ function projectList(error = '', enteredName = '', filter = 'Active') {
     </section>`);
 }
 
-function projectPage(project, filter = 'All', error = '', enteredTitle = '') {
+function projectPage(project, filter = 'All', error = '', enteredTitle = '', enteredName = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(`<h1>${escapeHtml(project.name)}</h1>
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${project.archived ? '<p>Archived project</p>' : ''}
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form action="/projects/${project.id}/rename" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="new-project-name">New project name</label>
+      <div class="create">
+        <input id="new-project-name" name="name" value="${escapeHtml(enteredName)}" autocomplete="off"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form action="/projects/${project.id}/tasks" method="post">
       <input type="hidden" name="filter" value="${filter}">
       <label for="task-title">Task title</label>
@@ -208,6 +217,27 @@ const server = http.createServer(async (request, response) => {
       const project = findProject.get(match[1]);
       if (project) {
         html(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+        return;
+      }
+    }
+    const renameMatch = /^\/projects\/(\d+)\/rename$/.exec(path);
+    if (request.method === 'POST' && renameMatch) {
+      const project = findProject.get(renameMatch[1]);
+      if (project) {
+        if (project.archived) {
+          html(response, 403, projectPage(project, 'All', 'Archived project'));
+          return;
+        }
+        const form = await readForm(request);
+        const filter = taskFilter(form.get('filter'));
+        const enteredName = form.get('name') || '';
+        const name = enteredName.trim();
+        if (!name) {
+          html(response, 200, projectPage(project, filter, 'Project name is required', '', enteredName));
+          return;
+        }
+        renameProject.run(name, project.id);
+        redirect(response, `/projects/${project.id}?filter=${filter}`);
         return;
       }
     }
