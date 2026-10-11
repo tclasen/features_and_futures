@@ -20,6 +20,7 @@ function page(title, content) {
     input { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid #8a97aa; border-radius: 6px; }
     button { font: inherit; font-weight: 600; color: white; background: #2456b5; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; }
     button:hover { background: #1a428e; }
+    button:disabled { background: #738098; cursor: not-allowed; }
     :focus-visible { outline: 3px solid #dd9c17; outline-offset: 3px; }
     .create button { margin-top: 12px; }
     .projects { list-style: none; padding: 0; margin: 28px 0 0; }
@@ -28,7 +29,7 @@ function page(title, content) {
     .project form { flex-shrink: 0; }
     [role="alert"] { color: #9c2020; padding: 12px; background: #fff0f0; border-radius: 6px; }
     .empty { color: #596779; margin-top: 28px; }
-    .task-create, .task-filter { margin-top: 24px; }
+    .task-create, .task-filter, .project-filter { margin-top: 24px; }
     select { font: inherit; padding: 8px; }
     .tasks { list-style: none; padding: 0; }
     .task { padding: 16px 0; border-top: 1px solid #dce2ec; }
@@ -41,20 +42,32 @@ function page(title, content) {
 </html>`;
 }
 
-export function renderProjects(projects, error = '') {
+export function renderProjects(projects, filter = 'Active', error = '') {
   return page('Projects', `
     <h1>Workboard</h1>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects">
+      <input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
     </form>
+    <form class="project-filter" method="get" action="/">
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
+        ${['Active', 'Archived'].map((option) => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <noscript><button type="submit">Apply filter</button></noscript>
+    </form>
     ${projects.length ? `<ul class="projects">${projects.map((project) => `
       <li class="project" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
+        <span data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
         <form method="get" action="/projects/${escapeHtml(project.id)}">
           <button type="submit">Open project</button>
+        </form>
+        <form method="post" action="/projects/${escapeHtml(project.id)}/${project.archived ? 'restore' : 'archive'}">
+          <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
         </form>
       </li>`).join('')}</ul>` : '<p class="empty">No projects yet.</p>'}
   `);
@@ -64,6 +77,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
   const projectPath = `/projects/${escapeHtml(project.id)}`;
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
+    ${project.archived ? '<p>Archived project</p>' : ''}
     <form method="get" action="/">
       <button type="submit">Projects</button>
     </form>
@@ -72,7 +86,7 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
       <input type="hidden" name="filter" value="${escapeHtml(filter)}">
       <label for="task-title">Task title</label>
       <input id="task-title" name="title" type="text">
-      <button type="submit">Create task</button>
+      <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
     </form>
     <form class="task-filter" method="get" action="${projectPath}">
       <label for="task-filter">Task filter</label>
@@ -86,10 +100,10 @@ export function renderProject(project, tasks = [], filter = 'All', error = '') {
         <form method="post" action="${projectPath}/tasks/${escapeHtml(task.id)}">
           <input type="hidden" name="filter" value="${escapeHtml(filter)}">
           <label>
-            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''} onchange="this.form.requestSubmit()">
+            <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
             <span>${escapeHtml(task.title)}</span>
           </label>
-          <noscript><button type="submit">Save completion</button></noscript>
+          <noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save completion</button></noscript>
         </form>
       </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
   `);
