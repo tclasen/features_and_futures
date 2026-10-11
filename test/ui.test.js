@@ -127,6 +127,13 @@ test('archived project is read-only while task filters still work', async () => 
   const list = app.querySelector('ul');
   assert.equal(list.children.length, 2);
   assert.ok(list.children.every((row) => row.children[0].disabled));
+  for (const row of list.children) {
+    const rename = row.children[2];
+    assert.equal(rename.children[1].disabled, true);
+    assert.equal(rename.children[2].disabled, true);
+    rename.children[1].value = 'Forbidden';
+    await rename.fire('submit');
+  }
   const filter = app.querySelector('select');
   for (const [value, title] of [['Open', 'Open task'], ['Completed', 'Done task']]) {
     filter.value = value;
@@ -207,6 +214,37 @@ test('project task UI: labels, validation, completion, and filters in creation o
   filter.value = 'All';
   await filter.fire('change');
   assert.deepEqual(titles(), ['First', 'Second']);
+  checkbox = list.children[0].children[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  filter.value = 'Completed';
+  await filter.fire('change');
+  let rename = list.children[0].children[2];
+  assert.equal(rename.children[0].textContent, 'New task title');
+  assert.equal(rename.children[0].htmlFor, rename.children[1].id);
+  assert.equal(rename.children[1].type, 'text');
+  assert.equal(rename.children[1].disabled, false);
+  assert.equal(rename.children[2].textContent, 'Rename task');
+  assert.equal(rename.children[2].disabled, false);
+  for (const title of ['', ' \t\n ']) {
+    rename.children[1].value = title;
+    await rename.fire('submit');
+    assert.equal(app.querySelector('[role="alert"]').textContent, 'Task title is required');
+    assert.deepEqual(titles(), ['First']);
+  }
+  rename.children[1].value = '  Renamed task  ';
+  await rename.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]'), undefined);
+  assert.deepEqual(titles(), ['Renamed task']);
+  assert.equal(filter.value, 'Completed');
+  assert.equal(list.children[0].children[0].checked, true);
+  assert.equal(list.children[0].children[0].attributes['aria-label'], 'Complete Renamed task');
+  filter.value = 'Open';
+  await filter.fire('change');
+  assert.deepEqual(titles(), ['Second']);
+  filter.value = 'All';
+  await filter.fire('change');
+  assert.deepEqual(titles(), ['Renamed task', 'Second']);
 });
 
 test('renaming validates, updates the heading, and preserves the route and task UI', async () => {

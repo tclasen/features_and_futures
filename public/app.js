@@ -169,15 +169,17 @@ async function showTasks(projectId, archived) {
       checkbox.checked = task.completed;
       checkbox.disabled = archived || saving.has(task.id);
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
-      checkbox.addEventListener('change', async () => {
+      async function saveTask(changes) {
         saving.add(task.id);
         checkbox.disabled = true;
+        renameInput.disabled = true;
+        renameButton.disabled = true;
         app.querySelector('[role="alert"]')?.remove();
         try {
           const saved = await api(`${endpoint}/${task.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: checkbox.checked }),
+            body: JSON.stringify(changes),
           });
           Object.assign(task, saved);
         } catch (error) {
@@ -187,8 +189,33 @@ async function showTasks(projectId, archived) {
           saving.delete(task.id);
           renderTasks();
         }
+      }
+      checkbox.addEventListener('change', () => saveTask({ completed: checkbox.checked }));
+      const renameForm = element('form');
+      const renameLabel = element('label', 'New task title');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      const renameInput = element('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.name = 'title';
+      renameInput.type = 'text';
+      renameInput.disabled = archived || saving.has(task.id);
+      const renameButton = element('button', 'Rename task');
+      renameButton.type = 'submit';
+      renameButton.disabled = archived || saving.has(task.id);
+      renameForm.append(renameLabel, renameInput, renameButton);
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (archived || saving.has(task.id)) return;
+        app.querySelector('[role="alert"]')?.remove();
+        const title = renameInput.value.trim();
+        if (!title) {
+          showAlert('Task title is required');
+          renameInput.focus();
+          return;
+        }
+        await saveTask({ title });
       });
-      row.append(checkbox, element('span', task.title));
+      row.append(checkbox, element('span', task.title), renameForm);
       return row;
     }));
   }
