@@ -27,26 +27,59 @@ export function createTaskStore(database) {
       COMMIT;
     `);
   }
+  // tasks.position is the current position; history reserves positions even while
+  // tasks are elsewhere. Seed only missing history to preserve existing order.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS task_project_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id),
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL,
+      PRIMARY KEY (task_id, project_id),
+      UNIQUE (project_id, position)
+    );
+    INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+      SELECT id, project_id, position FROM tasks;
+  `);
   const list = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
   const get = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? AND id = ?');
   const insert = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))`);
+  const rememberCreatedPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks WHERE id = ?`);
+  const rememberDestinationPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+    VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?))
+    ON CONFLICT (task_id, project_id) DO NOTHING`);
   const getProject = database.prepare('SELECT * FROM projects WHERE id = ?');
   const move = database.prepare(`UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+    position = (SELECT position FROM task_project_positions WHERE project_id = ? AND task_id = ?)
     WHERE project_id = ? AND id = ?`);
   const update = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
   const updateTitle = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
   const updatePriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
   const updateDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
   const taskValue = (row) => row ? { ...row, completed: Boolean(row.completed) } : undefined;
+  function transaction(operation) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
 
   return {
     list: (projectId) => list.all(projectId).map(taskValue),
     create(projectId, title, priority = 'Normal') {
       const trimmedTitle = typeof title === 'string' ? title.trim() : '';
       if (!trimmedTitle) throw new Error('Task title is required');
-      return taskValue(get.get(projectId, insert.run(projectId, trimmedTitle, priority, projectId).lastInsertRowid));
+      return transaction(() => {
+        const taskId = insert.run(projectId, trimmedTitle, priority, projectId).lastInsertRowid;
+        rememberCreatedPosition.run(taskId);
+        return taskValue(get.get(projectId, taskId));
+      });
     },
     move(projectId, taskId, destinationProjectId) {
       const fail = (status, message) => {
@@ -57,22 +90,17 @@ export function createTaskStore(database) {
       if (!Number.isSafeInteger(destinationProjectId) || destinationProjectId < 1) {
         fail(400, 'Destination project must be a valid project ID');
       }
-      database.exec('BEGIN IMMEDIATE');
-      try {
+      return transaction(() => {
         const source = getProject.get(projectId);
         const destination = getProject.get(destinationProjectId);
         if (!source || !destination) fail(404, 'Project not found');
         if (source.archived || destination.archived) fail(409, 'Archived projects cannot move tasks');
         if (source.id === destination.id) fail(400, 'Destination must be another project');
         if (!get.get(projectId, taskId)) fail(404, 'Task not found');
-        move.run(destinationProjectId, destinationProjectId, projectId, taskId);
-        const task = taskValue(get.get(destinationProjectId, taskId));
-        database.exec('COMMIT');
-        return task;
-      } catch (error) {
-        database.exec('ROLLBACK');
-        throw error;
-      }
+        rememberDestinationPosition.run(taskId, destinationProjectId, destinationProjectId);
+        move.run(destinationProjectId, destinationProjectId, taskId, projectId, taskId);
+        return taskValue(get.get(destinationProjectId, taskId));
+      });
     },
     setCompleted(projectId, taskId, completed) {
       if (typeof completed !== 'boolean') throw new Error('Completion must be a boolean');

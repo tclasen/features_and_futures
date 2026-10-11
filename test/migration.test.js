@@ -43,14 +43,14 @@ test('move ordering migrates legacy ID order and survives repeated moves and res
     store.close();
     store = openProjects(path);
     assert.deepEqual(store.tasks.list(2), [...originalDestination, originalSource[0]]);
-    // A migrated older task appends even when its ID is smaller than every destination task.
+    // Returning restores the position seeded during migration.
     store.tasks.move(2, 10, 1);
-    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0]]);
+    assert.deepEqual(store.tasks.list(1), originalSource);
     const newTask = store.tasks.create(1, 'After moved task');
-    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0], newTask]);
+    assert.deepEqual(store.tasks.list(1), [...originalSource, newTask]);
     store.close();
     store = openProjects(path);
-    assert.deepEqual(store.tasks.list(1), [originalSource[1], originalSource[0], newTask]);
+    assert.deepEqual(store.tasks.list(1), [...originalSource, newTask]);
     assert.deepEqual(store.tasks.list(2), originalDestination);
     assert.equal(store.get(1).completed_count, 1);
     assert.equal(store.get(1).total_count, 3);

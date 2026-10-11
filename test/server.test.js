@@ -462,7 +462,7 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     assert.equal(appended.priority, 'Low');
     assert.deepEqual(await listTasks(second.id), [...destinationAfterMove, appended]);
     assert.equal((await moveTask(second.id, savedDateTask.id, first.id)).status, 200);
-    assert.deepEqual(await listTasks(first.id), [...sourceAfterMove, savedDateTask]);
+    assert.deepEqual(await listTasks(first.id), [savedDateTask, ...sourceAfterMove]);
     // Empty dates are preserved too, and moving to an empty project is supported.
     const blankDateTask = sourceAfterMove[0];
     assert.equal(blankDateTask.due_date, '');
@@ -470,7 +470,7 @@ test('projects, tasks, renames, priorities, archive state, and summaries persist
     await stop();
     await start();
     assert.deepEqual(await listTasks(third.id), [blankDateTask]);
-    assert.deepEqual(await listTasks(first.id), [...sourceAfterMove.slice(1), savedDateTask]);
+    assert.deepEqual(await listTasks(first.id), [savedDateTask, ...sourceAfterMove.slice(1)]);
     assert.deepEqual(await listTasks(second.id), [...destinationBeforeMove, appended]);
   } finally {
     await stop();
