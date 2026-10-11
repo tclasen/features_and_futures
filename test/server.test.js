@@ -326,6 +326,74 @@ test('projects and tasks validate, filter, archive, restore, rename, and persist
     assert.equal(await tasksPage(), prioritizedDetail);
     await post(priorityPath, { priority: 'Normal' });
     assert.equal(await tasksPage(), prioritizedDetail.replace(highOptions, normalOptions));
+
+    // Combine both filters, keeping creation order and independent selections.
+    await post(`${detailPath}/tasks`, { title: 'Third high task' });
+    await post(`${detailPath}/tasks/3/priority`, { priority: 'High' });
+    await post(`${detailPath}/tasks`, { title: 'Fourth normal task' });
+    const expectedTasks = [
+      { title: 'Priority preserved', completed: true, priority: 'Normal' },
+      { title: 'Renamed open task', completed: false, priority: 'Low' },
+      { title: 'Third high task', completed: false, priority: 'High' },
+      { title: 'Fourth normal task', completed: false, priority: 'Normal' },
+    ];
+    function visibleTitles(html) {
+      return [...html.matchAll(/data-testid="task-row">\s*<span>([^<]+)<\/span>/g)].map((match) => match[1]);
+    }
+    function assertSelections(html, filter, priority) {
+      assert.match(html, new RegExp(`id="task-filter"[^>]*>[\\s\\S]*?<option selected>${filter}</option>`));
+      const options = html.match(/id="priority-filter"[^>]*>([\s\S]*?)<\/select>/)[1].trim();
+      assert.equal(options, ['All', 'Low', 'Normal', 'High'].map((option) =>
+        `<option${option === priority ? ' selected' : ''}>${option}</option>`).join(''));
+    }
+    const summaryBeforeFilters = await (await fetch(base)).text();
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const html = await tasksPage(`?filter=${filter}&priorityFilter=${priority}`);
+        assertSelections(html, filter, priority);
+        assert.deepEqual(visibleTitles(html), expectedTasks.filter((task) =>
+          (filter === 'All' || task.completed === (filter === 'Completed'))
+          && (priority === 'All' || task.priority === priority)).map((task) => task.title));
+      }
+    }
+    assert.equal(await (await fetch(base)).text(), summaryBeforeFilters);
+    assertSelections(await tasksPage(), 'All', 'All');
+    const selection = { filter: 'Open', priorityFilter: 'High' };
+    const changedPriority = await post(`${detailPath}/tasks/3/priority`, { ...selection, priority: 'Normal' });
+    assert.equal(changedPriority.headers.get('location'), `${detailPath}?filter=Open&priorityFilter=High`);
+    let filtered = await tasksPage('?filter=Open&priorityFilter=High');
+    assertSelections(filtered, 'Open', 'High');
+    assert.deepEqual(visibleTitles(filtered), []);
+    await post(`${detailPath}/tasks/3/priority`, { ...selection, priority: 'High' });
+    const renamedFiltered = await post(`${detailPath}/tasks/3/rename`, { ...selection, title: '  High renamed  ' });
+    assert.equal(renamedFiltered.headers.get('location'), changedPriority.headers.get('location'));
+    filtered = await tasksPage('?filter=Open&priorityFilter=High');
+    assertSelections(filtered, 'Open', 'High');
+    assert.deepEqual(visibleTitles(filtered), ['High renamed']);
+    assert.match(filtered, /aria-label="Complete High renamed"/);
+    const invalidRename = await post(`${detailPath}/tasks/3/rename`, { ...selection, title: ' ' });
+    assert.equal(invalidRename.status, 400);
+    assertSelections(await invalidRename.text(), 'Open', 'High');
+    const changedCompletion = await post(`${detailPath}/tasks/3/completion`, { ...selection, completed: '1' });
+    assert.equal(changedCompletion.headers.get('location'), changedPriority.headers.get('location'));
+    filtered = await tasksPage('?filter=Open&priorityFilter=High');
+    assertSelections(filtered, 'Open', 'High');
+    assert.deepEqual(visibleTitles(filtered), []);
+    const completedHigh = await tasksPage('?filter=Completed&priorityFilter=High');
+    assert.deepEqual(visibleTitles(completedHigh), ['High renamed']);
+    assert.match(await (await fetch(base)).text(), /project-summary">2\/4 completed/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage('?filter=Completed&priorityFilter=High'), completedHigh);
+    await post(`${detailPath}/archive`, {});
+    const archivedHigh = await tasksPage('?filter=Completed&priorityFilter=High');
+    assertSelections(archivedHigh, 'Completed', 'High');
+    assert.deepEqual(visibleTitles(archivedHigh), ['High renamed']);
+    assert.match(archivedHigh, /name="priority" disabled/);
+    assert.doesNotMatch(archivedHigh, /id="(?:task|priority)-filter"[^>]*disabled/);
+    assert.deepEqual(visibleTitles(await tasksPage('?filter=Open&priorityFilter=Normal')), ['Fourth normal task']);
+    await post(`${detailPath}/restore`, {});
+    assert.equal(await tasksPage('?filter=Completed&priorityFilter=High'), completedHigh);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
