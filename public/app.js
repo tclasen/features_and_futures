@@ -14,7 +14,12 @@ function element(tag, className, text) {
   return node;
 }
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+}
+
 async function renderList() {
+  let appliedSearch = '';
   app.replaceChildren();
   const title = element('h1', '', 'Workboard');
   app.append(title);
@@ -30,6 +35,16 @@ async function renderList() {
   }
   filterLabel.append(filter);
   app.append(filterLabel);
+
+  const searchForm = element('form', 'project-search-form');
+  const searchInput = element('input');
+  searchInput.type = 'text';
+  searchInput.autocomplete = 'off';
+  searchInput.setAttribute('aria-label', 'Project search');
+  const searchButton = element('button', 'secondary', 'Search projects');
+  searchButton.type = 'submit';
+  searchForm.append(searchInput, searchButton);
+  app.append(searchForm);
 
   const form = element('form', 'create-form');
   const label = element('label', '', 'Project name');
@@ -53,7 +68,8 @@ async function renderList() {
   async function renderProjects() {
     const projects = await request('/api/projects');
     list.replaceChildren();
-    for (const project of projects.filter((item) => Boolean(item.archived) === (filter.value === 'archived'))) {
+    for (const project of projects.filter((item) => Boolean(item.archived) === (filter.value === 'archived') &&
+      asciiLower(item.name).includes(asciiLower(appliedSearch)))) {
     const row = element('article', 'project-row');
     row.dataset.testid = 'project-row';
     row.append(element('span', 'project-name', project.name));
@@ -81,6 +97,11 @@ async function renderList() {
   }
   app.append(list);
   filter.addEventListener('change', renderProjects);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedSearch = searchInput.value.trim();
+    renderProjects();
+  });
   await renderProjects();
 
   form.addEventListener('submit', async (event) => {
@@ -153,6 +174,7 @@ async function renderProject(id, viewState = {}) {
         taskFilter: filter.value,
         priorityFilter: priorityFilter.value,
         appliedRange,
+        taskSearch: appliedTaskSearch,
       });
     } catch (error) {
       renameAlert.textContent = error.message;
@@ -207,6 +229,18 @@ async function renderProject(id, viewState = {}) {
   alert.hidden = true;
   form.append(label, input, submit, alert);
   app.append(form);
+
+  let appliedTaskSearch = viewState.taskSearch || '';
+  const taskSearchForm = element('form', 'task-search-form');
+  const taskSearchInput = element('input');
+  taskSearchInput.type = 'text';
+  taskSearchInput.autocomplete = 'off';
+  taskSearchInput.setAttribute('aria-label', 'Task search');
+  taskSearchInput.value = appliedTaskSearch;
+  const taskSearchButton = element('button', 'secondary', 'Search tasks');
+  taskSearchButton.type = 'submit';
+  taskSearchForm.append(taskSearchInput, taskSearchButton);
+  app.append(taskSearchForm);
 
   const filterLabel = element('label', 'filter-label', 'Task filter');
   filterLabel.htmlFor = 'task-filter';
@@ -279,6 +313,7 @@ async function renderProject(id, viewState = {}) {
     const visible = tasks.filter((task) =>
       (filter.value === 'all' || (filter.value === 'completed') === Boolean(task.completed)) &&
       (priorityFilter.value === 'all' || (task.priority || 'Normal').toLowerCase() === priorityFilter.value) &&
+      asciiLower(task.title).includes(asciiLower(appliedTaskSearch)) &&
       ((!appliedRange.from && !appliedRange.through) || (Boolean(task.dueDate) &&
         (!appliedRange.from || task.dueDate >= appliedRange.from) &&
         (!appliedRange.through || task.dueDate <= appliedRange.through))));
@@ -432,6 +467,11 @@ async function renderProject(id, viewState = {}) {
 
   filter.addEventListener('change', renderTasks);
   priorityFilter.addEventListener('change', renderTasks);
+  taskSearchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedTaskSearch = taskSearchInput.value.trim();
+    renderTasks();
+  });
   dueRangeForm.addEventListener('submit', (event) => {
     event.preventDefault();
     alert.hidden = true;
