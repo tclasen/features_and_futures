@@ -33,6 +33,7 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   FROM projects p ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -154,6 +155,11 @@ const page = `<!doctype html>
       app.append(element('h1', project.name));
       if (project.archived) app.append(element('p', 'Archived project'));
       const alert = element('p', '', { role: 'alert', hidden: '' });
+      const renameForm = element('form');
+      const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', autocomplete: 'off' });
+      const renameButton = element('button', 'Rename project', { type: 'submit' });
+      if (project.archived) { renameInput.disabled = true; renameButton.disabled = true; }
+      renameForm.append(renameInput, renameButton);
       const form = element('form');
       const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', autocomplete: 'off' });
       const submit = element('button', 'Create task', { type: 'submit' });
@@ -165,7 +171,7 @@ const page = `<!doctype html>
       for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
       filterLabel.append(filter);
       const list = element('section', undefined, { class: 'project-list', 'aria-label': 'Tasks' });
-      app.append(alert, form, controls, list);
+      app.append(alert, renameForm, form, controls, list);
       controls.append(filterLabel);
       let refreshSequence = 0;
       async function refresh() {
@@ -196,6 +202,19 @@ const page = `<!doctype html>
         }
       }
       filter.addEventListener('change', () => refresh().catch(showLoadError));
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = renameInput.value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; renameInput.focus(); return; }
+        alert.hidden = true;
+        const renameResponse = await fetch('/api/projects/' + encodeURIComponent(id), {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+        });
+        if (!renameResponse.ok) { alert.textContent = 'Could not rename project'; alert.hidden = false; return; }
+        const renamedProject = await renameResponse.json();
+        app.querySelector('h1').textContent = renamedProject.name;
+        renameInput.value = '';
+      });
       form.addEventListener('submit', async event => {
         event.preventDefault();
         const title = input.value.trim();
@@ -266,6 +285,20 @@ const server = createServer(async (request, response) => {
     return;
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (request.method === 'PATCH' && projectMatch) {
+    const projectId = Number(projectMatch[1]);
+    const body = await readJson(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
+    const result = renameProject.run(name, projectId);
+    if (!result.changes) {
+      const project = getProject.get(projectId);
+      sendJson(response, project ? 409 : 404, { error: project ? 'Archived projects cannot be renamed' : 'Project not found' });
+      return;
+    }
+    sendJson(response, 200, getProject.get(projectId));
+    return;
+  }
   if (request.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
     if (!project) {
