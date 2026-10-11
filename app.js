@@ -67,8 +67,10 @@ function renderProjects(projects) {
 }
 
 function includesSearch(value, query) {
-  const asciiLower = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  return asciiLower(value).includes(asciiLower(query));
+  const normalize = (text) => text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 async function showList() {
