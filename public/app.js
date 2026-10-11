@@ -43,6 +43,7 @@ async function showProject(projectId) {
   const renameInput = element('input');
   renameInput.type = 'text';
   renameInput.name = 'newProjectName';
+  renameInput.disabled = project.archived;
   renameLabel.append(renameInput);
   const renameButton = element('button', { text: 'Rename project' });
   renameButton.type = 'submit';
