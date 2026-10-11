@@ -26,6 +26,7 @@ project and task renaming with stable identity, ownership, completion, and archi
 priority defaults and migration, independent priority edits, combined completion/priority
 filtering, retained filter selections through edits, project default priority migration
 and inheritance without changing existing tasks, Gregorian due-date validation and clearing,
-due-date migration and independence, archive protection, and persistence
+due-date migration and independence, inclusive due-range filtering intersecting completion
+and priority, range validation and retention across edits, archive protection, and persistence
 across server restarts. Test databases are
 created beneath `data/` and removed afterward.
