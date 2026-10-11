@@ -101,6 +101,8 @@ async function renderProject(id) {
     return renderList();
   }
   const project = await response.json();
+  const projectListResponse = await fetch('/api/projects');
+  const projectChoices = projectListResponse.ok ? await projectListResponse.json() : [];
   const view = element('section', undefined, { id: 'project-view' });
   view.append(element('h1', project.name));
   if (project.archived) view.append(element('p', 'Archived project'));
@@ -310,6 +312,26 @@ async function renderProject(id) {
         drawTasks();
       });
       row.append(dueDateForm, dueDateAlert);
+      const destinations = projectChoices.filter(choice => !choice.archived && choice.id !== project.id);
+      const moveForm = element('form');
+      const destination = element('select', undefined, { 'aria-label': 'Destination project' });
+      for (const choice of destinations) destination.append(element('option', choice.name, { value: choice.id }));
+      const moveButton = element('button', 'Move task', { type: 'submit' });
+      destination.disabled = project.archived || destinations.length === 0;
+      moveButton.disabled = project.archived || destinations.length === 0;
+      moveForm.append(destination, moveButton);
+      moveForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const result = await fetch(`/api/projects/${id}/tasks/${task.id}/move`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destination.value) }),
+        });
+        if (result.ok) {
+          taskData = taskData.filter(item => item.id !== task.id);
+          drawTasks();
+        }
+      });
+      row.append(moveForm);
       tasks.append(row);
     }
   };

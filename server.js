@@ -33,6 +33,10 @@ try { database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT
 try { database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+database.exec('UPDATE tasks SET sort_order = id WHERE sort_order IS NULL');
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
@@ -43,8 +47,9 @@ const findProject = database.prepare(`SELECT p.id, p.name, p.archived, p.default
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
   FROM projects p WHERE p.id = ?`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = database.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = database.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?");
@@ -138,11 +143,26 @@ const server = createServer(async (request, response) => {
       if (typeof body.title !== 'string' || !body.title.trim()) return sendJson(response, 400, { error: 'Task title is required' });
       const title = body.title.trim();
       const priority = findProject.get(projectId).defaultTaskPriority;
-      const result = createTask.run(projectId, title, priority);
+      const result = createTask.run(projectId, title, priority, projectId);
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority });
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (request.method === 'POST' && moveMatch) {
+    const sourceId = Number(moveMatch[1]);
+    const taskId = Number(moveMatch[2]);
+    let body;
+    try { body = await readRequestJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request' }); }
+    const source = findProject.get(sourceId);
+    const destinationId = Number(body.destinationProjectId);
+    const destination = findProject.get(destinationId);
+    if (!source || source.archived || !destination || destination.archived || sourceId === destinationId) {
+      return sendJson(response, 400, { error: 'Invalid destination project' });
+    }
+    const result = moveTask.run(destinationId, destinationId, taskId, sourceId);
+    return result.changes ? sendJson(response, 200, { ok: true }) : sendJson(response, 404, { error: 'Task not found' });
+  }
   if (request.method === 'PATCH' && taskMatch) {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
