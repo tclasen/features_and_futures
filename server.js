@@ -48,7 +48,10 @@ async function readBody(request) {
 }
 
 async function serveAsset(pathname, response) {
-  const requestedPath = pathname === '/' ? '/index.html' : pathname;
+  // Project pages are client-rendered, so direct visits and reloads must load
+  // the application shell before the browser can request the project data.
+  const isProjectPage = /^\/projects\/\d+\/?$/.test(pathname);
+  const requestedPath = pathname === '/' || isProjectPage ? '/index.html' : pathname;
   const relativePath = normalize(requestedPath).replace(/^([/\\]|\.\.(?:[/\\]|$))+/, '');
   if (!relativePath || relativePath.includes('..')) {
     response.writeHead(400).end();
