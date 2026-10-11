@@ -157,7 +157,7 @@
       const filterLabel = element('label', 'Task filter', app);
       const filter = element('select', undefined, filterLabel);
       filter.setAttribute('aria-label', 'Task filter');
-      for (const value of ['All', 'Open', 'Completed']) element('option', value, filter);
+      for (const value of ['All', 'Open', 'Completed', 'Deleted']) element('option', value, filter);
       const priorityFilterLabel = element('label', 'Priority filter', app);
       const priorityFilter = element('select', undefined, priorityFilterLabel);
       priorityFilter.setAttribute('aria-label', 'Priority filter');
@@ -189,6 +189,8 @@
         const destinations = await request('/api/projects?filter=Active');
         if (renderVersion !== taskRenderVersion) return;
         for (const task of tasks) {
+          const deleted = Boolean(task.deleted);
+          if (filter.value === 'Deleted' ? !deleted : deleted) continue;
           if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
           if (!normalizeSearch(task.title).includes(normalizeSearch(appliedTaskSearch))) continue;
           if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
@@ -202,10 +204,10 @@
           renameInput.type = 'text';
           renameInput.value = task.title;
           renameInput.setAttribute('aria-label', 'New task title');
-          renameInput.disabled = project.archived;
+          renameInput.disabled = project.archived || deleted;
           const renameButton = element('button', 'Rename task', renameForm);
           renameButton.type = 'submit';
-          renameButton.disabled = project.archived;
+          renameButton.disabled = project.archived || deleted;
           renameForm.addEventListener('submit', async event => {
             event.preventDefault();
             const result = await request(`/api/tasks/${task.id}/rename`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: renameInput.value }) });
@@ -216,11 +218,11 @@
           const checkbox = element('input', undefined, row);
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
-          checkbox.disabled = project.archived;
+          checkbox.disabled = project.archived || deleted;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           const priority = element('select', undefined, row);
           priority.setAttribute('aria-label', 'Task priority');
-          priority.disabled = project.archived;
+          priority.disabled = project.archived || deleted;
           for (const value of ['Low', 'Normal', 'High']) {
             const option = element('option', value, priority);
             option.value = value;
@@ -239,10 +241,10 @@
           dueInput.type = 'text';
           dueInput.value = task.dueDate || '';
           dueInput.setAttribute('aria-label', 'Task due date');
-          dueInput.disabled = project.archived;
+          dueInput.disabled = project.archived || deleted;
           const dueButton = element('button', 'Save due date', dueForm);
           dueButton.type = 'submit';
-          dueButton.disabled = project.archived;
+          dueButton.disabled = project.archived || deleted;
           dueForm.addEventListener('submit', async event => {
             event.preventDefault();
             const result = await request(`/api/tasks/${task.id}/due-date`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: dueInput.value }) });
@@ -254,10 +256,10 @@
           const notesInput = element('textarea', undefined, notesForm);
           notesInput.setAttribute('aria-label', 'Task notes');
           notesInput.value = task.notes || '';
-          notesInput.disabled = project.archived;
+          notesInput.disabled = project.archived || deleted;
           const notesButton = element('button', 'Save notes', notesForm);
           notesButton.type = 'submit';
-          notesButton.disabled = project.archived;
+          notesButton.disabled = project.archived || deleted;
           notesForm.addEventListener('submit', async event => {
             event.preventDefault();
             const result = await request(`/api/tasks/${task.id}/notes`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notesInput.value }) });
@@ -274,8 +276,15 @@
           }
           const moveButton = element('button', 'Move task', moveForm);
           moveButton.type = 'submit';
-          moveButton.disabled = project.archived || destinationSelect.options.length === 0;
+          moveButton.disabled = project.archived || deleted || destinationSelect.options.length === 0;
           destinationSelect.disabled = moveButton.disabled;
+          const lifecycle = element('button', deleted ? 'Restore task' : 'Delete task', row);
+          lifecycle.type = 'button';
+          lifecycle.disabled = project.archived;
+          lifecycle.addEventListener('click', async () => {
+            await request(`/api/tasks/${task.id}/${deleted ? 'restore' : 'delete'}`, { method: 'PATCH' });
+            await renderTasks();
+          });
           moveForm.addEventListener('submit', async event => {
             event.preventDefault();
             const result = await request(`/api/tasks/${task.id}/move`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: Number(destinationSelect.value) }) });
