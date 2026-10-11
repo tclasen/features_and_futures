@@ -140,6 +140,23 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     first.total = 2;
     first.completed = 1;
     second.total = 1;
+    const rename = name => fetch(server.url + `/api/projects/${first.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    for (const name of ['', ' \t\n ', null, 123]) {
+      const response = await rename(name);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Project name is required' });
+      assert.deepEqual(await get(`/api/projects/${first.id}`), first);
+    }
+    const renamed = await rename('  Renamed project  ');
+    assert.equal(renamed.status, 200);
+    first.name = 'Renamed project';
+    assert.deepEqual(await renamed.json(), first);
+    assert.deepEqual(await get('/api/projects'), [existing, first, second]);
+    assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
     const setArchived = archived => fetch(server.url + `/api/projects/${first.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -153,6 +170,8 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     assert.deepEqual(await get('/api/projects'), [existing, first, second]);
     assert.equal((await createTask(firstTasks, 'Blocked')).status, 409);
     assert.equal((await completeTask(`${firstTasks}/${firstTask.id}`, false)).status, 409);
+    assert.equal((await rename('Blocked rename')).status, 409);
+    assert.deepEqual(await get(`/api/projects/${first.id}`), first);
     assert.deepEqual(await get(firstTasks), [firstTask, secondTask]);
     for (const path of ['/', `/projects/${first.id}`]) {
       const response = await fetch(server.url + path);
@@ -162,6 +181,8 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
       assert.match(page, /<label for="project-name">Project name<\/label>/);
       assert.match(page, /Create project/);
       assert.match(page, /role="alert"/);
+      assert.match(page, /<label for="new-project-name">New project name<\/label>/);
+      assert.match(page, /Rename project/);
     }
     await server.stop();
     server = undefined;
@@ -175,6 +196,10 @@ test('projects and tasks validate, stay isolated, and survive a restart', async 
     first.archived = false;
     assert.equal(restored.status, 200);
     assert.deepEqual(await restored.json(), first);
+    const renamedAfterRestoration = await rename('  Restored and renamed  ');
+    assert.equal(renamedAfterRestoration.status, 200);
+    first.name = 'Restored and renamed';
+    assert.deepEqual(await renamedAfterRestoration.json(), first);
     const reopenedAfterRestart = await completeTask(`${firstTasks}/${firstTask.id}`, false);
     assert.equal(reopenedAfterRestart.status, 200);
     firstTask.completed = false;

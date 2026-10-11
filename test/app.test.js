@@ -21,6 +21,67 @@ class Element {
   async dispatch(name) { await this.listeners[name]({ preventDefault() {} }); }
 }
 
+test('project rename validates, updates the heading, preserves the URL and tasks, and reports save failures', async () => {
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, new Element());
+    return elements.get(selector);
+  };
+  for (const form of ['#project-form', '#task-form', '#rename-form']) {
+    element(form).button = new Element();
+  }
+  element('#task-filter').value = 'all';
+  const location = { pathname: '/projects/example' };
+  const document = { querySelector: element, createElement: () => new Element() };
+  const writes = [];
+  let failNextWrite = false;
+  await runInNewContext(source, {
+    document,
+    window: { location },
+    fetch: async (path, options) => {
+      if (!options) {
+        const body = path.endsWith('/tasks')
+          ? [{ id: 'task', title: 'Existing task', completed: true }]
+          : { id: 'example', name: 'Original', archived: false };
+        return { ok: true, json: async () => body };
+      }
+      writes.push({ path, ...options });
+      if (failNextWrite) return { ok: false, json: async () => ({ error: 'Save failed' }) };
+      return { ok: true, json: async () => ({ id: 'example', name: JSON.parse(options.body).name }) };
+    },
+  });
+  assert.equal(element('#rename-form').hidden, false);
+  assert.equal(element('#rename-form').button.disabled, false);
+  assert.equal(element('#new-project-name').disabled, false);
+  for (const name of ['', ' \t ']) {
+    element('#new-project-name').value = name;
+    await element('#rename-form').dispatch('submit');
+    assert.equal(element('#rename-alert').textContent, 'Project name is required');
+    assert.equal(element('#rename-alert').hidden, false);
+    assert.equal(element('#project-heading').textContent, 'Original');
+  }
+  assert.equal(writes.length, 0);
+  element('#new-project-name').value = '  Renamed project  ';
+  await element('#rename-form').dispatch('submit');
+  assert.equal(writes[0].path, '/api/projects/example');
+  assert.equal(writes[0].method, 'PATCH');
+  assert.deepEqual(JSON.parse(writes[0].body), { name: 'Renamed project' });
+  assert.equal(element('#project-heading').textContent, 'Renamed project');
+  assert.equal(document.title, 'Renamed project · Workboard');
+  assert.equal(location.pathname, '/projects/example');
+  assert.equal(location.href, undefined);
+  assert.equal(element('#rename-alert').hidden, true);
+  assert.equal(element('#task-list').children[0].children[1].textContent, 'Existing task');
+  assert.equal(element('#task-list').children[0].children[0].checked, true);
+  failNextWrite = true;
+  element('#new-project-name').value = 'Unsaved';
+  await element('#rename-form').dispatch('submit');
+  assert.equal(element('#project-heading').textContent, 'Renamed project');
+  assert.equal(element('#rename-alert').textContent, 'Save failed');
+  assert.equal(element('#rename-form').button.disabled, false);
+});
+
 test('task UI validates titles, filters in creation order, and saves checkbox changes', async () => {
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   const elements = new Map();
@@ -30,6 +91,7 @@ test('task UI validates titles, filters in creation order, and saves checkbox ch
   };
   element('#project-form').button = new Element();
   element('#task-form').button = new Element();
+  element('#rename-form').button = new Element();
   element('#task-filter').value = 'all';
   const savedTasks = [
     { id: 'one', title: 'First task', completed: false },
@@ -122,6 +184,7 @@ test('project UI filters, summarizes, archives, and restores rows in creation or
   };
   element('#project-form').button = new Element();
   element('#task-form').button = new Element();
+  element('#rename-form').button = new Element();
   element('#project-filter').value = 'active';
   const projects = [
     { id: 'one', name: 'First', archived: false, completed: 1, total: 2 },
@@ -171,6 +234,7 @@ test('archived project UI disables task changes while keeping filters usable', a
   };
   element('#project-form').button = new Element();
   element('#task-form').button = new Element();
+  element('#rename-form').button = new Element();
   element('#task-filter').value = 'all';
   let writes = 0;
   await runInNewContext(source, {
@@ -188,6 +252,11 @@ test('archived project UI disables task changes while keeping filters usable', a
   const rows = () => element('#task-list').children;
   assert.equal(element('#archived-message').hidden, false);
   assert.equal(element('#task-form').button.disabled, true);
+  assert.equal(element('#rename-form').hidden, false);
+  assert.equal(element('#rename-form').button.disabled, true);
+  assert.equal(element('#new-project-name').disabled, true);
+  element('#new-project-name').value = 'Blocked rename';
+  await element('#rename-form').dispatch('submit');
   assert.equal(rows().length, 2);
   assert.ok(rows().every(row => row.children[0].disabled));
   element('#task-filter').value = 'completed';

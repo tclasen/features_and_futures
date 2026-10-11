@@ -5,6 +5,9 @@ const input = document.querySelector('#project-name');
 const alert = document.querySelector('#alert');
 const list = document.querySelector('#project-list');
 const projectFilter = document.querySelector('#project-filter');
+const renameForm = document.querySelector('#rename-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameAlert = document.querySelector('#rename-alert');
 const taskForm = document.querySelector('#task-form');
 const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
@@ -71,6 +74,39 @@ function renderProjects() {
 }
 
 projectFilter.addEventListener('change', renderProjects);
+
+function showRenameAlert(message) {
+  renameAlert.textContent = message;
+  renameAlert.hidden = !message;
+}
+
+renameForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!projectId || archived) return;
+  const name = renameInput.value.trim();
+  if (!name) {
+    showRenameAlert('Project name is required');
+    return;
+  }
+  const button = renameForm.querySelector('button');
+  button.disabled = true;
+  showRenameAlert('');
+  try {
+    const project = await request(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    document.querySelector('#project-heading').textContent = project.name;
+    document.title = `${project.name} · Workboard`;
+    renameInput.value = '';
+    renameInput.focus();
+  } catch (error) {
+    showRenameAlert(error.message);
+  } finally {
+    button.disabled = archived;
+  }
+});
 
 function showTaskAlert(message) {
   taskAlert.textContent = message;
@@ -188,6 +224,9 @@ async function initialize() {
       document.querySelector('#archived-message').hidden = !archived;
       document.querySelector('#project-heading').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      renameForm.hidden = false;
+      renameInput.disabled = archived;
+      renameForm.querySelector('button').disabled = archived;
       tasks = await request(`/api/projects/${projectId}/tasks`);
       renderTasks();
       document.querySelector('#task-controls').hidden = false;
