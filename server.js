@@ -51,6 +51,10 @@ const server = http.createServer(async (req, res) => {
     if (!project) return json(404, { error: 'Not found' });
     return json(200, { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority, tasks: exportTasks.all(id).map(t => ({ title: t.title, completed: Boolean(t.completed), priority: t.priority || 'Normal', dueDate: t.dueDate || '', notes: String(t.notes || '').replace(/\r\n?/g, '\n'), deleted: Boolean(t.deleted) })) } });
   }
+  if (req.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, COALESCE(t.due_date,'') AS dueDate, COALESCE(t.notes,'') AS notes, t.deleted, p.id AS projectId, p.name AS projectName, p.archived FROM projects p JOIN tasks t ON t.project_id=p.id JOIN task_project_positions pos ON pos.task_id=t.id AND pos.project_id=p.id ORDER BY p.created_at,p.rowid,pos.position,t.created_at,t.rowid`).all();
+    return json(200, rows.map(t => ({...t, completed:Boolean(t.completed), deleted:Boolean(t.deleted), archived:Boolean(t.archived)})));
+  }
   if (req.method === 'GET' && url.pathname === '/api/projects') return json(200, getProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
   const archiveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/(archive|restore)$/);
   if (req.method === 'POST' && archiveMatch) {
