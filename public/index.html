@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #1d2939; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 64px auto; padding: 0 24px; }
+    h1 { margin: 0 0 28px; font-size: 2rem; }
+    form { display: flex; gap: 12px; align-items: end; margin-bottom: 24px; }
+    label { display: grid; gap: 7px; font-weight: 600; flex: 1; }
+    input { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #aab4c0; border-radius: 6px; font: inherit; }
+    button { border: 0; border-radius: 6px; padding: 11px 16px; background: #245bd6; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1949b6; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin: 10px 0; background: white; border: 1px solid #e1e6ed; border-radius: 8px; }
+    .project-name { font-weight: 600; overflow-wrap: anywhere; }
+    [role="alert"] { color: #b42318; margin: 0 0 16px; }
+    .back { margin-bottom: 24px; }
+    @media (max-width: 520px) { main { margin-top: 32px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function renderList() {
+      app.innerHTML = '<h1>Workboard</h1><form id="create-form"><label>Project name<input name="name" type="text" autocomplete="off"></label><button type="submit">Create project</button></form><div id="alert" role="alert" hidden></div><section id="projects" aria-label="Projects"></section>';
+      const form = document.querySelector('#create-form');
+      const input = form.elements.name;
+      const alert = document.querySelector('#alert');
+      async function load() {
+        const projects = await fetch('/api/projects').then(r => r.json());
+        document.querySelector('#projects').innerHTML = projects.map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHTML(project.name)}</span><button type="button" data-id="${escapeHTML(project.id)}">Open project</button></div>`).join('');
+        document.querySelectorAll('#projects button').forEach(button => button.addEventListener('click', () => { location.href = `/projects/${encodeURIComponent(button.dataset.id)}`; }));
+      }
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+        const response = await fetch('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+        if (!response.ok) { alert.textContent = 'Project name is required'; alert.hidden = false; return; }
+        input.value = ''; alert.textContent = ''; alert.hidden = true;
+        await load();
+      });
+      await load();
+    }
+    async function renderDetail(id) {
+      const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
+      if (!response.ok) { app.innerHTML = '<h1>Project not found</h1><button class="back" type="button">Projects</button>'; }
+      else { const project = await response.json(); app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHTML(project.name)}</h1>`; }
+      document.querySelector('.back').addEventListener('click', () => { location.href = '/'; });
+    }
+    const match = location.pathname.match(/^\/projects\/([^/]+)\/?$/);
+    if (match) renderDetail(decodeURIComponent(match[1])); else renderList();
+  </script>
+</body>
+</html>
