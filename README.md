@@ -19,12 +19,12 @@ npm test
 `GET /health` returns HTTP 200 with `{"status":"ok"}`. Projects are created through
 the home page and can be opened individually. Blank names are rejected; names
 are trimmed and displayed safely as text. Each project has its own tasks, with
-completion checkboxes and an All/Open/Completed filter. Blank task titles are
+completion checkboxes and an All/Open/Completed/Deleted filter. Blank task titles are
 rejected and titles are trimmed. Pages use standard HTML forms; JavaScript
 submits completion and filter changes automatically. Project URLs work on reload.
 The project list starts with Active projects and can show Archived projects.
 Archiving makes a project's tasks read-only; restoring permits edits again.
-Each project row shows the completed count out of all its tasks.
+Each project row shows the completed count out of its live tasks.
 Active projects can be renamed with surrounding whitespace trimmed. Blank names
 are rejected. Renaming preserves the project's URL, list position, tasks, and
 completion state, and the new name persists across restarts. Archived projects
@@ -85,7 +85,7 @@ runs of ASCII spaces and horizontal tabs in both queries and names/titles match
 as one space. This matching normalization never rewrites stored names or titles,
 and other internal whitespace remains literal. Blank queries match all rows. Project
 search intersects Active/Archived, and task search intersects completion, priority,
-and due-range filters without changing stored data or all-task summaries. Search
+and due-range filters without changing stored data or live-task summaries. Search
 and other applied filters are retained through edits and moves, and search remains
 usable in archived projects. Queries are page state in the URL; opening a project
 from the list or returning through Projects starts with an empty query.
@@ -96,3 +96,13 @@ remembered-order restoration. Notes do not affect title search or other filters,
 and saving retains all applied filters and summary counts. Archived projects
 display notes with editing disabled and reject direct saves until restored.
 Existing databases initialize notes to empty without changing other task data.
+
+Live task rows provide Delete task; deleted tasks appear only under Deleted,
+intersected with the same priority, due range, and title search filters. Deletion
+preserves every saved field and remembered project position while removing the
+task from completion summaries. Restore task returns it to its reserved position,
+even after newer tasks are created or the project default changes. Both actions
+retain all applied filters. Deleted tasks are read-only and cannot move until
+restored; archived projects disable deletion and restoration as well. The server
+rejects direct edits to deleted tasks. Deletion state persists across restarts,
+and database upgrades preserve existing tasks as live.
