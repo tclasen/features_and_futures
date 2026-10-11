@@ -12,13 +12,17 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))
   )
 `);
 // Upgrade databases created by earlier Workboard tasks.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 }
 database.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
@@ -63,7 +67,7 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     const filter = url.searchParams.get('filter') === 'Archived' ? 1 : 0;
     const projects = database.prepare(`
-      SELECT p.id, p.name, p.archived,
+      SELECT p.id, p.name, p.archived, p.default_task_priority AS defaultTaskPriority,
         COUNT(t.id) AS totalCount,
         SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -75,6 +79,27 @@ const server = createServer(async (request, response) => {
       completedCount: Number(project.completedCount ?? 0),
     }));
     send(response, 200, 'application/json; charset=utf-8', JSON.stringify(projects));
+    return;
+  }
+
+  const projectDefaultRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (projectDefaultRoute && request.method === 'PATCH') {
+    try {
+      const payload = await readJson(request);
+      if (!['Low', 'Normal', 'High'].includes(payload.priority)) {
+        send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid default task priority' }));
+        return;
+      }
+      const result = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?')
+        .run(payload.priority, Number(projectDefaultRoute[1]));
+      if (result.changes === 0) {
+        send(response, 404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project not found' }));
+        return;
+      }
+      send(response, 200, 'application/json; charset=utf-8', JSON.stringify({ priority: payload.priority }));
+    } catch {
+      send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+    }
     return;
   }
 
@@ -164,9 +189,10 @@ const server = createServer(async (request, response) => {
         send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
         return;
       }
-      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      const defaultPriority = database.prepare('SELECT default_task_priority FROM projects WHERE id = ?').get(projectId).default_task_priority;
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, defaultPriority);
       send(response, 201, 'application/json; charset=utf-8', JSON.stringify({
-        id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: 'Normal',
+        id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: defaultPriority,
       }));
     } catch {
       send(response, 400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));

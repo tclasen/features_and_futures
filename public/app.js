@@ -78,6 +78,39 @@ async function showProject(projectId) {
   });
   app.append(renameForm);
 
+  const defaultPriorityLabel = element('label', { text: 'Default task priority', className: 'filter-label' });
+  const defaultPriority = element('select');
+  defaultPriority.setAttribute('aria-label', 'Default task priority');
+  defaultPriority.disabled = project.archived;
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', { text: value });
+    option.value = value;
+    option.selected = value === project.defaultTaskPriority;
+    defaultPriority.append(option);
+  }
+  defaultPriority.addEventListener('change', async () => {
+    const previousPriority = project.defaultTaskPriority;
+    defaultPriority.disabled = true;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/default-priority`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ priority: defaultPriority.value }),
+      });
+      if (!response.ok) throw new Error('Could not update default task priority');
+      project.defaultTaskPriority = defaultPriority.value;
+      alert.hidden = true;
+    } catch {
+      defaultPriority.value = previousPriority;
+      alert.textContent = 'Could not update default task priority';
+      alert.hidden = false;
+    } finally {
+      defaultPriority.disabled = project.archived;
+    }
+  });
+  defaultPriorityLabel.append(defaultPriority);
+  app.append(defaultPriorityLabel);
+
   const form = element('form');
   const label = element('label', { text: 'Task title' });
   const input = element('input');
