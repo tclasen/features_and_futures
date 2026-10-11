@@ -40,6 +40,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+// Soft deletion retains all fields and reserved per-project positions.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 // Legacy ordering column is retained for migration compatibility.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id;');
@@ -59,10 +63,10 @@ INSERT INTO task_positions (project_id, task_id, position)
   SELECT project_id, id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY position, id) FROM tasks;
 COMMIT;`);
 }
-const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
+const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
   FROM tasks t JOIN task_positions p ON p.project_id = t.project_id AND p.task_id = t.id
   WHERE t.project_id = ? ORDER BY p.position`);
-const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? AND id = ?');
+const findTask = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const rememberPosition = db.prepare(`INSERT INTO task_positions (project_id, task_id, position)
   SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?
@@ -85,10 +89,11 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? A
 const prioritizeTask = db.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const setDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 const setNotes = db.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
-const taskJson = task => ({ ...task, completed: Boolean(task.completed) });
+const setDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
+const taskJson = task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) });
 const projectSelect = `SELECT p.id, p.name, p.archived, p.default_priority,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) AS total,
-  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND completed = 1) AS completed
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND deleted = 0) AS total,
+  (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND deleted = 0 AND completed = 1) AS completed
   FROM projects p`;
 const listProjects = db.prepare(`${projectSelect} ORDER BY p.id`);
 const findProject = db.prepare(`${projectSelect} WHERE p.id = ?`);
@@ -151,7 +156,9 @@ const server = http.createServer(async (request, response) => {
       const source = findProject.get(projectId);
       if (!source) return json(response, 404, { error: 'Project not found' });
       if (source.archived) return json(response, 409, { error: 'Archived project cannot be changed' });
-      if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+      const task = findTask.get(projectId, taskId);
+      if (!task) return json(response, 404, { error: 'Task not found' });
+      if (task.deleted) return json(response, 409, { error: 'Deleted task cannot be moved' });
       const destinationId = body?.destination_project_id;
       if (!Number.isSafeInteger(destinationId) || destinationId === projectId) {
         return json(response, 400, { error: 'Destination must be another active project' });
@@ -189,13 +196,22 @@ const server = http.createServer(async (request, response) => {
         return json(response, 201, taskJson(findTask.get(projectId, Number(result.lastInsertRowid))));
       }
       if (taskId !== null && request.method === 'PATCH') {
-        if (!findTask.get(projectId, taskId)) return json(response, 404, { error: 'Task not found' });
+        const task = findTask.get(projectId, taskId);
+        if (!task) return json(response, 404, { error: 'Task not found' });
         const body = await readJson(request);
-        const changes = ['title', 'completed', 'priority', 'due_date', 'notes'].filter(key => Object.hasOwn(body ?? {}, key));
+        const changes = ['title', 'completed', 'priority', 'due_date', 'notes', 'deleted'].filter(key => Object.hasOwn(body ?? {}, key));
         if (changes.length > 1) {
           return json(response, 400, { error: 'Task edits must be separate changes' });
         }
-        if (changes[0] === 'notes') {
+        if (task.deleted && changes[0] !== 'deleted') {
+          return json(response, 409, { error: 'Deleted task cannot be changed until restored' });
+        }
+        if (changes[0] === 'deleted') {
+          if (typeof body.deleted !== 'boolean') {
+            return json(response, 400, { error: 'Task deletion state must be a boolean' });
+          }
+          setDeleted.run(Number(body.deleted), projectId, taskId);
+        } else if (changes[0] === 'notes') {
           if (typeof body.notes !== 'string') {
             return json(response, 400, { error: 'Task notes must be text' });
           }

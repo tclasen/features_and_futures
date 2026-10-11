@@ -25,6 +25,10 @@ class Element {
   setAttribute(name, value) { this.attributes[name] = value; }
   addEventListener(name, listener) { this.listeners[name] = listener; }
   querySelector() { return null; }
+  querySelectorAll(selector) {
+    const tags = selector.split(',').map(tag => tag.trim());
+    return descendants(this).filter(node => tags.includes(node.tagName));
+  }
 }
 
 async function setup(fetch, keepProjectList = false) {
@@ -349,7 +353,7 @@ test('archived projects keep both filters usable and task editing disabled', asy
   assert.deepEqual(ui.titles(), ['Normal done']);
   const controls = descendants(ui.rows()[0]).filter(node =>
     ['input', 'button', 'select', 'textarea'].includes(node.tagName));
-  assert.equal(controls.length, 10);
+  assert.equal(controls.length, 11);
   assert.ok(controls.every(control => control.disabled));
   assert.equal(JSON.stringify(ui.tasks), original);
   assert.equal(ui.requests.length, 0);
@@ -647,4 +651,96 @@ test('notes controls preserve literal text and filters without adding search mat
       assert.equal(other.requests.length, 0);
     }
   }
+});
+
+test('deletion and restoration retain filters, fields, and reserved ordering', async () => {
+  const ui = await projectUI(false, ['2028-02-29', '', '', '2028-02-29'], [
+    { id: 2, name: 'Destination', archived: false },
+  ]);
+  const click = async (title, action) => {
+    const row = ui.rows().find(row => row.children[0].textContent === title);
+    const button = row.children.find(node => node.textContent === action);
+    assert.equal(button.disabled, false);
+    await button.listeners.click();
+  };
+  assert.deepEqual(Array.from(ui.byId('task-filter').children, option => option.textContent),
+    ['All', 'Open', 'Completed', 'Deleted']);
+  ui.tasks[0].notes = '  Unicode 雪\n<literal>  ';
+  const original = { ...ui.tasks[0] };
+  await ui.change('priority-filter', 'High');
+  applyRange(ui, '2028-02-29', '2028-02-29');
+  submitSearch(ui.app, 'task', 'high');
+  await click('High open', 'Delete task');
+  assert.deepEqual(ui.tasks[0], { ...original, deleted: true });
+  assert.deepEqual(ui.titles(), ['High done']);
+  await ui.change('task-filter', 'Open');
+  assert.deepEqual(ui.titles(), []);
+  await ui.change('task-filter', 'Completed');
+  assert.deepEqual(ui.titles(), ['High done']);
+  await ui.change('task-filter', 'Deleted');
+  assert.deepEqual(ui.titles(), ['High open']);
+  const controls = descendants(ui.rows()[0]).filter(node =>
+    ['input', 'textarea', 'select', 'button'].includes(node.tagName));
+  assert.equal(controls.length, 11);
+  assert.ok(controls.slice(0, -1).every(node => node.disabled));
+  assert.equal(ui.byId('task-notes-1').value, original.notes);
+  assert.equal(ui.byId('destination-project-1').disabled, true);
+  await ui.change('priority-filter', 'Low');
+  assert.deepEqual(ui.titles(), []);
+  await ui.change('priority-filter', 'High');
+  submitSearch(ui.app, 'task', 'done');
+  assert.deepEqual(ui.titles(), []);
+  submitSearch(ui.app, 'task', 'high');
+  applyRange(ui, '2028-03-01', '');
+  assert.deepEqual(ui.titles(), []);
+  applyRange(ui, '2028-02-29', '2028-02-29');
+  await click('High open', 'Restore task');
+  assert.deepEqual(ui.titles(), []);
+  assert.equal(ui.byId('task-filter').value, 'Deleted');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2028-02-29');
+  assert.equal(ui.byId('due-through').value, '2028-02-29');
+  assert.equal(ui.byId('task-search').value, 'high');
+  assert.deepEqual(ui.tasks[0], { ...original, deleted: false });
+  await ui.change('task-filter', 'All');
+  assert.deepEqual(ui.titles(), ['High open', 'High done']);
+  assert.equal(ui.byId('destination-project-1').disabled, false);
+  assert.equal(ui.byId('task-notes-1').disabled, false);
+  // Restoring in reverse order does not reorder the underlying task array.
+  await click('High open', 'Delete task');
+  await click('High done', 'Delete task');
+  applyRange(ui, '', '');
+  await ui.change('priority-filter', 'All');
+  submitSearch(ui.app, 'task', '');
+  const createForm = ui.nodes().find(node => node.children.includes(ui.byId('task-title')));
+  ui.byId('task-title').value = 'Newest';
+  await createForm.listeners.submit({ preventDefault() {} });
+  await ui.change('task-filter', 'Deleted');
+  await click('High done', 'Restore task');
+  await click('High open', 'Restore task');
+  await ui.change('task-filter', 'All');
+  assert.deepEqual(ui.titles(), [...ui.tasks.map(task => task.title)]);
+  assert.equal(ui.titles().at(-1), 'Newest');
+});
+
+test('archived projects allow deleted filtering but not restoration or deletion', async () => {
+  const ui = await projectUI(true);
+  ui.tasks[0].deleted = true;
+  await ui.change('task-filter', 'Deleted');
+  assert.deepEqual(ui.titles(), ['High open']);
+  const controls = descendants(ui.rows()[0]).filter(node =>
+    ['input', 'textarea', 'select', 'button'].includes(node.tagName));
+  assert.ok(controls.every(node => node.disabled));
+  const restore = ui.rows()[0].children.find(node => node.textContent === 'Restore task');
+  await restore.listeners.click();
+  assert.equal(ui.tasks[0].deleted, true);
+  submitSearch(ui.app, 'task', 'missing');
+  assert.deepEqual(ui.titles(), []);
+  submitSearch(ui.app, 'task', '');
+  applyRange(ui, '', '');
+  assert.deepEqual(ui.titles(), ['High open']);
+  await ui.change('task-filter', 'All');
+  assert.ok(!ui.titles().includes('High open'));
+  assert.ok(ui.rows().every(row => row.children.at(-1).textContent === 'Delete task' && row.children.at(-1).disabled));
+  assert.equal(ui.requests.length, 0);
 });

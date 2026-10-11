@@ -13,10 +13,11 @@ completion and archive state across restarts. Existing databases are migrated
 without losing projects or tasks.
 
 Open a project to create tasks, toggle their completion, and filter by All, Open,
-or Completed. Each project has its own tasks; filtering does not change saved data.
+or Completed for live tasks, or Deleted for deleted tasks. Each project has its own
+tasks; filtering does not change saved data.
 The project list defaults to Active; switch to Archived to open or restore archived
 projects. Archived projects retain their tasks but cannot create tasks or change
-completion until restored. Project rows summarize completed tasks out of all tasks.
+completion until restored. Project rows summarize completed live tasks out of all live tasks.
 Active project pages also let you rename a project. Names are trimmed and must not
 be blank; renaming preserves the URL, creation order, tasks, and summary. Archived
 projects cannot be renamed until restored. Renamed names persist across restarts.
@@ -90,6 +91,15 @@ filters, or summaries. Searches still match names/titles only, not notes. Archiv
 projects display notes but disable editing until restored. Database upgrades add
 empty notes while preserving all pre-existing data.
 
+Live task rows have a Delete task button. Deletion is reversible: select Deleted in
+Task filter and use Restore task to restore the original task at its reserved
+position, before newer tasks. Deleted tasks retain every saved field and remembered
+project position, but cannot be edited or moved until restored. They are excluded
+from All, Open, Completed, and project summary counts. Deleted intersects priority,
+due range, and title search as usual; deletion and restoration retain all filters.
+Archived projects allow reading deleted tasks but disable deletion and restoration.
+Deletion persists across restarts; upgrades keep all pre-existing tasks live.
+
 Health check: `GET /health` returns `{"status":"ok"}`.
 
 Run automated UI-control, HTTP, and persistence tests with `npm test`. Server tests use a temporary
@@ -105,4 +115,6 @@ legacy database migration, move destination eligibility, first-arrival append or
 remembered per-project positions, reverse-order returns, reserved absent positions,
 source filter retention, ownership and summary updates, search matching and filter intersections,
 search retention after edits, literal multiline notes, notes migration and clearing,
-notes archive protection and movement, and persistence through process restarts.
+notes archive protection and movement, reversible deletion and restoration,
+read-only deleted rows, live-only summaries, reserved restoration order, deletion
+migration and archive protection, and persistence through process restarts.

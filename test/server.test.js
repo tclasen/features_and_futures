@@ -95,7 +95,7 @@ test('remembered positions migrate, reserve absent slots, and restore reverse-or
     await move(2, 2, 1);
     assert.deepEqual(await ids(1), [2, 1, newTask.id]);
     assert.deepEqual((await get(tasks(1)))[1], {
-      id: 1, title: 'Latest title', completed: true, priority: 'High', due_date: '2028-02-29', notes: '',
+      id: 1, title: 'Latest title', completed: true, priority: 'High', due_date: '2028-02-29', notes: '', deleted: false,
     });
     // Each destination remembers its own order, even if all tasks leave it.
     const secondNew = await mutate(tasks(2), 'POST', { title: 'Second new' });
@@ -534,7 +534,7 @@ test('legacy databases migrate without losing project IDs or tasks', async () =>
     const projects = await (await fetch(`${running.base}/api/projects`)).json();
     assert.deepEqual(projects, [{ id: 42, name: 'Existing project', archived: false, default_priority: 'Normal', completed: 1, total: 1 }]);
     const tasks = await (await fetch(`${running.base}/api/projects/42/tasks`)).json();
-    assert.deepEqual(tasks, [{ id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '' }]);
+    assert.deepEqual(tasks, [{ id: 1, title: 'Existing task', completed: true, priority: 'Normal', due_date: '', notes: '', deleted: false }]);
   } finally {
     if (running && running.child.exitCode === null) await stop(running.child);
     await rm(directory, { recursive: true, force: true });
@@ -677,7 +677,7 @@ test('notes migrate without data loss and persist independently through edits, m
       assert.equal(response.status, status, await response.clone().text());
       return response.json();
     };
-    const original = { id: 1, title: 'Original', completed: true, priority: 'High', due_date: '2028-02-29', notes: '' };
+    const original = { id: 1, title: 'Original', completed: true, priority: 'High', due_date: '2028-02-29', notes: '', deleted: false };
     assert.deepEqual(await get('/api/projects/1/tasks'), [original]);
     const second = await mutate('/api/projects/1/tasks', 'POST', { title: 'Second' }, 201);
     assert.equal(second.notes, '');
@@ -710,6 +710,95 @@ test('notes migrate without data loss and persist independently through edits, m
     await stop(running.child);
     running = await start(port, database);
     assert.deepEqual(await get('/api/projects/1/tasks'), [saved, second]);
+  } finally {
+    if (running && running.child.exitCode === null) await stop(running.child);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('soft deletion migrates live data and preserves fields, summaries, and return positions across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
+  const database = join(directory, 'projects.sqlite');
+  const port = await availablePort();
+  const legacy = new DatabaseSync(database);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    INSERT INTO tasks VALUES (1, 1, 'Original', 1, 'High', '0001-01-01', '  Notes 雪\n<literal>  ', 1);`);
+  legacy.close();
+  let running;
+  try {
+    running = await start(port, database);
+    const get = async path => (await fetch(`${running.base}${path}`)).json();
+    const mutate = async (path, method, body, status = 200) => {
+      const response = await fetch(`${running.base}${path}`, {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      assert.equal(response.status, status, await response.clone().text());
+      return response.json();
+    };
+    const source = '/api/projects/1';
+    const destination = '/api/projects/2';
+    const task = `${source}/tasks/1`;
+    const original = (await get(`${source}/tasks`))[0];
+    assert.deepEqual(original, { id: 1, title: 'Original', completed: true, priority: 'High',
+      due_date: '0001-01-01', notes: '  Notes 雪\n<literal>  ', deleted: false });
+    const second = await mutate(`${source}/tasks`, 'POST', { title: 'Second' }, 201);
+    assert.equal(second.deleted, false);
+    const existing = await mutate(`${destination}/tasks`, 'POST', { title: 'Existing' }, 201);
+    const deleted = await mutate(task, 'PATCH', { deleted: true });
+    assert.deepEqual(deleted, { ...original, deleted: true });
+    for (const changes of [{ title: 'Forbidden' }, { completed: false }, { priority: 'Low' },
+      { due_date: '' }, { notes: '' }]) {
+      await mutate(task, 'PATCH', changes, 409);
+    }
+    await mutate(`${task}/move`, 'POST', { destination_project_id: 2 }, 409);
+    for (const invalid of ['true', 1, null]) await mutate(task, 'PATCH', { deleted: invalid }, 400);
+    await mutate(task, 'PATCH', { deleted: false, title: 'Combined' }, 400);
+    await mutate(`${destination}/tasks/1`, 'PATCH', { deleted: false }, 404);
+    await mutate(`${source}/tasks/9999`, 'PATCH', { deleted: true }, 404);
+    assert.deepEqual(await get(`${source}/tasks`), [deleted, second]);
+    assert.equal((await get(source)).total, 1);
+    assert.equal((await get(source)).completed, 0);
+    await mutate(`${source}/tasks/${second.id}`, 'PATCH', { deleted: true });
+    assert.equal((await get(source)).total, 0);
+    assert.equal((await get(source)).completed, 0);
+    await mutate(source, 'PATCH', { archived: true });
+    await mutate(task, 'PATCH', { deleted: false }, 409);
+    await mutate(task, 'PATCH', { deleted: true }, 409);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual((await get(`${source}/tasks`))[0], deleted);
+    assert.equal((await get(source)).total, 0);
+    await mutate(source, 'PATCH', { archived: false });
+    assert.equal((await get(`${source}/tasks`))[0].deleted, true);
+    await mutate(source, 'PATCH', { default_priority: 'Low' });
+    const later = await mutate(`${source}/tasks`, 'POST', { title: 'Later' }, 201);
+    assert.equal(later.priority, 'Low');
+    // Reverse restoration preserves reserved slots, not restoration order.
+    await mutate(`${source}/tasks/${second.id}`, 'PATCH', { deleted: false });
+    assert.deepEqual(await mutate(task, 'PATCH', { deleted: false }), original);
+    assert.deepEqual(await get(`${source}/tasks`), [original, second, later]);
+    assert.equal((await get(source)).total, 3);
+    assert.equal((await get(source)).completed, 1);
+    await mutate(`${task}/move`, 'POST', { destination_project_id: 2 });
+    assert.deepEqual(await get(`${destination}/tasks`), [existing, original]);
+    await mutate(`${destination}/tasks/1`, 'PATCH', { deleted: true });
+    assert.equal((await get(destination)).total, 1);
+    assert.equal((await get(destination)).completed, 0);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(`${destination}/tasks`), [existing, deleted]);
+    await mutate(`${destination}/tasks/1`, 'PATCH', { deleted: false });
+    await mutate(`${destination}/tasks/1/move`, 'POST', { destination_project_id: 1 });
+    assert.deepEqual(await get(`${source}/tasks`), [original, second, later]);
+    await stop(running.child);
+    running = await start(port, database);
+    assert.deepEqual(await get(`${source}/tasks`), [original, second, later]);
+    assert.equal((await get(source)).completed, 1);
+    assert.equal((await get(destination)).total, 1);
   } finally {
     if (running && running.child.exitCode === null) await stop(running.child);
     await rm(directory, { recursive: true, force: true });

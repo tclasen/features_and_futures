@@ -374,7 +374,7 @@ async function renderTasks(project) {
   filterLabel.htmlFor = 'task-filter';
   const filter = element('select');
   filter.id = 'task-filter';
-  for (const name of ['All', 'Open', 'Completed']) {
+  for (const name of ['All', 'Open', 'Completed', 'Deleted']) {
     const option = element('option', name);
     option.value = name;
     filter.append(option);
@@ -423,6 +423,7 @@ async function renderTasks(project) {
   function displayTasks() {
     list.replaceChildren();
     for (const task of tasks) {
+      if (Boolean(task.deleted) !== (filter.value === 'Deleted')) continue;
       if (!searchMatches(task.title, appliedSearch)) continue;
       if (filter.value === 'Open' && task.completed) continue;
       if (filter.value === 'Completed' && !task.completed) continue;
@@ -466,6 +467,34 @@ async function renderTasks(project) {
           tasks.splice(tasks.indexOf(task), 1);
           displayTasks();
         }));
+      // Deleted rows retain their fields for reading but cannot edit or move.
+      if (task.deleted) {
+        for (const control of row.querySelectorAll('input, textarea, select, button')) {
+          control.disabled = true;
+        }
+      }
+      const deletion = element('button', task.deleted ? 'Restore task' : 'Delete task');
+      deletion.type = 'button';
+      deletion.disabled = project.archived;
+      deletion.addEventListener('click', async () => {
+        if (project.archived) return;
+        deletion.disabled = true;
+        try {
+          const updated = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deleted: !task.deleted }),
+          });
+          task.deleted = updated.deleted;
+          app.querySelector('[role="alert"]')?.remove();
+          displayTasks();
+        } catch (error) {
+          showError(error.message);
+        } finally {
+          deletion.disabled = project.archived;
+        }
+      });
+      row.append(deletion);
       list.append(row);
     }
   }
