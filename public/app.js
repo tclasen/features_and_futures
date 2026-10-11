@@ -332,12 +332,16 @@ async function renderDirectory() {
   const reopenVisible = element('button', { type: 'button' }, 'Reopen visible tasks');
   const deleteVisible = element('button', { type: 'button' }, 'Delete visible tasks');
   const restoreVisible = element('button', { type: 'button' }, 'Restore visible tasks');
+  const visiblePriority = element('select', { 'aria-label': 'Visible tasks priority' });
+  for (const value of ['Low', 'Normal', 'High']) visiblePriority.append(element('option', { value }, value));
+  visiblePriority.value = 'Normal';
+  const setVisiblePriority = element('button', { type: 'button' }, 'Set visible priority');
   const summary = element('p', { 'data-testid': 'directory-summary' }, '0/0 completed');
   const owners = element('section', { 'aria-label': 'Directory project summaries' });
   const emptyMessage = element('p', {}, 'No matching tasks');
   emptyMessage.hidden = true;
   const rows = element('section', { 'aria-label': 'Directory results' });
-  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, deleteVisible, restoreVisible, summary, owners, emptyMessage, rows);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, search, searchButton, from, through, apply, alert, completeVisible, reopenVisible, deleteVisible, restoreVisible, visiblePriority, setVisiblePriority, summary, owners, emptyMessage, rows);
   let query = '', appliedFrom = '', appliedThrough = '';
   let matchingTasks = [];
   const renderRows = async () => {
@@ -412,6 +416,7 @@ async function renderDirectory() {
     const deletedTasks = scope.value === 'Active' && taskFilter.value === 'Deleted' ? matchingTasks.filter(task => task.deleted) : [];
     deleteVisible.disabled = liveTasks.length === 0;
     restoreVisible.disabled = deletedTasks.length === 0;
+    setVisiblePriority.disabled = liveTasks.length === 0;
   };
   const bulkCompletion = async (tasks, completed) => {
     completeVisible.disabled = reopenVisible.disabled = true;
@@ -427,6 +432,11 @@ async function renderDirectory() {
   };
   deleteVisible.addEventListener('click', () => bulkDeletion(matchingTasks.filter(task => !task.deleted), true));
   restoreVisible.addEventListener('click', () => bulkDeletion(matchingTasks.filter(task => task.deleted), false));
+  setVisiblePriority.addEventListener('click', async () => {
+    setVisiblePriority.disabled = true;
+    await request('/api/directory/priority', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: visiblePriority.value, taskIds: matchingTasks.filter(task => !task.deleted).map(task => task.id) }) });
+    await renderRows();
+  });
   const refresh = () => renderRows();
   for (const control of [scope, taskFilter, priorityFilter, directoryOrder]) control.addEventListener('change', refresh);
   searchButton.addEventListener('click', () => { query = search.value.trim(); refresh(); });
