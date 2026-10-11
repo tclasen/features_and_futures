@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const tasksContainer = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const projectFilter = document.querySelector('#project-filter');
 const archiveNotice = document.querySelector('#archive-notice');
 const createTaskButton = taskForm.querySelector('button');
@@ -76,6 +77,10 @@ async function showRoute() {
     return;
   }
   const project = await response.json();
+  if (currentProjectId !== project.id) {
+    taskFilter.value = 'All';
+    priorityFilter.value = 'All';
+  }
   document.title = `${project.name} · Workboard`;
   document.querySelector('#project-heading').textContent = project.name;
   currentProjectId = project.id;
@@ -98,6 +103,7 @@ async function loadTasks() {
   for (const task of tasks) {
     if (taskFilter.value === 'Open' && task.completed) continue;
     if (taskFilter.value === 'Completed' && !task.completed) continue;
+    if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -237,6 +243,7 @@ taskForm.addEventListener('submit', async (event) => {
   await loadTasks();
 });
 taskFilter.addEventListener('change', loadTasks);
+priorityFilter.addEventListener('change', loadTasks);
 projectFilter.addEventListener('change', loadProjects);
 window.addEventListener('popstate', showRoute);
 showRoute();
