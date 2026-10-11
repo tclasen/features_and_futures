@@ -164,6 +164,7 @@ async function loadDirectory() {
   const response = await fetch('/api/directory');
   const tasks = await response.json();
   const results = document.querySelector('#directory-results');
+  const owners = document.querySelector('#directory-owners');
   const scope = document.querySelector('#directory-project-scope').value;
   const taskFilter = document.querySelector('#directory-task-filter').value;
   const priorityFilter = document.querySelector('#directory-priority-filter').value;
@@ -208,6 +209,34 @@ async function loadDirectory() {
   const completedCount = matchingTasks.reduce((count, { task }) => count + Number(task.completed), 0);
   document.querySelector('[data-testid="directory-summary"]').textContent =
     `${completedCount}/${matchingTasks.length} completed`;
+  owners.replaceChildren();
+  const ownerTotals = new Map();
+  for (const { task } of [...matchingTasks].sort((left, right) => left.originalIndex - right.originalIndex)) {
+    let totals = ownerTotals.get(task.projectId);
+    if (!totals) {
+      totals = { name: task.projectName, completed: 0, total: 0 };
+      ownerTotals.set(task.projectId, totals);
+    }
+    totals.total += 1;
+    totals.completed += Number(task.completed);
+  }
+  for (const [projectId, totals] of ownerTotals) {
+    const row = document.createElement('div');
+    row.dataset.testid = 'directory-owner-row';
+    row.className = 'project-row';
+    const name = document.createElement('span');
+    name.dataset.testid = 'directory-owner-name';
+    name.textContent = totals.name;
+    const summary = document.createElement('span');
+    summary.dataset.testid = 'directory-owner-summary';
+    summary.textContent = `${totals.completed}/${totals.total} completed`;
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.textContent = 'Open project';
+    open.addEventListener('click', () => navigate(`/projects/${projectId}`));
+    row.append(name, summary, open);
+    owners.append(row);
+  }
   for (const { task } of matchingTasks) {
     if (!task.deleted) (task.completed ? visibleCompletedIds : visibleOpenIds).push(task.id);
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row'; row.dataset.taskId = task.id; row.className = 'task-row';
