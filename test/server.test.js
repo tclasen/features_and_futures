@@ -7,6 +7,105 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+test('task priorities migrate, remain independent, preserve task data, and survive archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(dbPath);
+  legacy.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('First');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing task', 1);`);
+  legacy.close();
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, values = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const html = async path => (await fetch(`${server.url}${path}`)).text();
+    const rows = page => [...page.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    const prioritySelect = row => row.match(/<select id="task-priority-\d+"[^>]*>[\s\S]*?<\/select>/)[0];
+    const options = row => [...prioritySelect(row).matchAll(/<option( selected)?>([^<]+)<\/option>/g)]
+      .map(match => ({ title: match[2], selected: Boolean(match[1]) }));
+    const savedPriorities = page => rows(page).map(row => options(row).find(option => option.selected).title);
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    const original = await html('/projects/1');
+    const other = await html('/projects/2');
+    const summary = await html('/');
+    assert.deepEqual(savedPriorities(original), ['Normal', 'Normal']);
+    assert.deepEqual(savedPriorities(other), ['Normal']);
+    for (const [index, row] of rows(original).entries()) {
+      assert.match(row, new RegExp(`<label for="task-priority-${index + 1}">Task priority</label>`));
+      assert.match(prioritySelect(row), /onchange="this.form.requestSubmit\(\)"/);
+      assert.deepEqual(options(row).map(option => option.title), ['Low', 'Normal', 'High']);
+    }
+    const changed = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), '/projects/1?filter=Completed');
+    assert.deepEqual(savedPriorities(await html('/projects/1')), ['High', 'Normal']);
+    assert.equal((await post('/projects/1/tasks/2/priority', { priority: 'Low', filter: 'Open' })).status, 303);
+    assert.deepEqual(savedPriorities(await html('/projects/1')), ['High', 'Low']);
+    // Only the priority controls may differ: titles, completion, ownership, order,
+    // rename controls, and project summaries must be preserved.
+    const withoutPriority = page => rows(page).map(row => row.replace(/<option selected>/g, '<option>'));
+    assert.deepEqual(withoutPriority(await html('/projects/1')), withoutPriority(original));
+    assert.equal(await html('/projects/2'), other);
+    assert.equal(await html('/'), summary);
+    assert.deepEqual(savedPriorities(await html('/projects/1?filter=Completed')), ['High']);
+    assert.deepEqual(savedPriorities(await html('/projects/1?filter=Open')), ['Low']);
+    const prioritized = await html('/projects/1');
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post('/projects/1/tasks/1/priority', { priority })).status, 400);
+    }
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999999/priority', { priority: 'High' })).status, 404);
+    assert.equal(await html('/projects/1'), prioritized);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed task' });
+    assert.deepEqual(savedPriorities(await html('/projects/1')), ['High', 'Low']);
+    assert.match(rows(await html('/projects/1'))[0], /aria-label="Complete Renamed task" checked/);
+    const renamed = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), renamed);
+    assert.equal(await html('/projects/2'), other);
+    assert.equal(await html('/'), summary);
+    await post('/projects/1/archive');
+    const archived = await html('/projects/1');
+    for (const row of rows(archived)) assert.match(prioritySelect(row), / disabled/);
+    assert.deepEqual(savedPriorities(archived), ['High', 'Low']);
+    assert.deepEqual(savedPriorities(await html('/projects/1?filter=Completed')), ['High']);
+    assert.deepEqual(savedPriorities(await html('/projects/1?filter=Open')), ['Low']);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    assert.equal(await html('/projects/1'), archived);
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await html('/projects/1'), renamed);
+    assert.equal(await html('/'), summary);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 303);
+    assert.deepEqual(savedPriorities(await html('/projects/1')), ['Normal', 'Low']);
+    await post('/projects/1/tasks/2', { completed: '1' });
+    assert.deepEqual(savedPriorities(await html('/projects/1?filter=Completed')), ['Normal', 'Low']);
+    const finalPage = await html('/projects/1');
+    await server.stop();
+    server = undefined;
+    server = await start(dbPath);
+    assert.equal(await html('/projects/1'), finalPage);
+    assert.equal(await html('/projects/2'), other);
+    assert.match(await html('/'), /data-testid="project-summary">2\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task renaming preserves ownership, order, completion, filters, and summaries across restore and restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
   const dbPath = join(directory, 'workboard.sqlite');

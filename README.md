@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0`; the defaults are
 port `8080` and database `data/workboard.sqlite`. Keep the SQLite file to retain
-projects, tasks, and completion state across restarts. `GET /health` returns
+projects, tasks, completion state, and priorities across restarts. `GET /health` returns
 `{"status":"ok"}`.
 
 Open a project to create tasks, change completion with each task's checkbox, and
@@ -33,6 +33,12 @@ must not be blank. Renaming preserves ownership, creation order, completion stat
 filter membership, and completion summaries. Archived projects disable task
 renaming until restored. Renamed titles persist across restarts.
 
+Each task row has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Changes save immediately and persist
+across restarts without changing task order, ownership, completion, or summaries.
+Renaming preserves priority. Archived projects disable priority controls until
+restored, retaining their saved values.
+
 Run the integration checks:
 
 ```sh
@@ -42,5 +48,5 @@ npm test
 The checks use a temporary SQLite file and verify validation, creation order,
 project pages, safe rendering, task completion and filters, project isolation,
 health, database migration, archive/restore, completion summaries, archived write
-protection, project and task renaming with identity and data preservation, and persistence after
-server restarts.
+protection, project and task renaming with identity and data preservation, task
+priority defaults and independence, and persistence after server restarts.
