@@ -129,6 +129,38 @@ const server = createServer(async (request, response) => {
     const result = database.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
   }
+  const projectExport = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (projectExport && request.method === 'GET') {
+    const projectId = Number(projectExport[1]);
+    const project = database.prepare('SELECT name, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    const tasks = database.prepare(`
+      SELECT title, completed, priority, due_date, notes, deleted
+      FROM tasks WHERE project_id = ? ORDER BY sort_order, id
+    `).all(projectId);
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.default_task_priority,
+        tasks: tasks.map((task) => ({
+          title: task.title,
+          completed: Boolean(task.completed),
+          priority: task.priority || 'Normal',
+          dueDate: task.due_date || '',
+          notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+          deleted: Boolean(task.deleted)
+        }))
+      }
+    };
+    response.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"'
+    });
+    return response.end(JSON.stringify(document));
+  }
   const projectTasks = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasks) {
     const projectId = Number(projectTasks[1]);
