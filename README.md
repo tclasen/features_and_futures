@@ -99,3 +99,12 @@ destinations return HTTP 409.
 
 Run the tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.
+
+Project search and Search projects match a substring of project names, intersecting
+the Active/Archived filter. Task search and Search tasks intersect completion,
+priority, and the applied due range. Searches ignore ASCII letter case and trim
+only query edges; internal whitespace remains significant. Blank queries match
+everything allowed by the other filters. Queries apply on submission, remain
+applied during filtering and edits, and reset when opening their page. Archived
+projects still allow searching. Search never writes saved data or changes the
+all-task completion summaries.

@@ -1,4 +1,5 @@
 import { normalizeDueRange, matchesDueRange } from './due-date.js';
+import { matchesSearch } from './search.js';
 
 const app = document.querySelector('#app');
 
@@ -23,6 +24,20 @@ function showError(message) {
     app.append(alert);
   }
   alert.textContent = message;
+}
+
+function searchForm(id, label, buttonLabel, onSearch) {
+  const form = element('form', '', { class: 'search-form' });
+  const input = element('input', '', { id, type: 'text' });
+  form.append(element('label', label, { for: id }), input,
+    element('button', buttonLabel, { type: 'submit' }));
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = input.value.trim();
+    input.value = query;
+    onSearch(query);
+  });
+  return form;
 }
 
 function projectRow(project, onArchiveChange) {
@@ -71,12 +86,18 @@ async function showProjects() {
   }
   const filters = element('div', '', { class: 'project-filters' });
   filters.append(element('label', 'Project filter', { for: 'project-filter' }), filter);
+  let searchQuery = '';
+  const search = searchForm('project-search', 'Project search', 'Search projects', (query) => {
+    searchQuery = query;
+    renderProjects();
+  });
   function renderProjects() {
-    const visible = projects.filter((project) => project.archived === (filter.value === 'Archived'));
+    const visible = projects.filter((project) => project.archived === (filter.value === 'Archived')
+      && matchesSearch(project.name, searchQuery));
     list.replaceChildren(...visible.map((project) => projectRow(project, renderProjects)));
   }
   filter.addEventListener('change', renderProjects);
-  app.append(form, filters, list);
+  app.append(form, filters, search, list);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
@@ -369,13 +390,19 @@ async function showTasks(projectId, archived) {
     renderTasks();
   });
   const list = element('ul', '', { 'aria-label': 'Tasks', class: 'tasks' });
-  app.append(form, filters, dueRangeForm, list);
+  let searchQuery = '';
+  const search = searchForm('task-search', 'Task search', 'Search tasks', (query) => {
+    searchQuery = query;
+    renderTasks();
+  });
+  app.append(form, filters, dueRangeForm, search, list);
 
   function renderTasks() {
     const visible = tasks.filter((task) =>
       (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed))
       && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
-      && matchesDueRange(task.dueDate, dueRange));
+      && matchesDueRange(task.dueDate, dueRange)
+      && matchesSearch(task.title, searchQuery));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'task-row' });
       const checkbox = element('input', '', {

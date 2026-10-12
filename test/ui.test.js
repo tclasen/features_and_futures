@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { normalizeDueRange, matchesDueRange } from '../due-date.js';
+import { matchesSearch } from '../search.js';
 
 const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
-  .replace(/^import .* from '\.\/due-date\.js';\n/, '');
+  .replace(/^import .* from '\.\/(?:due-date|search)\.js';\n/gm, '');
 
 // Exercise the browser script without external dependencies. This small DOM
 // supports its labels, rows, and events; it does not verify browser layout.
@@ -293,7 +294,7 @@ async function page(pathname, respond, destinations = [{ id: 999, name: 'Other',
       ? destinations : await respond(path, options);
     return { ok: true, json: async () => body };
   };
-  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange });
+  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange, matchesSearch });
   return {
     app, window, calls,
     byId: (id) => find(app, (node) => node.attributes.id === id)[0],
@@ -823,4 +824,185 @@ test('move controls disable without destinations or in archived projects and fai
     assert.equal(ui.calls.length, disabled ? 3 : 4);
     if (!disabled) assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Archived project cannot receive tasks');
   }
+});
+
+async function applySearch(ui, type, query) {
+  ui.byId(`${type}-search`).value = query;
+  await find(ui.app, (node) => node.tag === 'form'
+    && node.children.some((child) => child.attributes.id === `${type}-search`))[0].fire('submit');
+}
+
+test('project search intersects archive state, preserves order and summaries, and resets on return', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha One', archived: false, completedCount: 1, totalCount: 3 },
+    { id: 2, name: 'Other', archived: false, completedCount: 0, totalCount: 0 },
+    { id: 3, name: 'ALPHA Two', archived: true, completedCount: 2, totalCount: 2 },
+    { id: 4, name: 'Alpha  Three', archived: false, completedCount: 0, totalCount: 1 },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(projects);
+    const body = JSON.parse(options.body);
+    if (options.method === 'POST') {
+      const created = { id: 5, name: body.name, archived: false, completedCount: 0, totalCount: 0 };
+      projects.push(created);
+      return created;
+    }
+    const project = projects.find((project) => path.endsWith(`/${project.id}`));
+    Object.assign(project, body);
+    return { ...project };
+  };
+  const ui = await page('/', respond);
+  assert.equal(ui.byId('project-search').value, '');
+  assert.equal(ui.byId('project-search').attributes.type, 'text');
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'project-search')[0].textContent, 'Project search');
+  assert.ok(ui.button('Search projects'));
+  await applySearch(ui, 'project', '  aLPha  ');
+  assert.deepEqual(ui.rows('project').map(taskTitle), ['Alpha One', 'Alpha  Three']);
+  assert.equal(find(ui.rows('project')[0], (node) => node.attributes['data-testid'] === 'project-summary')[0].textContent, '1/3 completed');
+  // Unsubmitted draft text cannot replace the applied query during filter changes.
+  ui.byId('project-search').value = 'Other';
+  ui.byId('project-filter').value = 'Archived';
+  await ui.byId('project-filter').fire('change');
+  assert.deepEqual(ui.rows('project').map(taskTitle), ['ALPHA Two']);
+  await ui.button('Restore project').fire('click');
+  assert.equal(ui.rows('project').length, 0);
+  ui.byId('project-filter').value = 'Active';
+  await ui.byId('project-filter').fire('change');
+  assert.deepEqual(ui.rows('project').map(taskTitle), ['Alpha One', 'ALPHA Two', 'Alpha  Three']);
+  ui.byId('project-name').value = 'Unrelated';
+  await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'project-name'))[0].fire('submit');
+  assert.equal(ui.rows('project').length, 3);
+  await applySearch(ui, 'project', 'alpha ');
+  assert.equal(ui.rows('project').length, 3);
+  await applySearch(ui, 'project', 'alpha  ' + 'three');
+  assert.deepEqual(ui.rows('project').map(taskTitle), ['Alpha  Three']);
+  await applySearch(ui, 'project', ' \t ');
+  assert.equal(ui.rows('project').length, 5);
+  const reopened = await page('/', respond);
+  assert.equal(reopened.byId('project-search').value, '');
+  assert.equal(reopened.rows('project').length, 5);
+  assert.equal(ui.calls.filter((call) => call.options).length, 2);
+});
+
+test('task search intersects all filters, re-evaluates edits, and preserves applied queries and boundaries', async () => {
+  const project = { id: 1, name: 'Source', archived: false, defaultPriority: 'High' };
+  const tasks = [
+    { id: 1, title: 'Match first', completed: false, priority: 'High', dueDate: '2024-02-29' },
+    { id: 2, title: 'MATCH second', completed: false, priority: 'High', dueDate: '2024-03-01' },
+    { id: 3, title: 'Other', completed: false, priority: 'High', dueDate: '2024-03-01' },
+    { id: 4, title: 'Match done', completed: true, priority: 'High', dueDate: '2024-03-01' },
+    { id: 5, title: 'Match low', completed: false, priority: 'Low', dueDate: '2024-03-01' },
+    { id: 6, title: 'Match undated', completed: false, priority: 'High', dueDate: '' },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    const body = JSON.parse(options.body);
+    if (path === '/api/projects/1') { Object.assign(project, body); return { ...project }; }
+    if (options.method === 'POST') {
+      const task = { id: 7, title: body.title, completed: false, priority: project.defaultPriority, dueDate: '' };
+      tasks.push(task);
+      return { ...task };
+    }
+    const task = tasks.find((task) => path.endsWith(`/${task.id}`));
+    if (body.destinationProjectId) tasks.splice(tasks.indexOf(task), 1);
+    else Object.assign(task, body);
+    return { ...task };
+  };
+  const ui = await page('/projects/1', respond);
+  assert.equal(ui.byId('task-search').value, '');
+  assert.equal(ui.byId('task-search').attributes.type, 'text');
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'task-search')[0].textContent, 'Task search');
+  assert.ok(ui.button('Search tasks'));
+  ui.byId('task-filter').value = 'Open';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  await applySearch(ui, 'task', '  mAtCh  ');
+  const assertFilters = () => {
+    assert.equal(ui.byId('task-filter').value, 'Open');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2024-02-29');
+    assert.equal(ui.byId('due-through').value, '2024-03-01');
+  };
+  assertFilters();
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Match first', 'MATCH second']);
+  // Draft search must not take effect during edits or other filter applications.
+  ui.byId('task-search').value = 'Other';
+  ui.byId('new-task-title-1').value = 'No longer matches';
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-rename')[0].fire('submit');
+  // "matches" still contains "match".
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['No longer matches', 'MATCH second']);
+  ui.byId('new-task-title-1').value = 'Excluded';
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-rename')[0].fire('submit');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['MATCH second']);
+  const priority = ui.byId('task-priority-2');
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.equal(ui.rows('task').length, 0);
+  await applySearch(ui, 'task', ' \t ');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Excluded', 'Other']);
+  await applySearch(ui, 'task', 'EXCL');
+  ui.byId('task-due-date-1').value = '2024-03-02';
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0].fire('submit');
+  assert.equal(ui.rows('task').length, 0);
+  await applyDueRange(ui, '', '');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Excluded']);
+  const checkbox = find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assert.equal(ui.rows('task').length, 0);
+  ui.byId('task-filter').value = 'All';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Excluded']);
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-move')[0].fire('submit');
+  assert.equal(ui.rows('task').length, 0);
+  ui.byId('task-title').value = 'Excluded new';
+  await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'task-title'))[0].fire('submit');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Excluded new']);
+  ui.byId('default-task-priority').value = 'Low';
+  await ui.byId('default-task-priority').fire('change');
+  ui.byId('new-project-name').value = 'Renamed';
+  await find(ui.app, (node) => node.attributes.class === 'project-rename')[0].fire('submit');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Excluded new']);
+  assert.equal(ui.byId('task-filter').value, 'All');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('task-search').value, 'EXCL');
+  assert.equal(ui.byId('due-from').value, '');
+  assert.equal(ui.byId('due-through').value, '');
+  const reopened = await page('/projects/1', respond);
+  assert.equal(reopened.byId('task-search').value, '');
+  assert.deepEqual(reopened.rows('task').map(taskTitle), tasks.map((task) => task.title));
+});
+
+test('archived task search remains usable and clearing preserves the other filters without writes', async () => {
+  const tasks = [
+    { id: 1, title: 'Alpha', completed: true, priority: 'High', dueDate: '2024-02-29' },
+    { id: 2, title: 'Beta', completed: true, priority: 'High', dueDate: '2024-03-01' },
+    { id: 3, title: 'Alpha open', completed: false, priority: 'High', dueDate: '2024-02-29' },
+  ];
+  const project = { id: 1, name: 'Archived', archived: true, defaultPriority: 'Normal' };
+  const ui = await page('/projects/1', (path, options) => {
+    assert.equal(options, undefined);
+    return structuredClone(path.endsWith('/tasks') ? tasks : project);
+  });
+  assert.equal(ui.byId('task-search').disabled, false);
+  assert.equal(ui.button('Search tasks').disabled, false);
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  await applySearch(ui, 'task', 'ALPHA');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Alpha']);
+  for (const control of find(ui.rows('task')[0], (node) => ['input', 'button', 'select'].includes(node.tag))) {
+    assert.equal(control.disabled, true);
+  }
+  await applySearch(ui, 'task', '  ');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Alpha', 'Beta']);
+  assert.equal(ui.byId('task-filter').value, 'Completed');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2024-02-29');
+  assert.equal(ui.byId('due-through').value, '2024-03-01');
+  assert.equal(ui.calls.length, 3);
 });
