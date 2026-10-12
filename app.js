@@ -54,7 +54,19 @@ async function render() {
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived);
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ completed: checkbox.checked })); await refreshTasks(); });
-          row.append(checkbox, element('span', task.title)); return row;
+          const title = element('span', task.title);
+          row.append(checkbox, title);
+          const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New task title'); renameInput.disabled = Boolean(project.archived);
+          const renameButton = element('button', 'Rename task'); renameButton.type = 'button'; renameButton.disabled = Boolean(project.archived);
+          renameButton.addEventListener('click', async () => {
+            const newTitle = renameInput.value.trim();
+            if (!newTitle) { alert.textContent = 'Task title is required'; renameInput.focus(); return; }
+            try {
+              await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ title: newTitle }));
+              alert.textContent = ''; await refreshTasks();
+            } catch (error) { alert.textContent = error.message; }
+          });
+          row.append(renameInput, renameButton); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);

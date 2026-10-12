@@ -33,6 +33,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -96,12 +97,22 @@ const server = createServer(async (req, res) => {
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const body = JSON.parse(raw);
-      if (typeof body.completed !== 'boolean') return send(400, JSON.stringify({ error: 'Invalid completion state' }));
       const owner = getProject.get(Number(taskUpdateMatch[1]));
       if (!owner) return send(404, JSON.stringify({ error: 'Not found' }));
       if (owner.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
-      const result = updateTask.run(body.completed ? 1 : 0, Number(taskUpdateMatch[2]), Number(taskUpdateMatch[1]));
-      return result.changes ? send(200, JSON.stringify(getTask.get(Number(taskUpdateMatch[2]), Number(taskUpdateMatch[1])))) : send(404, JSON.stringify({ error: 'Not found' }));
+      const taskId = Number(taskUpdateMatch[2]);
+      let result;
+      if (typeof body.completed === 'boolean') {
+        result = updateTask.run(body.completed ? 1 : 0, taskId, Number(taskUpdateMatch[1]));
+      } else if (typeof body.title === 'string' && body.title.trim()) {
+        renameTask.run(body.title.trim(), taskId, Number(taskUpdateMatch[1]));
+        result = { changes: db.prepare('SELECT changes() AS count').get().count };
+      } else if (typeof body.title === 'string') {
+        return send(400, JSON.stringify({ error: 'Task title is required' }));
+      } else {
+        return send(400, JSON.stringify({ error: 'Invalid task update' }));
+      }
+      return result.changes ? send(200, JSON.stringify(getTask.get(taskId, Number(taskUpdateMatch[1])))) : send(404, JSON.stringify({ error: 'Not found' }));
     } catch {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
     }
