@@ -138,7 +138,8 @@ function drawTasks() {
   const filter = taskFilter.value;
   const selectedPriority = priorityFilter.value;
   const visible = currentTasks.filter(task =>
-    (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
+    (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
+      (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed))) &&
     (selectedPriority === 'All' || (task.priority || 'Normal') === selectedPriority) &&
     (!appliedDueFrom && !appliedDueThrough || Boolean(task.dueDate)) &&
     (!appliedDueFrom || (task.dueDate || '') >= appliedDueFrom) &&
@@ -163,7 +164,8 @@ function drawTasks() {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = task.completed;
-    checkbox.disabled = activeProjectArchived;
+    const readOnly = activeProjectArchived || Boolean(task.deleted);
+    checkbox.disabled = readOnly;
     checkbox.setAttribute('aria-label', `Complete ${task.title}`);
     checkbox.addEventListener('change', async () => {
       try {
@@ -181,12 +183,12 @@ function drawTasks() {
     renameInput.type = 'text';
     renameInput.value = task.title;
     renameInput.setAttribute('aria-label', 'New task title');
-    renameInput.disabled = activeProjectArchived;
+    renameInput.disabled = readOnly;
     const renameButton = document.createElement('button');
     renameButton.type = 'submit';
     renameButton.className = 'open-button';
     renameButton.textContent = 'Rename task';
-    renameButton.disabled = activeProjectArchived;
+    renameButton.disabled = readOnly;
     renameForm.addEventListener('submit', async event => {
       event.preventDefault();
       try {
@@ -211,7 +213,7 @@ function drawTasks() {
       priority.append(option);
     }
     priority.value = task.priority || 'Normal';
-    priority.disabled = activeProjectArchived;
+    priority.disabled = readOnly;
     priority.addEventListener('change', async () => {
       const previous = task.priority || 'Normal';
       try {
@@ -233,12 +235,12 @@ function drawTasks() {
     dueDateInput.type = 'text';
     dueDateInput.value = task.dueDate || '';
     dueDateInput.setAttribute('aria-label', 'Task due date');
-    dueDateInput.disabled = activeProjectArchived;
+    dueDateInput.disabled = readOnly;
     const saveDueDate = document.createElement('button');
     saveDueDate.type = 'submit';
     saveDueDate.className = 'open-button';
     saveDueDate.textContent = 'Save due date';
-    saveDueDate.disabled = activeProjectArchived;
+    saveDueDate.disabled = readOnly;
     dueDateForm.addEventListener('submit', async event => {
       event.preventDefault();
       try {
@@ -261,12 +263,12 @@ function drawTasks() {
     const notesInput = document.createElement('textarea');
     notesInput.value = task.notes || '';
     notesInput.setAttribute('aria-label', 'Task notes');
-    notesInput.disabled = activeProjectArchived;
+    notesInput.disabled = readOnly;
     const saveNotes = document.createElement('button');
     saveNotes.type = 'submit';
     saveNotes.className = 'open-button';
     saveNotes.textContent = 'Save notes';
-    saveNotes.disabled = activeProjectArchived;
+    saveNotes.disabled = readOnly;
     notesForm.addEventListener('submit', async event => {
       event.preventDefault();
       try {
@@ -296,8 +298,8 @@ function drawTasks() {
     moveButton.type = 'submit';
     moveButton.className = 'open-button';
     moveButton.textContent = 'Move task';
-    destination.disabled = activeProjectArchived || destination.options.length === 0;
-    moveButton.disabled = activeProjectArchived || destination.options.length === 0;
+    destination.disabled = readOnly || destination.options.length === 0;
+    moveButton.disabled = readOnly || destination.options.length === 0;
     destinationForm.addEventListener('submit', async event => {
       event.preventDefault();
       if (!destination.value) return;
@@ -314,8 +316,23 @@ function drawTasks() {
       }
     });
     destinationForm.append(destination, moveButton);
+    const lifecycleButton = document.createElement('button');
+    lifecycleButton.type = 'button';
+    lifecycleButton.className = 'open-button';
+    lifecycleButton.textContent = task.deleted ? 'Restore task' : 'Delete task';
+    lifecycleButton.disabled = activeProjectArchived;
+    lifecycleButton.addEventListener('click', async () => {
+      try {
+        await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}/${task.deleted ? 'restore' : 'delete'}`, { method: 'POST' });
+        task.deleted = !task.deleted;
+        drawTasks();
+      } catch (error) {
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
     label.append(checkbox);
-    row.append(title, renameForm, priority, dueDateForm, notesForm, destinationForm, label);
+    row.append(title, renameForm, priority, dueDateForm, notesForm, destinationForm, label, lifecycleButton);
     tasksNode.append(row);
   }
 }

@@ -24,6 +24,7 @@ db.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
     notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -41,6 +42,7 @@ const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => c
 if (!taskColumns.includes('priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!taskColumns.includes('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!taskColumns.includes('notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+if (!taskColumns.includes('deleted')) db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
 // Record each task's position in every project it has belonged to. Existing
 // databases seed positions from their current task order exactly once.
 const seedPositions = db.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
@@ -48,13 +50,14 @@ const seedPositions = db.prepare(`INSERT OR IGNORE INTO task_project_positions (
   FROM tasks`);
 seedPositions.run();
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  COALESCE(SUM(CASE WHEN t.deleted = 0 THEN 1 ELSE 0 END), 0) AS totalCount,
+  COALESCE(SUM(CASE WHEN t.deleted = 0 AND t.completed = 1 THEN 1 ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.created_at, p.rowid`);
 const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
-  t.due_date AS dueDate, t.notes FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  t.due_date AS dueDate, t.notes, t.deleted FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position, t.created_at, t.rowid`);
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -166,6 +169,7 @@ const server = createServer(async (req, res) => {
       if (!destination || destination.archived || destinationId === sourceId) return json(res, 400, { error: 'Invalid destination project' });
       const task = findTask.get(taskId, sourceId);
       if (!task) return json(res, 404, { error: 'Task not found' });
+      if (db.prepare('SELECT deleted FROM tasks WHERE id = ?').get(taskId)?.deleted) return json(res, 409, { error: 'Deleted tasks cannot be moved' });
       const destinationPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
       if (!destinationPosition) {
         const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
@@ -177,6 +181,18 @@ const server = createServer(async (req, res) => {
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  const taskLifecycleMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/(delete|restore)$/);
+  if (req.method === 'POST' && taskLifecycleMatch) {
+    const projectId = decodeURIComponent(taskLifecycleMatch[1]);
+    const taskId = decodeURIComponent(taskLifecycleMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
+    const deleted = taskLifecycleMatch[3] === 'delete' ? 1 : 0;
+    const result = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(deleted, taskId, projectId);
+    if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });
+    return json(res, 200, { id: taskId, projectId, deleted: Boolean(deleted) });
+  }
   if (req.method === 'PATCH' && taskMatch) {
     const projectId = decodeURIComponent(taskMatch[1]);
     const taskId = decodeURIComponent(taskMatch[2]);
@@ -184,6 +200,9 @@ const server = createServer(async (req, res) => {
     if (!project) return json(res, 404, { error: 'Project not found' });
     if (project.archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
     try {
+      const existing = findTask.get(taskId, projectId);
+      if (!existing) return json(res, 404, { error: 'Task not found' });
+      if (existing.deleted) return json(res, 409, { error: 'Deleted tasks cannot be changed' });
       const body = await readJson(req);
       if (typeof body.title === 'string') {
         const title = body.title.trim();
