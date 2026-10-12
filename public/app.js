@@ -140,7 +140,7 @@ async function renderProject(id) {
   app.append(form);
   const filterLabel = element('label', 'Task filter');
   const filter = element('select', undefined, { 'aria-label': 'Task filter' });
-  for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
+  for (const value of ['All', 'Open', 'Completed', 'Deleted']) filter.append(element('option', value, { value }));
   filterLabel.append(filter);
   app.append(filterLabel);
   const priorityFilterLabel = element('label', 'Priority filter');
@@ -188,6 +188,7 @@ async function renderProject(id) {
     const tasks = await response.json();
     list.replaceChildren();
     for (const task of tasks) {
+      if (filter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       if (!searchMatches(task.title, appliedTaskQuery)) continue;
@@ -198,7 +199,7 @@ async function renderProject(id) {
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
       checkbox.checked = task.completed;
-      checkbox.disabled = project.archived;
+      checkbox.disabled = project.archived || task.deleted;
       checkbox.addEventListener('change', async () => {
         const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked })
@@ -209,8 +210,8 @@ async function renderProject(id) {
       row.append(checkbox);
       const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', value: task.title });
       const renameButton = element('button', 'Rename task', { type: 'button' });
-      renameInput.disabled = project.archived;
-      renameButton.disabled = project.archived;
+      renameInput.disabled = project.archived || task.deleted;
+      renameButton.disabled = project.archived || task.deleted;
       renameButton.addEventListener('click', async () => {
         const title = renameInput.value.trim();
         if (!title) { showError('Task title is required'); renameInput.focus(); return; }
@@ -228,7 +229,7 @@ async function renderProject(id) {
         option.selected = task.priority === value;
         priority.append(option);
       }
-      priority.disabled = project.archived;
+      priority.disabled = project.archived || task.deleted;
       priority.addEventListener('change', async () => {
         const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
@@ -239,8 +240,8 @@ async function renderProject(id) {
       row.append(priority);
       const dueDate = element('input', undefined, { type: 'text', 'aria-label': 'Task due date', value: task.dueDate || '' });
       const saveDueDate = element('button', 'Save due date', { type: 'button' });
-      dueDate.disabled = project.archived;
-      saveDueDate.disabled = project.archived;
+      dueDate.disabled = project.archived || task.deleted;
+      saveDueDate.disabled = project.archived || task.deleted;
       saveDueDate.addEventListener('click', async () => {
         const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value })
@@ -256,9 +257,9 @@ async function renderProject(id) {
       row.append(dueDate, saveDueDate);
       const notes = element('textarea', undefined, { 'aria-label': 'Task notes' });
       notes.value = task.notes || '';
-      notes.disabled = project.archived;
+      notes.disabled = project.archived || task.deleted;
       const saveNotes = element('button', 'Save notes', { type: 'button' });
-      saveNotes.disabled = project.archived;
+      saveNotes.disabled = project.archived || task.deleted;
       saveNotes.addEventListener('click', async () => {
         const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value })
@@ -278,8 +279,8 @@ async function renderProject(id) {
         destination.append(element('option', candidate.name, { value: candidate.id }));
       }
       const moveButton = element('button', 'Move task', { type: 'button' });
-      destination.disabled = project.archived || eligibleProjects.length === 0;
-      moveButton.disabled = project.archived || eligibleProjects.length === 0;
+      destination.disabled = project.archived || task.deleted || eligibleProjects.length === 0;
+      moveButton.disabled = project.archived || task.deleted || eligibleProjects.length === 0;
       moveButton.addEventListener('click', async () => {
         const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -294,6 +295,17 @@ async function renderProject(id) {
         }
       });
       row.append(destination, moveButton);
+      const lifecycleButton = element('button', task.deleted ? 'Restore task' : 'Delete task', { type: 'button' });
+      lifecycleButton.disabled = project.archived;
+      lifecycleButton.addEventListener('click', async () => {
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ deleted: !task.deleted })
+        });
+        if (!update.ok) showError(task.deleted ? 'Could not restore task' : 'Could not delete task');
+        else await renderTasks();
+      });
+      row.append(lifecycleButton);
       list.append(row);
     }
   };

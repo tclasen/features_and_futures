@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   due_date TEXT,
   sort_order INTEGER,
-  notes TEXT NOT NULL DEFAULT ''
+  notes TEXT NOT NULL DEFAULT '',
+  deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
 )`);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
@@ -45,6 +46,9 @@ if (!taskColumns.some(column => column.name === 'sort_order')) {
 }
 if (!taskColumns.some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
 }
 db.exec(`UPDATE tasks SET sort_order = id WHERE sort_order IS NULL;
 CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -119,7 +123,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(taskRoute[1]);
     const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
     if (request.method === 'GET' && !taskId) {
-      return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) })));
     }
     const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
@@ -140,6 +144,11 @@ const server = createServer(async (request, response) => {
       if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
       const body = await readBody(request);
       if (body.error) return sendJson(response, 400, { error: body.error });
+      if (typeof body.value?.deleted === 'boolean') {
+        const result = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(Number(body.value.deleted), taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, deleted: body.value.deleted });
+      }
       if (typeof body.value?.notes === 'string') {
         const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(body.value.notes, taskId, projectId);
         if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
@@ -203,7 +212,8 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS totalCount,
+      COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id`).all();
     return sendJson(response, 200, projects.map(project => ({ ...project, archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount) })));
