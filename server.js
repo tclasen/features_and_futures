@@ -90,9 +90,18 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
     db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // Separate identity from project-local order so moved tasks append on arrival.
+  if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'task_order')) {
+    db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET task_order = id');
+  }
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY task_order, id');
+  const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, task_order)
+    VALUES (?, ?, ?, (SELECT COALESCE(MAX(task_order), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+  const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
+    task_order = (SELECT COALESCE(MAX(task_order), 0) + 1 FROM tasks WHERE project_id = ?)
+    WHERE id = ? AND project_id = ?`);
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -133,6 +142,8 @@ export function createApplication(dbPath) {
   }
 
   function projectPage(project, filter, priorityFilter = 'All', error = '', range = { from: '', through: '' }) {
+    const eligibleDestinations = destinations.all(project.id);
+    const moveDisabled = project.archived || eligibleDestinations.length === 0;
     const tasks = listTasks.all(project.id).filter(task =>
       (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
       (priorityFilter === 'All' || task.priority === priorityFilter) &&
@@ -205,6 +216,14 @@ export function createApplication(dbPath) {
           <label for="task-due-date-${task.id}">Task due date</label>
           <input id="task-due-date-${task.id}" name="dueDate" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
+          ${editFields}
+          <label for="destination-project-${task.id}">Destination project</label>
+          <select id="destination-project-${task.id}" name="destinationId"${moveDisabled ? ' disabled' : ''}>
+            ${eligibleDestinations.map(destination => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}
+          </select>
+          <button type="submit"${moveDisabled ? ' disabled' : ''}>Move task</button>
         </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           ${editFields}
@@ -354,7 +373,7 @@ export function createApplication(dbPath) {
         }
         response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, range) });
         response.end();
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date))?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date|move))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
         const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -377,7 +396,20 @@ export function createApplication(dbPath) {
             sendHtml(400, renderProject('Task title is required'));
             return;
           }
-          insertTask.run(projectId, title, project.default_priority);
+          insertTask.run(projectId, title, project.default_priority, projectId);
+        } else if (parts[5] === 'move') {
+          const taskId = Number(parts[4]);
+          const destinationId = Number(body.get('destinationId'));
+          const destination = Number.isSafeInteger(destinationId) ? findProject.get(destinationId) : undefined;
+          if (!destination || destination.archived || destinationId === projectId) {
+            sendHtml(400, renderProject('Destination must be another active project'));
+            return;
+          }
+          // A single statement both transfers ownership and assigns append order.
+          if (!Number.isSafeInteger(taskId) || !moveTask.run(destinationId, destinationId, taskId, projectId).changes) {
+            sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
         } else if (parts[5] === 'due-date') {
           const taskId = Number(parts[4]);
           const dueDate = (body.get('dueDate') ?? '').trim();

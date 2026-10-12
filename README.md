@@ -20,7 +20,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 `GET /health` returns `{"status":"ok"}`. The UI uses HTML forms with a small
 browser script to submit completion changes, priority changes, and filters automatically.
 Project names and task titles are trimmed and HTML-escaped. Projects and tasks
-are ordered by their persistent creation IDs. Each project's tasks can be
+are ordered by creation, with moved tasks appended to their destination's tasks. Each project's tasks can be
 filtered by All (the default), Open, or Completed, combined with a Priority filter
 of All (the default), Low, Normal, or High. Both filters must match; changing a
 filter or editing a task preserves the other selection and creation order.
@@ -61,6 +61,14 @@ range intersects completion and priority filters, and all three filters survive
 edits and re-evaluate task membership immediately. Invalid ranges show an alert
 without changing the applied range. Ranges do not change task data or summary
 counts, remain usable while archived, and reset when opening from the project list.
+
+Each task row offers Destination project and Move task. Destinations are other
+active projects in project creation order, using their current names. Moving
+preserves the task's identity, title, completion, priority and due date and appends
+it after the destination's existing tasks. The source page retains all filters;
+both project summaries reflect the new ownership. Ordering and ownership survive
+restarts. Archived projects cannot be sources or destinations. Move controls are
+disabled while archived or when no eligible destination exists.
 
 Run automated HTTP and persistence tests:
 
