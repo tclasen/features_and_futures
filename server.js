@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
   due_date TEXT,
-  notes TEXT NOT NULL DEFAULT ''
+  notes TEXT NOT NULL DEFAULT '',
+  deleted INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS task_positions (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -35,6 +36,7 @@ try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DE
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 db.exec(`INSERT INTO task_positions (task_id, project_id, position)
   SELECT t.id, t.project_id, ROW_NUMBER() OVER (PARTITION BY t.project_id ORDER BY t.id)
   FROM tasks t WHERE NOT EXISTS (SELECT 1 FROM task_positions tp WHERE tp.task_id = t.id AND tp.project_id = t.project_id)`);
@@ -44,7 +46,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, type, body) => { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
   if (url.pathname === '/health' && req.method === 'GET') return send(200, 'application/json; charset=utf-8', JSON.stringify({ status: 'ok' }));
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS total, COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
@@ -63,7 +65,7 @@ const server = http.createServer(async (req, res) => {
   if (tasks && req.method === 'GET') {
     const projectId = Number(tasks[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t JOIN task_positions tp ON tp.task_id = t.id AND tp.project_id = t.project_id WHERE t.project_id = ? ORDER BY tp.position, t.id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted FROM tasks t JOIN task_positions tp ON tp.task_id = t.id AND tp.project_id = t.project_id WHERE t.project_id = ? ORDER BY tp.position, t.id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
   if (tasks && req.method === 'POST') {
     let body = '';
@@ -115,11 +117,16 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = JSON.parse(body);
       const id = Number(task[1]);
+      if (typeof data.deleted === 'boolean') {
+        const result = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.deleted ? 1 : 0, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+      }
       if (Object.hasOwn(data, 'projectId')) {
         const destinationId = Number(data.projectId);
         if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid destination' }));
         const current = db.prepare('SELECT t.project_id, s.archived AS source_archived, d.archived AS destination_archived FROM tasks t JOIN projects s ON s.id = t.project_id JOIN projects d ON d.id = ? WHERE t.id = ?').get(destinationId, id);
-        if (!current || current.source_archived || current.destination_archived || current.project_id === destinationId) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid destination' }));
+        if (!current || current.source_archived || current.destination_archived || current.project_id === destinationId || db.prepare('SELECT deleted FROM tasks WHERE id = ?').get(id).deleted) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid destination' }));
         let remembered = db.prepare('SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?').get(id, destinationId);
         if (!remembered) {
           const next = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM task_positions WHERE project_id = ?').get(destinationId).next;
