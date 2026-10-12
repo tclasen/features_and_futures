@@ -120,6 +120,10 @@ function sendPage(response) {
       <select id="task-filter">
         <option>All</option><option>Open</option><option>Completed</option>
       </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter">
+        <option>All</option><option>Low</option><option>Normal</option><option>High</option>
+      </select>
       <ul id="tasks" aria-label="Tasks"></ul>
     </section>
   </main>
@@ -198,9 +202,11 @@ function sendPage(response) {
       if (!response.ok) throw new Error('Unable to load tasks');
       const tasks = await response.json();
       const filter = document.querySelector('#task-filter').value;
+      const priorityFilter = document.querySelector('#priority-filter').value;
       taskList.replaceChildren();
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+        if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
         const row = document.createElement('li');
         row.dataset.testid = 'task-row';
         const checkbox = document.createElement('input');
@@ -258,6 +264,7 @@ function sendPage(response) {
             body: JSON.stringify({ priority: priority.value })
           });
           if (!updated.ok) throw new Error('Unable to update task priority');
+          await renderTasks();
         });
         row.append(checkbox, title, renameInput, renameButton, priority);
         taskList.append(row);
@@ -301,6 +308,7 @@ function sendPage(response) {
       input.value = '';
     });
     document.querySelector('#task-filter').addEventListener('change', renderTasks);
+    document.querySelector('#priority-filter').addEventListener('change', renderTasks);
     document.querySelector('#project-filter').addEventListener('change', showList);
 
     document.querySelector('#create-form').addEventListener('submit', async (event) => {
