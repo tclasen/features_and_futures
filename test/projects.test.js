@@ -44,6 +44,142 @@ async function startServer(databasePath) {
   };
 }
 
+test('project download exports portable unfiltered state without changing saved data or page controls', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return {
+        projects: database.prepare('SELECT * FROM projects ORDER BY id').all(),
+        tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all(),
+        positions: database.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(),
+      };
+    } finally {
+      database.close();
+    }
+  };
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async path => (await fetch(server.address + path)).text();
+    const download = async (id, query = '') => {
+      const response = await fetch(`${server.address}/projects/${id}/export${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    const name = 'Source  日本語 <b>original</b>';
+    const title = 'Alpha\t original  TITLE <tag>';
+    const notes = '  \r\nUnicode 日本語 😀 <script>literal</script>\rline\nlast\t  ';
+    for (const projectName of [name, 'Destination', 'Empty']) {
+      await post('/projects', { name: projectName });
+    }
+    await post('/projects/1/tasks', { title });
+    await post('/projects/1/tasks', { title: 'Deleted task' });
+    await post('/projects/2/tasks', { title: 'Other project only' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    await post('/projects/1/tasks/1/notes', { notes });
+    await post('/projects/1/tasks/2/notes', { notes: ' deleted notes \n' });
+    await post('/projects/1/tasks/2/delete');
+    // A returning task precedes tasks created while it was away, despite its older ID.
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/1/default-task-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Later task' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name, archived: false, defaultPriority: 'Low',
+        tasks: [
+          { title, completed: true, priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n'), deleted: false },
+          { title: 'Deleted task', completed: false, priority: 'Normal', dueDate: '', notes: ' deleted notes \n', deleted: true },
+          { title: 'Later task', completed: false, priority: 'Low', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const query = '?filter=Deleted&priorityFilter=High&dueFrom=2024-01-01&dueThrough=2024-12-31&search=absent';
+    const path = '/projects/1' + query;
+    const pageBefore = await view(path);
+    assert.doesNotMatch(pageBefore, /data-testid="task-row"/);
+    assert.match(pageBefore, /<form action="\/projects\/1\/export" method="get"><button type="submit">Download project<\/button>/);
+    const before = snapshot();
+    assert.deepEqual(await download(1, query), expected);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(await view(path), pageBefore);
+    assert.equal(snapshot().tasks[0].notes, notes);
+    assert.deepEqual(await download(3), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: false, defaultPriority: 'Normal', tasks: [] },
+    });
+    assert.deepEqual((await download(2)).project.tasks.map(task => task.title), ['Other project only']);
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/tasks/4/delete');
+    await post('/projects/1/archive');
+    expected.project.archived = true;
+    expected.project.tasks.forEach(task => { task.deleted = true; });
+    const archivedBefore = snapshot();
+    const archivedPage = await view(path);
+    assert.match(archivedPage, /<button type="submit">Download project<\/button>/);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedBefore);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedBefore);
+    assert.equal(await view(path), archivedPage);
+    assert.equal((await fetch(server.address + '/projects/999/export')).status, 404);
+    assert.equal((await post('/projects/1/export')).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('project download uses public defaults for migrated older records and preserves their order', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-migration-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, position INTEGER NOT NULL);
+      INSERT INTO projects (name) VALUES ('Older  Project');
+      INSERT INTO tasks (project_id, title, completed, position) VALUES
+        (1, 'Last', 1, 9), (1, 'First', 0, 2);
+    `);
+    database.close();
+    server = await startServer(databasePath);
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'Older  Project', archived: false, defaultPriority: 'Normal',
+        tasks: [
+          { title: 'First', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+          { title: 'Last', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    assert.deepEqual(await (await fetch(server.address + '/projects/1/export')).json(), expected);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(await (await fetch(server.address + '/projects/1/export')).json(), expected);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('notes migrate without data loss and persist as plain text through edits, moves and archives', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
   const databasePath = join(directory, 'workboard.sqlite');

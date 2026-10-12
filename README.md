@@ -68,5 +68,16 @@ markup. Empty text clears notes. Notes persist through restarts, renames, moves
 and return-position restoration without affecting search or filters. Archived
 projects display saved notes with editing disabled until restored. Existing
 tasks receive empty notes during migration without changing other saved data.
+Live tasks can be deleted and restored without losing fields or remembered
+positions. The Deleted task filter shows deleted tasks with editing disabled;
+All, Open, Completed and project summaries count only live tasks. Archived
+projects disable deletion and restoration while retaining readable filters.
+Every project page provides Download project, including archived projects.
+It downloads UTF-8 `workboard-project.json` with format `workboard-project`,
+version `1`, project name/archive/default priority, and all live and deleted
+tasks in stored order. Export ignores page filters, preserves original names
+and titles, and includes completion, priority, due date, notes and deleted state.
+Notes line endings become LF only in the export. Downloading changes neither
+stored data nor page selections; remembered return positions remain in the app.
 Projects, names, tasks, and archive state persist across server restarts. `GET /health` returns
 `{"status":"ok"}`. Run the integration checks with `npm test`.

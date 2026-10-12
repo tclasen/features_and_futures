@@ -276,6 +276,32 @@ function taskFilterQuery(filter, priorityFilter, dueRange = { from: '', through:
   return query.toString();
 }
 
+function downloadProject(response, project) {
+  const document = {
+    format: 'workboard-project',
+    version: 1,
+    project: {
+      name: project.name,
+      archived: Boolean(project.archived),
+      defaultPriority: project.default_task_priority,
+      tasks: listTasks.all(project.id).map(task => ({
+        title: task.title,
+        completed: Boolean(task.completed),
+        priority: task.priority,
+        dueDate: task.due_date,
+        notes: task.notes.replace(/\r\n?/g, '\n'),
+        deleted: Boolean(task.deleted),
+      })),
+    },
+  };
+  response.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Disposition': 'attachment; filename="workboard-project.json"',
+    'Cache-Control': 'no-store',
+  });
+  response.end(JSON.stringify(document, null, 2));
+}
+
 function projectPage(project, filter = 'All', error = '', priorityFilter = 'All', dueRange = { from: '', through: '' }, search = '') {
   const destinations = listDestinations.all(project.id);
   const moveDisabled = project.archived || destinations.length === 0;
@@ -294,6 +320,7 @@ function projectPage(project, filter = 'All', error = '', priorityFilter = 'All'
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    <form action="${action}/export" method="get"><button type="submit">Download project</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create-form" method="post" action="${action}/rename?${query}">
       <label for="new-project-name">New project name</label>
@@ -439,12 +466,16 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       redirect(response, search ? `/?${projectListQuery(projectFilter, search)}` : (url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/'));
-    } else if ((request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) ||
+    } else if ((request.method === 'GET' && /^\/projects\/\d+(?:\/export)?$/.test(url.pathname)) ||
       (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|default-task-priority|due-range|tasks(?:\/\d+(?:\/(?:rename|priority|due-date|notes|move|delete|restore))?)?)$/.test(url.pathname))) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
       if (!project) {
         html(response, 404, page('Project not found', '<h1>Project not found</h1><form action="/"><button>Projects</button></form>'));
+        return;
+      }
+      if (request.method === 'GET' && url.pathname.endsWith('/export')) {
+        downloadProject(response, project);
         return;
       }
       const requestedFilter = url.searchParams.get('filter');
