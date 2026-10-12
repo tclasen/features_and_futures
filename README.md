@@ -24,6 +24,11 @@ disable task rename controls, and restoration enables them again. Each task has 
 Task priority selector with Low, Normal, and High choices, defaulting to Normal.
 Priorities persist independently, including through renaming and archive/restore;
 archived projects disable priority edits. Existing tasks migrate to Normal.
+The Priority filter offers All, Low, Normal, and High and combines with the Task
+filter. Both start at All when opening a project from the list. Changes preserve
+the other selection; task edits immediately re-evaluate matching rows without
+resetting either filter. Both filters remain usable in archived projects, and
+project summaries always count all tasks.
 Native HTML forms handle creation and navigation; small inline browser event
 handlers submit completion, priority, and filter changes.
 
@@ -40,3 +45,6 @@ projects, completion summaries, and project/task renaming with preserved identit
 ownership, order, completion, and filter membership across restarts. Priority tests
 also cover existing-task migration, defaults, independent updates, validation,
 archive protection, restoration, and persistence across process restarts.
+Combined-filter tests cover every completion/priority combination, creation order,
+selection retention through edits and validation, live membership changes,
+unchanged summaries, archived filtering, and saved data across restarts.
