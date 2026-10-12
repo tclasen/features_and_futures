@@ -23,6 +23,7 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT,
+    notes TEXT NOT NULL DEFAULT '',
     sort_order INTEGER NOT NULL DEFAULT 0
   )
 `);
@@ -44,6 +45,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 if (!taskColumns.some((column) => column.name === 'sort_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   db.exec('UPDATE tasks SET sort_order = id');
+}
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 // Keep each task's position in every project it has belonged to. The task's
 // sort_order remains its position in its current project for existing queries.
@@ -68,13 +72,14 @@ const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
 const createTask = db.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) SELECT p.id, ?, p.default_priority, COALESCE((SELECT MAX(sort_order) + 1 FROM task_project_positions WHERE project_id = p.id), 0) FROM projects p WHERE p.id = ?");
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const listActiveProjects = db.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id');
 const findTaskProjectPosition = db.prepare('SELECT sort_order AS sortOrder FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const nextProjectPosition = db.prepare('SELECT COALESCE(MAX(sort_order) + 1, 0) AS sortOrder FROM task_project_positions WHERE project_id = ?');
@@ -114,7 +119,8 @@ const page = `<!doctype html>
     h1 { margin-top: 0; }
     form { display: flex; gap: .75rem; align-items: end; flex-wrap: wrap; }
     label { display: grid; gap: .35rem; font-weight: 600; }
-    input, button { font: inherit; padding: .65rem .8rem; border: 1px solid #aeb9c6; border-radius: 6px; }
+    input, textarea, button { font: inherit; padding: .65rem .8rem; border: 1px solid #aeb9c6; border-radius: 6px; }
+    textarea { min-width: 14rem; min-height: 4rem; }
     button { cursor: pointer; background: #174ea6; color: white; border-color: #174ea6; }
     button.secondary { background: white; color: #174ea6; }
     ul { padding: 0; list-style: none; }
@@ -585,7 +591,26 @@ const page = `<!doctype html>
                 renderTasks();
               }
             });
-            row.append(checkbox, title, renameInput, renameButton, priority, dueDateInput, saveDueDate, destination, moveButton);
+            const notes = document.createElement('textarea');
+            notes.setAttribute('aria-label', 'Task notes');
+            notes.value = task.notes || '';
+            notes.disabled = Boolean(project.archived);
+            const saveNotes = document.createElement('button');
+            saveNotes.type = 'button';
+            saveNotes.textContent = 'Save notes';
+            saveNotes.disabled = Boolean(project.archived);
+            saveNotes.addEventListener('click', async () => {
+              const saved = await fetch('/api/projects/' + escId(id) + '/tasks/' + escId(task.id), {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes: notes.value })
+              });
+              if (saved.ok) {
+                const updatedTask = await saved.json();
+                task.notes = updatedTask.notes;
+                notes.value = task.notes;
+              }
+            });
+            row.append(checkbox, title, renameInput, renameButton, priority, dueDateInput, saveDueDate, notes, saveNotes, destination, moveButton);
             list.append(row);
           }
         }
@@ -702,6 +727,8 @@ const server = createServer(async (request, response) => {
       const dueDate = typeof body.dueDate === 'string' ? body.dueDate.trim() : '';
       if (dueDate && !isValidDueDate(dueDate)) return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       updateTaskDueDate.run(dueDate || null, taskId, projectId);
+    } else if (typeof body?.notes === 'string') {
+      updateTaskNotes.run(body.notes, taskId, projectId);
     } else if (['Low', 'Normal', 'High'].includes(body?.priority)) {
       updateTaskPriority.run(body.priority, taskId, projectId);
     } else {
