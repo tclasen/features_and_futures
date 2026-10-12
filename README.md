@@ -30,4 +30,8 @@ Renaming preserves ownership, creation order, completion, and summaries, and
 updates the completion checkbox label. Archived tasks must be restored with their
 project before they can be renamed.
 
+Each task has a Task priority selector with Low, Normal, and High options.
+Existing and new tasks default to Normal. Priorities persist independently across
+renames and restarts; archived projects disable priority edits until restored.
+
 Run the integration checks with `npm test`.
