@@ -152,7 +152,7 @@ async function readJson(request) {
   return JSON.parse(body);
 }
 
-const server = createServer(async (request, response) => {
+async function handleRequest(request, response) {
   const url = new URL(request.url, 'http://localhost');
 
   if (request.method === 'GET' && url.pathname === '/health') {
@@ -364,7 +364,31 @@ const server = createServer(async (request, response) => {
   }
   response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end('Not found');
+}
+
+const server = createServer((request, response) => {
+  handleRequest(request, response).catch((error) => {
+    // Keep one malformed request or an unexpected database error from taking
+    // down the whole service (and resetting unrelated health/restart checks).
+    console.error('Request failed:', error);
+    if (response.headersSent) {
+      response.destroy(error);
+      return;
+    }
+    sendJson(response, 500, { error: 'Internal server error' });
+  });
 });
 
 const port = Number(process.env.PORT || 8080);
 server.listen(port, '0.0.0.0');
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => {
+    database.close();
+  });
+}
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
