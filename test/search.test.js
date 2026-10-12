@@ -48,7 +48,9 @@ test('search intersects filters, retains state through edits and moves, and rese
     // Every edit form carries the query, while search carries the other applied filters.
     const html = await get(location);
     for (const form of html.matchAll(/<form[^>]*>([\s\S]*?)<\/form>/g)) {
-      if (!form[0].includes('action="/"')) assert.match(form[1], /name="search"[^>]*value="plan"/);
+      if (!form[0].includes('action="/"') && !form[0].includes('/export"')) {
+        assert.match(form[1], /name="search"[^>]*value="plan"/);
+      }
     }
     for (const [endpoint, data] of [
       ['rename', { name: 'Renamed project' }],

@@ -247,6 +247,7 @@ function renderProjectPage(project, filter = 'All', error = '', priority = 'All'
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form action="/projects/${project.id}/export" method="get"><button type="submit">Download project</button></form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
     <form class="create" method="post" action="/projects/${project.id}/rename">
       ${filterFields}
@@ -386,6 +387,36 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
+    } else if (request.method === 'GET' && /^\/projects\/\d+\/export$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : null;
+      if (!project) {
+        html(response, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(id).map((task) => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Portable textarea line endings only; the stored notes remain untouched.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted),
+          })),
+        },
+      };
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      });
+      response.end(JSON.stringify(document));
     } else if (request.method === 'GET' && url.pathname === '/') {
       html(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter')), appliedSearch));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
