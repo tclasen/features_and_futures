@@ -88,8 +88,8 @@ test('project search uses trimmed ASCII-insensitive substrings and intersects ar
     const list = async (fields = {}) => (await fetch(`${server.baseUrl}/?${new URLSearchParams(fields)}`)).text();
     const names = (html) => projectRows(html).map((row) => row.name);
     assert.deepEqual(names(await list({ search: '  aLpHa  ' })), ['Alpha Board', 'ALPHA  Board', '&lt;Alpha &amp; Board&gt;']);
-    assert.deepEqual(names(await list({ search: 'alpha board' })), ['Alpha Board']);
-    assert.deepEqual(names(await list({ search: 'alpha  board' })), ['ALPHA  Board']);
+    assert.deepEqual(names(await list({ search: 'alpha board' })), ['Alpha Board', 'ALPHA  Board']);
+    assert.deepEqual(names(await list({ search: 'alpha  board' })), ['Alpha Board', 'ALPHA  Board']);
     assert.deepEqual(names(await list({ search: 'älpha' })), []); // No Unicode case folding.
     assert.deepEqual(names(await list({ search: 'Älpha' })), ['Älpha']);
     assert.equal(names(await list({ search: ' \t ' })).length, 5);
@@ -115,6 +115,59 @@ test('project search uses trimmed ASCII-insensitive substrings and intersects ar
   }
 });
 
+test('search collapses only spaces and tabs without rewriting persisted names or titles', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const originals = ['Alpha \t  Board', 'ALPHA\t\tBoard', 'Alpha\nBoard', 'Alpha\u00a0Board'];
+    for (const name of originals) await create(server.baseUrl, name);
+    for (const title of originals) await post(server.baseUrl, '/projects/1/tasks', { title });
+    const query = '  aLpHa \t\t bOaRd  ';
+    const list = async (fields = {}) => (await fetch(`${server.baseUrl}/?${new URLSearchParams(fields)}`)).text();
+    const page = async (fields = {}) => (await fetch(`${server.baseUrl}/projects/1?${new URLSearchParams(fields)}`)).text();
+    const names = (html) => projectRows(html).map((row) => row.name);
+    const titles = (html) => taskRows(html).map((row) => row.title);
+    assert.deepEqual(names(await list({ search: query })), originals.slice(0, 2));
+    assert.deepEqual(titles(await page({ search: query })), originals.slice(0, 2));
+    assert.deepEqual(names(await list({ search: 'alpha\nboard' })), [originals[2]]);
+    assert.deepEqual(titles(await page({ search: 'alpha\u00a0board' })), [originals[3]]);
+    assert.deepEqual(names(await list()), originals);
+    assert.deepEqual(titles(await page()), originals);
+
+    await post(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High', search: query });
+    await post(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '2024-02-29', search: query });
+    const state = { search: query, filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29' };
+    assert.deepEqual(titles(await page(state)), [originals[0]]);
+    const renamed = 'ALpha\t \tBoard updated';
+    const response = await post(server.baseUrl, '/projects/1/tasks/1/rename', { ...state, title: renamed });
+    const location = new URL(response.headers.get('location'), server.baseUrl);
+    assert.equal(location.searchParams.get('search'), query.trim());
+    assert.deepEqual(titles(await (await fetch(location)).text()), [renamed]);
+    await post(server.baseUrl, '/projects/1/archive', {});
+    assert.deepEqual(names(await list({ search: query, filter: 'Archived' })), [originals[0]]);
+    assert.deepEqual(titles(await page(state)), [renamed]);
+    await post(server.baseUrl, '/projects/1/restore', {});
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(names(await list({ search: query })), originals.slice(0, 2));
+    assert.deepEqual(names(await list()), originals);
+    assert.deepEqual(titles(await page(state)), [renamed]);
+    assert.deepEqual(titles(await page()), [renamed, ...originals.slice(1)]);
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.deepEqual(database.prepare('SELECT name FROM projects ORDER BY id').all().map((row) => row.name), originals);
+      assert.deepEqual(database.prepare('SELECT title FROM tasks ORDER BY id').all().map((row) => row.title), [renamed, ...originals.slice(1)]);
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task search intersects all filters and survives edits, validation, moves, and restart', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-task-search-'));
   const databasePath = join(directory, 'board.sqlite');
@@ -129,8 +182,8 @@ test('task search intersects all filters and survives edits, validation, moves, 
     const titles = (html) => taskRows(html).map((row) => row.title);
     const get = async (fields = {}) => (await fetch(`${server.baseUrl}/projects/1?${new URLSearchParams(fields)}`)).text();
     assert.deepEqual(titles(await get({ search: '  aLpHa  ' })), ['Alpha task', 'ALPHA  task']);
-    assert.deepEqual(titles(await get({ search: 'alpha task' })), ['Alpha task']);
-    assert.deepEqual(titles(await get({ search: 'alpha  task' })), ['ALPHA  task']);
+    assert.deepEqual(titles(await get({ search: 'alpha task' })), ['Alpha task', 'ALPHA  task']);
+    assert.deepEqual(titles(await get({ search: 'alpha  task' })), ['Alpha task', 'ALPHA  task']);
     assert.deepEqual(titles(await get({ search: 'älpha' })), []);
     assert.equal(titles(await get({ search: ' \t ' })).length, 4);
     await post(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });

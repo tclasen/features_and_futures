@@ -163,10 +163,11 @@ function readSearch(fields) {
   return (fields.get('search') || '').trim();
 }
 
-// Only ASCII letters fold; non-ASCII characters and internal whitespace stay significant.
+// Normalize only for matching; keep saved names/titles and applied queries intact.
 function matchesSearch(value, query) {
-  const fold = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = (text) => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function searchField(search = '') {
