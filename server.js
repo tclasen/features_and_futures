@@ -49,6 +49,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
   db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'deleted')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+}
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -62,8 +65,8 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
     return send(res, 200, db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
-      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0 AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
       FROM projects p ORDER BY p.created_at, p.rowid`).all());
   }
   const projectArchive = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
@@ -123,7 +126,7 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(projectTasks[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return send(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
+      return send(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
         FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
         WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid`).all(projectId));
     }
@@ -144,6 +147,18 @@ const server = createServer(async (req, res) => {
     }
   }
   const taskCompletion = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  const taskDeletion = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/(delete|restore)$/);
+  if (req.method === 'PATCH' && taskDeletion) {
+    let projectId, taskId;
+    try { projectId = decodeURIComponent(taskDeletion[1]); taskId = decodeURIComponent(taskDeletion[2]); } catch { return send(res, 400, { error: 'Invalid task id' }); }
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, { error: 'Project not found' });
+    if (project.archived) return send(res, 409, { error: 'Archived projects are read only' });
+    const deleted = taskDeletion[3] === 'delete' ? 1 : 0;
+    const result = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(deleted, taskId, projectId);
+    if (!result.changes) return send(res, 404, { error: 'Task not found' });
+    return send(res, 200, { id: taskId, projectId, deleted });
+  }
   const taskMove = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
   if (req.method === 'PATCH' && taskMove) {
     let sourceId, taskId;
@@ -156,7 +171,7 @@ const server = createServer(async (req, res) => {
     const destinationId = payload.destinationProjectId;
     const destination = typeof destinationId === 'string' && db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
     if (!destination || destination.archived || destinationId === sourceId) return send(res, 400, { error: 'Invalid destination project' });
-    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ? AND deleted = 0').get(taskId, sourceId);
     if (!task) return send(res, 404, { error: 'Task not found' });
     const remembered = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
     const nextPosition = remembered?.position ?? db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
