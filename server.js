@@ -197,12 +197,23 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '', filter = 'Active') {
-  const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
+function matchesSearch(value, query) {
+  const foldAscii = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return foldAscii(value).includes(foldAscii(query));
+}
+
+function projectListQuery(filter, search) {
+  return new URLSearchParams({ filter, search }).toString();
+}
+
+function projectsPage(error = '', filter = 'Active', search = '') {
+  const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
+    .filter(project => matchesSearch(project.name, search));
+  const query = escapeHtml(projectListQuery(filter, search));
   return page('Projects', `
     <p class="eyebrow">Your workspace</p>
     <h1>Workboard</h1>
-    <form class="create-form" method="post" action="/projects?filter=${filter}">
+    <form class="create-form" method="post" action="/projects?${query}">
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <label for="project-name">Project name</label>
       <div class="controls">
@@ -212,10 +223,19 @@ function projectsPage(error = '', filter = 'Active') {
     </form>
     <h2>Projects</h2>
     <form method="get" action="/">
+      <input type="hidden" name="search" value="${escapeHtml(search)}">
       <label for="project-filter">Project filter</label>
       <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
+    </form>
+    <form class="create-form" method="get" action="/">
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-search">Project search</label>
+      <div class="controls">
+        <input id="project-search" name="search" type="text" value="${escapeHtml(search)}">
+        <button type="submit">Search projects</button>
+      </div>
     </form>
     ${projects.length ? `<ul class="project-list">${projects.map(project => `
       <li class="project-row" data-testid="project-row">
@@ -224,7 +244,7 @@ function projectsPage(error = '', filter = 'Active') {
         </div>
         <div class="project-actions">
           <form method="get" action="/projects/${project.id}"><button type="submit">Open project</button></form>
-          <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}"><button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button></form>
+          <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}?${query}"><button type="submit">${project.archived ? 'Restore' : 'Archive'} project</button></form>
         </div>
       </li>`).join('')}</ul>` : `<p class="empty">${filter === 'Archived' ? 'No archived projects.' : 'No projects yet. Create a project to get started.'}</p>`}
   `);
@@ -235,25 +255,27 @@ function html(response, status, content) {
   response.end(content);
 }
 
-function taskFilterQuery(filter, priorityFilter, dueRange = { from: '', through: '' }) {
+function taskFilterQuery(filter, priorityFilter, dueRange = { from: '', through: '' }, search = '') {
   const query = new URLSearchParams({ filter });
   if (priorityFilter !== 'All') query.set('priorityFilter', priorityFilter);
   if (dueRange.from) query.set('dueFrom', dueRange.from);
   if (dueRange.through) query.set('dueThrough', dueRange.through);
+  if (search) query.set('search', search);
   return query.toString();
 }
 
-function projectPage(project, filter = 'All', error = '', priorityFilter = 'All', dueRange = { from: '', through: '' }) {
+function projectPage(project, filter = 'All', error = '', priorityFilter = 'All', dueRange = { from: '', through: '' }, search = '') {
   const destinations = listDestinations.all(project.id);
   const moveDisabled = project.archived || destinations.length === 0;
   const tasks = listTasks.all(project.id).filter(task =>
+    matchesSearch(task.title, search) &&
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priorityFilter === 'All' || task.priority === priorityFilter) &&
     ((!dueRange.from && !dueRange.through) || (task.due_date !== '' &&
       (!dueRange.from || task.due_date >= dueRange.from) &&
       (!dueRange.through || task.due_date <= dueRange.through))));
   const action = `/projects/${project.id}`;
-  const query = escapeHtml(taskFilterQuery(filter, priorityFilter, dueRange));
+  const query = escapeHtml(taskFilterQuery(filter, priorityFilter, dueRange, search));
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -291,6 +313,18 @@ function projectPage(project, filter = 'All', error = '', priorityFilter = 'All'
       </select>
       <input type="hidden" name="dueFrom" value="${escapeHtml(dueRange.from)}">
       <input type="hidden" name="dueThrough" value="${escapeHtml(dueRange.through)}">
+      <input type="hidden" name="search" value="${escapeHtml(search)}">
+    </form>
+    <form class="create-form" method="get" action="${action}">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priorityFilter}">
+      <input type="hidden" name="dueFrom" value="${escapeHtml(dueRange.from)}">
+      <input type="hidden" name="dueThrough" value="${escapeHtml(dueRange.through)}">
+      <label for="task-search">Task search</label>
+      <div class="controls">
+        <input id="task-search" name="search" type="text" value="${escapeHtml(search)}">
+        <button type="submit">Search tasks</button>
+      </div>
     </form>
     <form class="create-form" method="post" action="${action}/due-range?${query}">
       <label for="due-from">Due from</label>
@@ -360,27 +394,29 @@ function redirect(response, location) {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
+    const search = (url.searchParams.get('search') ?? '').trim();
+    const projectFilter = url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active';
     if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
     } else if (request.method === 'GET' && url.pathname === '/') {
-      html(response, 200, projectsPage('', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active'));
+      html(response, 200, projectsPage('', projectFilter, search));
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const body = await readForm(request);
       const name = (body.get('name') ?? '').trim();
       if (!name) {
-        html(response, 400, projectsPage('Project name is required', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active'));
+        html(response, 400, projectsPage('Project name is required', projectFilter, search));
         return;
       }
       createProject.run(name);
-      redirect(response, '/');
+      redirect(response, search ? `/?${projectListQuery(projectFilter, search)}` : '/');
     } else if (request.method === 'POST' && /^\/projects\/\d+\/(archive|restore)$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       if (!Number.isSafeInteger(id) || !setProjectArchived.run(url.pathname.endsWith('/archive') ? 1 : 0, id).changes) {
         html(response, 404, page('Project not found', '<h1>Project not found</h1>'));
         return;
       }
-      redirect(response, url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/');
+      redirect(response, search ? `/?${projectListQuery(projectFilter, search)}` : (url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/'));
     } else if ((request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) ||
       (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|default-task-priority|due-range|tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?)$/.test(url.pathname))) {
       const id = Number(url.pathname.split('/')[2]);
@@ -404,7 +440,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       if (request.method === 'GET') {
-        html(response, 200, projectPage(project, filter, '', priorityFilter, dueRange));
+        html(response, 200, projectPage(project, filter, '', priorityFilter, dueRange, search));
       } else {
         const body = await readForm(request);
         const currentProject = getProject.get(project.id);
@@ -415,35 +451,35 @@ const server = http.createServer(async (request, response) => {
           };
           const error = dueRangeError(nextRange);
           if (error) {
-            html(response, 400, projectPage(currentProject, filter, error, priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, error, priorityFilter, dueRange, search));
           } else {
-            redirect(response, `/projects/${project.id}?${taskFilterQuery(filter, priorityFilter, nextRange)}`);
+            redirect(response, `/projects/${project.id}?${taskFilterQuery(filter, priorityFilter, nextRange, search)}`);
           }
           return;
         }
         if (currentProject.archived) {
-          html(response, 403, projectPage(currentProject, filter, 'Archived project', priorityFilter, dueRange));
+          html(response, 403, projectPage(currentProject, filter, 'Archived project', priorityFilter, dueRange, search));
           return;
         }
         const taskId = url.pathname.split('/')[4];
         if (url.pathname.endsWith('/default-task-priority')) {
           const priority = body.get('priority');
           if (!taskPriorities.includes(priority)) {
-            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority', priorityFilter, dueRange, search));
             return;
           }
           setDefaultTaskPriority.run(priority, project.id);
         } else if (url.pathname.endsWith('/rename') && taskId === undefined) {
           const name = (body.get('name') ?? '').trim();
           if (!name) {
-            html(response, 400, projectPage(currentProject, filter, 'Project name is required', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Project name is required', priorityFilter, dueRange, search));
             return;
           }
           renameProject.run(name, project.id);
         } else if (taskId === undefined) {
           const title = (body.get('title') ?? '').trim();
           if (!title) {
-            html(response, 400, projectPage(project, filter, 'Task title is required', priorityFilter, dueRange));
+            html(response, 400, projectPage(project, filter, 'Task title is required', priorityFilter, dueRange, search));
             return;
           }
           createTask(project.id, title, currentProject.default_task_priority);
@@ -451,7 +487,7 @@ const server = http.createServer(async (request, response) => {
           const destinationId = Number(body.get('destinationProject'));
           const destination = Number.isSafeInteger(destinationId) ? getProject.get(destinationId) : undefined;
           if (!destination || destination.archived || destination.id === project.id) {
-            html(response, 400, projectPage(currentProject, filter, 'Choose an active destination project', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Choose an active destination project', priorityFilter, dueRange, search));
             return;
           }
           const id = Number(taskId);
@@ -462,7 +498,7 @@ const server = http.createServer(async (request, response) => {
         } else if (url.pathname.endsWith('/rename')) {
           const title = (body.get('title') ?? '').trim();
           if (!title) {
-            html(response, 400, projectPage(currentProject, filter, 'Task title is required', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Task title is required', priorityFilter, dueRange, search));
             return;
           }
           const id = Number(taskId);
@@ -473,7 +509,7 @@ const server = http.createServer(async (request, response) => {
         } else if (url.pathname.endsWith('/due-date')) {
           const dueDate = (body.get('dueDate') ?? '').trim();
           if (!isValidDueDate(dueDate)) {
-            html(response, 400, projectPage(currentProject, filter, 'Due date must be a valid YYYY-MM-DD date', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Due date must be a valid YYYY-MM-DD date', priorityFilter, dueRange, search));
             return;
           }
           const id = Number(taskId);
@@ -484,7 +520,7 @@ const server = http.createServer(async (request, response) => {
         } else if (url.pathname.endsWith('/priority')) {
           const priority = body.get('priority');
           if (!taskPriorities.includes(priority)) {
-            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority', priorityFilter, dueRange));
+            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority', priorityFilter, dueRange, search));
             return;
           }
           const id = Number(taskId);
@@ -499,7 +535,7 @@ const server = http.createServer(async (request, response) => {
             return;
           }
         }
-        redirect(response, `/projects/${project.id}?${taskFilterQuery(filter, priorityFilter, dueRange)}`);
+        redirect(response, `/projects/${project.id}?${taskFilterQuery(filter, priorityFilter, dueRange, search)}`);
       }
     } else {
       html(response, 404, page('Not found', '<h1>Not found</h1>'));
