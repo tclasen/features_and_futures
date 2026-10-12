@@ -236,10 +236,24 @@ const server = http.createServer(async (req, res) => {
         // SQLite may report zero changed rows for a no-op update. Check ownership
         // separately so saving the already-current date remains a successful edit.
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
-        updateDueDate.run(canonical, taskId, projectId);
-        // Return the persisted value (rather than the request value) so the UI
-        // and callers observe precisely what survives a subsequent reload.
-        const savedTask = getTask.get(taskId);
+        // Write and read back in one transaction. This makes a successful save
+        // observable only after SQLite has committed the canonical value, and
+        // avoids acknowledging a date that would disappear on process restart.
+        db.exec('BEGIN IMMEDIATE');
+        let savedTask;
+        try {
+          updateDueDate.run(canonical, taskId, projectId);
+          savedTask = getTask.get(taskId);
+          if (!savedTask || (savedTask.dueDate || '') !== (canonical || '')) {
+            throw new Error('Unable to save due date');
+          }
+          db.exec('COMMIT');
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+        // Return the committed value so callers observe exactly what survives
+        // a subsequent process restart.
         if ((savedTask.dueDate || '') !== (canonical || '')) return json(res, 500, { error: 'Unable to save due date' });
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
