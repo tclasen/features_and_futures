@@ -29,6 +29,11 @@ due range and title search. Deleted rows are read-only until restored; restoring
 returns them to their reserved position without resetting filters. Archived
 projects disable deletion and restoration. Existing tasks migrate as live, and
 deletion persists across restarts.
+Every project page offers Download project, including archived projects. It downloads
+UTF-8 `workboard-project.json` with format `workboard-project`, version 1, project
+state, and all live/deleted tasks in stored order, independent of visible filters.
+Task notes use LF line endings in the export; downloading changes no stored data
+or selected controls.
 Open a project to create tasks, toggle completion, and filter All, Open,
 Completed, or Deleted tasks. Each task row supports renaming with a trimmed, nonblank title;
 renaming preserves ownership, creation order, and completion. Archived projects
