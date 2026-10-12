@@ -17,8 +17,11 @@ Open `/` to create and open projects. Each project supports task creation,
 completion checkboxes, and All, Open, and Completed filters. A Priority filter
 offers All, Low, Normal, and High; tasks must match both selected filters.
 Task edits retain both filter selections and immediately update matching rows.
-Each task's Low, Normal, or High priority is saved independently, defaults to
-Normal, and cannot be edited while its project is archived. The project list
+Each task's Low, Normal, or High priority is saved independently and cannot be
+edited while its project is archived. The Default task priority selection starts
+at Normal and is saved per project. New tasks inherit the saved default;
+changing it leaves existing tasks and both filters unchanged. Archived projects
+display the saved default with editing disabled until restored. The project list
 shows completion summaries and Active/Archived filters, with archive and restore
 controls. Archived projects keep their tasks visible while task creation and
 completion changes are disabled. Active projects can be renamed with the
