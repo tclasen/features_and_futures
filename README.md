@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0`, using `PORT` (default `8080`). SQLite data is
 stored at `DB_PATH` (default `data/workboard.sqlite`). Parent directories are
 created automatically. Reuse the same database path to preserve projects,
-their tasks, task completion state, and archive state.
+their tasks, task completion state, archive state, and project priority defaults.
 Project names, including later renames, persist at the same project URL.
 
 ```sh
@@ -40,11 +40,18 @@ tasks, and summary. Empty names are rejected. Archived projects disable renaming
 and reject rename requests until restored.
 
 Each task row has a Task priority selector with Low, Normal, and High options.
-New and existing tasks default to Normal. Changing priority saves immediately
+Tasks without stored priorities receive Normal on upgrade. Changing priority saves immediately
 and preserves task ownership, order, title, and completion. Priorities persist
 across restarts and task renames. Archived projects disable priority controls
 and reject priority changes until restored. Database upgrades add the default
 priority without replacing existing projects or tasks.
+
+Each project has a Default task priority selector offering Low, Normal, and High.
+New and existing projects initially use Normal. Changing the default saves it for
+that project and affects only tasks created afterward; existing tasks and both
+selected filters remain unchanged. Defaults survive restarts, project renames,
+archival, and restoration. Archived projects display the saved default in a
+disabled selector and reject changes until restored.
 
 Each task row provides a New task title field and Rename task button. Renaming
 trims whitespace and preserves the task's project, creation order, completion

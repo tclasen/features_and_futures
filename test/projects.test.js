@@ -363,6 +363,7 @@ test('existing project databases migrate to active without changing IDs or tasks
     assert.match(rows(list)[0], /action="\/projects\/7"/);
     assert.match(rows(list)[0], /1\/1 completed/);
     const detail = await (await fetch(server.baseUrl + '/projects/7')).text();
+    assertDefaultTaskPriority(detail, 'Normal');
     assert.match(taskRows(detail)[0], /Complete Saved task" checked/);
     assert.match(taskRows(detail)[0], /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     assert.equal((await postForm(server.baseUrl, '/projects/7/tasks/9/priority', { priority: 'High' })).status, 303);
@@ -565,6 +566,104 @@ function assertTaskFilters(html, filter, priorityFilter) {
 function taskTitles(html) {
   return taskRows(html).map((row) => row.match(/<span class="name">(.*?)<\/span>/s)[1]);
 }
+
+function assertDefaultTaskPriority(html, selected, disabled = false) {
+  assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+  const select = html.match(/<select id="default-task-priority"[^>]*>(.*?)<\/select>/s);
+  assert.ok(select);
+  assert.equal(select[0].includes(' disabled'), disabled);
+  assert.match(select[0], /onchange="this.form.requestSubmit\(\)"/);
+  assert.equal(select[1], ['Low', 'Normal', 'High'].map((priority) =>
+    `<option${priority === selected ? ' selected' : ''}>${priority}</option>`).join(''));
+}
+
+test('project defaults affect only future tasks and survive filters, renames, archives, and restarts', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-priority-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    await createProject(server.baseUrl, 'First');
+    await createProject(server.baseUrl, 'Second');
+    assertDefaultTaskPriority(await read(), 'Normal');
+    assertDefaultTaskPriority(await read('/projects/2'), 'Normal');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Existing' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    const existingTasks = taskRows(await read());
+    const originalProjects = rows(await read('/'));
+    const filters = { filter: 'Completed', priorityFilter: 'Normal' };
+    const setDefault = async (priority) => {
+      const response = await postForm(server.baseUrl, '/projects/1/default-priority', { priority, ...filters });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Normal');
+      const html = await read(response.headers.get('location'));
+      assertTaskFilters(html, 'Completed', 'Normal');
+      assertDefaultTaskPriority(html, priority);
+      assert.deepEqual(taskTitles(html), ['Existing']);
+    };
+    await setDefault('High');
+    assert.deepEqual(taskRows(await read()), existingTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+    for (const priority of ['', 'Urgent', 'high', undefined]) {
+      const response = await postForm(server.baseUrl, '/projects/1/default-priority', {
+        ...filters, ...(priority === undefined ? {} : { priority }),
+      });
+      assert.equal(response.status, 422);
+      const html = await response.text();
+      assertTaskFilters(html, 'Completed', 'Normal');
+      assertDefaultTaskPriority(html, 'High');
+      assert.match(html, /role="alert">Task priority must be Low, Normal, or High/);
+    }
+    assert.equal((await postForm(server.baseUrl, '/projects/999/default-priority', { priority: 'Low' })).status, 404);
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Inherited High' });
+    await setDefault('Low');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Inherited Low' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Independent Normal' });
+    assertDefaultTaskPriority(await read('/projects/2'), 'Normal');
+    const otherTasks = taskRows(await read('/projects/2'));
+    assert.match(otherTasks[0], /<option selected>Normal<\/option>/);
+    await postForm(server.baseUrl, '/projects/1/tasks/2/rename', { title: 'Renamed High' });
+    await postForm(server.baseUrl, '/projects/1/rename', { name: 'Renamed project' });
+    const savedTasks = taskRows(await read());
+    assert.deepEqual(savedTasks.slice(0, 1), existingTasks);
+    assert.match(savedTasks[1], /Renamed High/);
+    assert.match(savedTasks[1], /<option selected>High<\/option>/);
+    assert.match(savedTasks[2], /<option selected>Low<\/option>/);
+    const savedProjects = rows(await read('/'));
+    assert.match(savedProjects[0], /1\/3 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assertDefaultTaskPriority(await read(), 'Low');
+    assert.deepEqual(taskRows(await read()), savedTasks);
+    assert.deepEqual(rows(await read('/')), savedProjects);
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    const archived = await read('/projects/1?filter=Completed&priorityFilter=Normal');
+    assertDefaultTaskPriority(archived, 'Low', true);
+    assertTaskFilters(archived, 'Completed', 'Normal');
+    assert.deepEqual(taskTitles(archived), ['Existing']);
+    const blocked = await postForm(server.baseUrl, '/projects/1/default-priority', { priority: 'High', ...filters });
+    assert.equal(blocked.status, 403);
+    assertDefaultTaskPriority(await blocked.text(), 'Low', true);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read('/projects/1?filter=Completed&priorityFilter=Normal'), archived);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assertDefaultTaskPriority(await read(), 'Low');
+    assert.deepEqual(taskRows(await read()), savedTasks);
+    assert.deepEqual(rows(await read('/')), savedProjects);
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Restored Low' });
+    assert.match(taskRows(await read())[3], /<option selected>Low<\/option>/);
+    await setDefault('Normal');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'New Normal' });
+    assert.match(taskRows(await read())[4], /<option selected>Normal<\/option>/);
+    assert.deepEqual(taskRows(await read()).slice(0, 3), savedTasks);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('combined filters preserve selections, order, edits, summaries, and archived data across restarts', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-combined-filters-'));

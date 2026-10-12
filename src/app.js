@@ -108,18 +108,23 @@ export function createApp(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
     database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
+  // Project defaults affect only future tasks, including after database upgrades.
+  if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
+    database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
+  }
   const listProjects = database.prepare(`SELECT projects.id, projects.name,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id ASC`);
-  const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const findProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
+  const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?)
       AND (? = 'All' OR priority = ?) ORDER BY id ASC`);
-  const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -157,6 +162,12 @@ ${renameError ? `<p id="rename-error" role="alert">${escapeHtml(renameError)}</p
 </form>
 <h2>Tasks</h2>
 ${priorityError ? `<p role="alert">${escapeHtml(priorityError)}</p>` : ''}
+<form method="post" action="/projects/${project.id}/default-priority">
+${hiddenTaskFilters(filters)}
+<label for="default-task-priority">Default task priority</label>
+<select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">${taskPriorities.map((priority) => `<option${priority === project.default_task_priority ? ' selected' : ''}>${priority}</option>`).join('')}</select>
+<noscript><button type="submit"${project.archived ? ' disabled' : ''}>Save default priority</button></noscript>
+</form>
 <form method="post" action="/projects/${project.id}/tasks">
 ${hiddenTaskFilters(filters)}
 <label for="task-title">Task title</label>
@@ -197,7 +208,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?|\/(archive|restore|rename))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?|\/(archive|restore|rename|default-priority))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -222,6 +233,22 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         }
         if (request.method === 'GET' && pathname === `/projects/${id}`) {
           sendHtml(response, 200, projectPage(project, readTaskFilters(url.searchParams)));
+        } else if (request.method === 'POST' && projectRoute[4] === 'default-priority') {
+          const form = await readForm(request);
+          const currentProject = findProject.get(id);
+          const filters = readTaskFilters(form);
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, filters, { priorityError: 'Archived project is read-only' }));
+            return;
+          }
+          const priority = form.get('priority');
+          if (!taskPriorities.includes(priority)) {
+            sendHtml(response, 422, projectPage(currentProject, filters, { priorityError: 'Task priority must be Low, Normal, or High' }));
+            return;
+          }
+          updateDefaultTaskPriority.run(priority, id);
+          response.writeHead(303, { Location: projectLocation(id, filters) });
+          response.end();
         } else if (request.method === 'POST' && projectRoute[4] === 'rename') {
           const form = await readForm(request);
           const currentProject = findProject.get(id);
@@ -244,17 +271,18 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
           response.end();
         } else if (request.method === 'POST' && pathname.endsWith('/tasks')) {
           const form = await readForm(request);
-          if (findProject.get(id).archived) {
-            sendHtml(response, 403, projectPage(findProject.get(id), readTaskFilters(form), { taskError: 'Archived project is read-only' }));
+          const currentProject = findProject.get(id);
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, readTaskFilters(form), { taskError: 'Archived project is read-only' }));
             return;
           }
           const title = (form.get('title') ?? '').trim();
           const filters = readTaskFilters(form);
           if (!title) {
-            sendHtml(response, 422, projectPage(project, filters, { taskError: 'Task title is required' }));
+            sendHtml(response, 422, projectPage(currentProject, filters, { taskError: 'Task title is required' }));
             return;
           }
-          insertTask.run(id, title);
+          insertTask.run(id, title, currentProject.default_task_priority);
           response.writeHead(303, { Location: projectLocation(id, filters) });
           response.end();
         } else if (request.method === 'POST' && projectRoute[2]) {
