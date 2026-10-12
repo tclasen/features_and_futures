@@ -75,6 +75,95 @@ function priorityControls(html) {
   }));
 }
 
+test('project defaults migrate, persist independently and apply only to subsequent tasks', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-defaults-'));
+  const databasePath = join(directory, 'board.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (id, name) VALUES (7, 'Legacy');
+    INSERT INTO tasks (id, project_id, title, completed, priority) VALUES (9, 7, 'Existing', 1, 'Low');
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path = '/') => (await fetch(`${server.baseUrl}${path}`)).text();
+    const first = '/projects/7';
+    const second = '/projects/8';
+    const defaultControl = (html) => {
+      assert.match(html, /<label for="default-task-priority">Default task priority<\/label>/);
+      const select = html.match(/<select id="default-task-priority"[^>]*>([\s\S]*?)<\/select>/);
+      assert.ok(select);
+      assert.deepEqual([...select[1].matchAll(/<option(?: selected)?>(.*?)<\/option>/g)].map((m) => m[1]), ['Low', 'Normal', 'High']);
+      return { selected: select[1].match(/<option selected>(.*?)<\/option>/)[1], disabled: / disabled/.test(select[0]) };
+    };
+    await create(server.baseUrl, 'Other');
+    assert.deepEqual(defaultControl(await get(first)), { selected: 'Normal', disabled: false });
+    assert.deepEqual(defaultControl(await get(second)), { selected: 'Normal', disabled: false });
+    await post(server.baseUrl, `${first}/tasks`, { title: 'Normal inherited' });
+    const original = taskRows(await get(first));
+    const fields = { filter: 'Completed', priorityFilter: 'Low' };
+    const filteredPath = `${first}?filter=Completed&priorityFilter=Low`;
+    const before = taskRows(await get(filteredPath));
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post(server.baseUrl, `${first}/default-priority`, { ...fields, priority })).status, 400);
+    }
+    assert.equal((await post(server.baseUrl, '/projects/999/default-priority', { priority: 'High' })).status, 404);
+    const changed = await post(server.baseUrl, `${first}/default-priority`, { ...fields, priority: 'High' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), filteredPath);
+    const filtered = await get(filteredPath);
+    assert.match(filtered, /<option selected>Completed<\/option>/);
+    assert.match(filtered, /<select id="priority-filter"[^>]*>\s*<option>All<\/option>\s*<option selected>Low<\/option>/);
+    assert.deepEqual(taskRows(filtered), before);
+    assert.deepEqual(taskRows(await get(first)), original);
+    assert.deepEqual(priorityControls(await get(first)).map((c) => c.selected), ['Low', 'Normal']);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+    await post(server.baseUrl, `${first}/tasks`, { title: 'High inherited', ...fields });
+    await post(server.baseUrl, `${second}/default-priority`, { priority: 'Low' });
+    await post(server.baseUrl, `${second}/tasks`, { title: 'Other inherited' });
+    await post(server.baseUrl, `${first}/default-priority`, { priority: 'Low' });
+    await post(server.baseUrl, `${first}/tasks`, { title: 'Low inherited' });
+    await post(server.baseUrl, `${first}/rename`, { name: 'Renamed project' });
+    await post(server.baseUrl, `${first}/tasks/11/rename`, { title: 'Renamed high task' });
+    const expected = taskRows(await get(first));
+    assert.deepEqual(expected.map((row) => row.title), ['Existing', 'Normal inherited', 'Renamed high task', 'Low inherited']);
+    const priorities = ['Low', 'Normal', 'High', 'Low'];
+    assert.deepEqual(priorityControls(await get(first)).map((c) => c.selected), priorities);
+    await post(server.baseUrl, `${first}/archive`, {});
+    assert.equal((await post(server.baseUrl, `${first}/default-priority`, { priority: 'Normal' })).status, 409);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(defaultControl(await get(first)), { selected: 'Low', disabled: true });
+    assert.deepEqual(defaultControl(await get(second)), { selected: 'Low', disabled: false });
+    assert.deepEqual(taskRows(await get(first)), expected);
+    assert.deepEqual(priorityControls(await get(first)).map((c) => c.selected), priorities);
+    assert.deepEqual(projectSummaries(await get('/?filter=Archived')), ['1/4 completed']);
+    assert.deepEqual(taskRows(await get(filteredPath)), before);
+    await post(server.baseUrl, `${first}/restore`, {});
+    assert.deepEqual(defaultControl(await get(first)), { selected: 'Low', disabled: false });
+    await post(server.baseUrl, `${first}/tasks`, { title: 'After restoration' });
+    assert.equal(priorityControls(await get(first)).at(-1).selected, 'Low');
+    await post(server.baseUrl, `${first}/default-priority`, { priority: 'High' });
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(defaultControl(await get(first)), { selected: 'High', disabled: false });
+    assert.deepEqual(defaultControl(await get(second)), { selected: 'Low', disabled: false });
+    await post(server.baseUrl, `${first}/tasks`, { title: 'After restart' });
+    assert.deepEqual(priorityControls(await get(first)).map((c) => c.selected), [...priorities, 'Low', 'High']);
+    assert.deepEqual(taskRows(await get(first)).slice(0, 4), expected);
+    assert.deepEqual(projectSummaries(await get()), ['1/6 completed', '0/1 completed']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('combined filters retain selections through edits, archives and restarts', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
   let server;
