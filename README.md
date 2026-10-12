@@ -90,3 +90,13 @@ renames, moves and remembered return positions. Saving retains all applied
 filters, and searches continue matching only project names and task titles.
 Archived projects display saved notes with editing disabled until restored.
 Database upgrades initialize notes as empty without changing existing task data.
+
+Delete task hides a live task without losing its saved fields or remembered
+project positions. All, Open and Completed show only live tasks, and project
+summaries count only live tasks. The fourth Task filter option, Deleted, shows
+deleted tasks alongside the same priority, due range and title search filters.
+Restore task returns a deleted task to its reserved position, including before
+newer tasks. Deleted tasks show their saved fields with all editing and move
+controls disabled; restore them before editing or moving. Archived projects allow
+reading deleted tasks but disable deletion and restoration. Deletion persists
+across restarts; database upgrades initialize existing tasks as live.

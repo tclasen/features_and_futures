@@ -1490,13 +1490,191 @@ test('notes migration preserves all pre-existing task fields and remembered posi
     server = await start(dbPath);
     const upgraded = new DatabaseSync(dbPath);
     try {
-      assert.deepEqual(upgraded.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })), tasks.map(task => ({ ...task, notes: '' })));
+      assert.deepEqual(upgraded.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })), tasks.map(task => ({ ...task, notes: '', deleted: 0 })));
       assert.deepEqual(upgraded.prepare('SELECT * FROM projects ORDER BY id').all(), projects);
       assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(), positions);
     } finally { upgraded.close(); }
     const html = await (await fetch(`${server.url}/projects/1`)).text();
     assert.deepEqual([...html.matchAll(/id="task-(\d+)" type="checkbox"/g)].map(match => Number(match[1])), [2, 1]);
     assert.match(html, /<textarea id="task-notes-1" name="notes">\n<\/textarea>/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('reversible deletion retains fields, filters, reserved positions, summaries and restart state', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const ids = html => [...html.matchAll(/id="task-(\d+)" type="checkbox"/g)].map(match => Number(match[1]));
+    const saved = () => {
+      const connection = new DatabaseSync(dbPath);
+      try {
+        return {
+          tasks: connection.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
+          positions: connection.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(),
+        };
+      } finally { connection.close(); }
+    };
+    const summary = async (name, expected, archived = false) => {
+      const html = await get(archived ? '/?filter=Archived' : '/');
+      const row = [...html.matchAll(/data-testid="project-row">([\s\S]*?)<\/li>/g)].find(match => match[1].includes(`>${name}</span>`));
+      assert.ok(row?.[1].includes(`data-testid="project-summary">${expected} completed`));
+    };
+    await post('/projects', { name: 'Source' });
+    await post('/projects', { name: 'Destination' });
+    for (const title of ['Alpha  first', 'Alpha second', 'Other third', 'Alpha fourth']) {
+      await post('/projects/1/tasks', { title });
+    }
+    await post('/projects/2/tasks', { title: 'Destination first' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    const notes = '\n  Saved 日本語 <script>literal</script>\n  ';
+    await post('/projects/1/tasks/1/notes', { notes });
+    // Establish positions in both projects before deleting.
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    const before = saved();
+    assert.ok(before.tasks.every(task => task.deleted === 0));
+    const fields = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-28', dueThrough: '2024-03-01', search: 'ALPHA\t first' };
+    const path = '/projects/1?filter=Completed&priorityFilter=High&dueFrom=2024-02-28&dueThrough=2024-03-01&search=ALPHA%09%20first';
+    const deletedPath = path.replace('filter=Completed', 'filter=Deleted');
+    const deletedFields = { ...fields, filter: 'Deleted' };
+    const deletion = await post('/projects/1/tasks/1/delete', fields);
+    assert.equal(deletion.status, 303);
+    assert.equal(deletion.headers.get('location'), path);
+    assert.deepEqual(saved(), { ...before, tasks: before.tasks.map(task => task.id === 1 ? { ...task, deleted: 1 } : task) });
+    assert.deepEqual(ids(await get(path)), []);
+    assert.deepEqual(ids(await get('/projects/1')), [2, 3, 4]);
+    assert.deepEqual(ids(await get('/projects/1?filter=Open')), [2, 3, 4]);
+    assert.deepEqual(ids(await get('/projects/1?filter=Completed')), []);
+    assert.deepEqual(ids(await get(deletedPath)), [1]);
+    await summary('Source', '0/3');
+    await summary('Destination', '0/1');
+    const deletedHtml = await get(deletedPath);
+    assert.match(deletedHtml, /<option>All<\/option><option>Open<\/option><option>Completed<\/option><option selected>Deleted<\/option>/);
+    assert.match(deletedHtml, /id="task-1"[^>]*checked disabled/);
+    for (const id of ['new-task-title-1', 'task-priority-1', 'task-due-date-1', 'task-notes-1', 'destination-project-1']) {
+      assert.ok(new RegExp(`id="${id}"[^>]* disabled`).test(deletedHtml), id);
+    }
+    for (const label of ['Rename task', 'Save due date', 'Save notes', 'Move task']) {
+      assert.ok(deletedHtml.includes(`<button type="submit" disabled>${label}</button>`), label);
+    }
+    assert.match(deletedHtml, /<button type="submit">Restore task<\/button>/);
+    assert.doesNotMatch(deletedHtml, />Delete task<\/button>/);
+    for (const id of ['task-filter', 'priority-filter', 'due-from', 'due-through', 'task-search']) {
+      assert.ok(!new RegExp(`id="${id}"[^>]*disabled`).test(deletedHtml), id);
+    }
+    const restoreForm = /<form[^>]*action="\/projects\/1\/tasks\/1\/restore">([\s\S]*?)<\/form>/.exec(deletedHtml)[1];
+    for (const [key, value] of Object.entries(deletedFields)) assert.ok(restoreForm.includes(`name="${key}" value="${value}"`));
+    for (const [suffix, data] of [
+      ['', {}], ['/rename', { title: 'blocked' }], ['/priority', { priority: 'Low' }],
+      ['/due-date', { dueDate: '' }], ['/notes', { notes: 'blocked' }], ['/move', { destination: '2' }],
+    ]) {
+      const snapshot = saved();
+      assert.equal((await post(`/projects/1/tasks/1${suffix}`, { ...deletedFields, ...data })).status, 403);
+      assert.deepEqual(saved(), snapshot);
+    }
+    for (const variation of [
+      deletedPath.replace('priorityFilter=High', 'priorityFilter=Low'),
+      deletedPath.replace('dueFrom=2024-02-28', 'dueFrom=2024-03-01'),
+      deletedPath.replace('search=ALPHA%09%20first', 'search=literal'),
+    ]) assert.deepEqual(ids(await get(variation)), []);
+    assert.deepEqual(ids(await get('/projects/1?filter=Deleted')), [1]);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get(deletedPath), deletedHtml);
+    assert.equal(saved().tasks[0].notes, notes);
+    await post('/projects/1/archive');
+    await summary('Source', '0/3', true);
+    const archived = await get('/projects/1?filter=Deleted');
+    assert.match(archived, /<button type="submit" disabled>Restore task/);
+    assert.match(await get('/projects/1'), /<button type="submit" disabled>Delete task/);
+    for (const [id, action] of [[1, 'restore'], [2, 'delete']]) {
+      const snapshot = saved();
+      assert.equal((await post(`/projects/1/tasks/${id}/${action}`, deletedFields)).status, 403);
+      assert.deepEqual(saved(), snapshot);
+    }
+    assert.deepEqual(ids(await get(deletedPath)), [1]);
+    await post('/projects/1/restore');
+    assert.equal(await get(deletedPath), deletedHtml);
+    // Restore under Deleted, retaining its filter and disappearing from it.
+    await post('/projects/1/default-task-priority', { priority: 'Low' });
+    await post('/projects/1/tasks', { title: 'Created after deletion' });
+    const restoration = await post('/projects/1/tasks/1/restore', deletedFields);
+    assert.equal(restoration.headers.get('location'), deletedPath);
+    assert.deepEqual(ids(await get(deletedPath)), []);
+    assert.deepEqual(ids(await get(path)), [1]);
+    assert.deepEqual(ids(await get('/projects/1')), [1, 2, 3, 4, 6]);
+    assert.deepEqual(saved().tasks[0], before.tasks[0]);
+    await summary('Source', '1/5');
+    // Delete multiple tasks and restore in reverse order; slots remain reserved.
+    for (const id of [1, 2, 3, 4, 6]) await post(`/projects/1/tasks/${id}/delete`);
+    await summary('Source', '0/0');
+    assert.deepEqual(ids(await get('/projects/1')), []);
+    assert.deepEqual(ids(await get('/projects/1?filter=Deleted')), [1, 2, 3, 4, 6]);
+    // Undated deleted tasks follow the same range rules.
+    assert.deepEqual(ids(await get('/projects/1?filter=Deleted&dueFrom=0001-01-01')), [1]);
+    for (const id of [6, 4, 3, 2, 1]) await post(`/projects/1/tasks/${id}/restore`, { filter: 'Deleted' });
+    assert.deepEqual(ids(await get('/projects/1')), [1, 2, 3, 4, 6]);
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual(ids(await get('/projects/2')), [5, 1]);
+    assert.deepEqual(saved().positions.filter(row => row.task_id === 1), before.positions.filter(row => row.task_id === 1));
+    assert.equal(saved().tasks[0].notes, notes);
+    await summary('Source', '0/4');
+    await summary('Destination', '1/2');
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(saved().tasks[0], before.tasks[0]);
+    assert.equal((await post('/projects/2/tasks/1/delete')).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/restore')).status, 404);
+    const final = await get('/projects/1');
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), final);
+    assert.deepEqual(saved().tasks[0], before.tasks[0]);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('deletion upgrade initializes only live state and retains existing notes and positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-upgrade-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE task_project_positions (task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id), UNIQUE (project_id, position));
+      INSERT INTO projects (name, archived, default_task_priority) VALUES ('Source', 0, 'Low'), ('Previous', 1, 'High');
+      INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, position) VALUES (1, 'Moved title', 1, 'High', '0001-01-01', '  Original notes 日本語  ', 7), (1, 'First title', 0, 'Low', '', '', 3);
+      INSERT INTO task_project_positions VALUES (1, 1, 7), (1, 2, 1), (2, 1, 3);
+    `);
+    const tasks = legacy.prepare('SELECT * FROM tasks ORDER BY id').all();
+    const projects = legacy.prepare('SELECT * FROM projects ORDER BY id').all();
+    const positions = legacy.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+    legacy.close();
+    server = await start(dbPath);
+    const upgraded = new DatabaseSync(dbPath);
+    try {
+      assert.deepEqual(upgraded.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })), tasks.map(task => ({ ...task, deleted: 0 })));
+      assert.deepEqual(upgraded.prepare('SELECT * FROM projects ORDER BY id').all(), projects);
+      assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(), positions);
+    } finally { upgraded.close(); }
+    const html = await (await fetch(`${server.url}/projects/1`)).text();
+    assert.deepEqual([...html.matchAll(/id="task-(\d+)" type="checkbox"/g)].map(match => Number(match[1])), [2, 1]);
+    assert.match(await (await fetch(`${server.url}/`)).text(), /data-testid="project-summary">1\/2 completed/);
+    assert.doesNotMatch(await (await fetch(`${server.url}/projects/1?filter=Deleted`)).text(), /data-testid="task-row"/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
