@@ -17,7 +17,7 @@ test('search composes with filters and survives edits without changing stored da
   try {
     for (const name of ['Alpha  team', 'ALPHA team', 'Ärea', 'ärea']) await post('/projects', { name });
     assert.deepEqual(names(await get('/?search=%20alpha%20')), ['Alpha  team', 'ALPHA team']);
-    assert.deepEqual(names(await get('/?search=alpha%20%20team')), ['Alpha  team']);
+    assert.deepEqual(names(await get('/?search=alpha%20%20team')), ['Alpha  team', 'ALPHA team']);
     assert.deepEqual(names(await get('/?search=Ä')), ['Ärea']);
     assert.deepEqual(names(await get('/?search=%20%20')), ['Alpha  team', 'ALPHA team', 'Ärea', 'ärea']);
     await post('/projects/2/archive', { search: 'alpha' });
@@ -29,7 +29,7 @@ test('search composes with filters and survives edits without changing stored da
     const state = { filter: 'Open', priorityFilter: 'High', rangeFrom: '2026-01-01', rangeThrough: '2026-12-31', search: ' alpha ' };
     const view = () => get(`/projects/1?${new URLSearchParams(state)}`);
     assert.deepEqual(titles(await view()), ['Alpha  task']);
-    assert.deepEqual(titles(await get('/projects/1?search=alpha%20%20task')), ['Alpha  task']);
+    assert.deepEqual(titles(await get('/projects/1?search=alpha%20%20task')), ['Alpha  task', 'ALPHA task']);
     const response = await post('/projects/1/tasks/1/rename', { ...state, title: 'New title' });
     const location = response.headers.get('location');
     const query = new URL(location, base).searchParams;

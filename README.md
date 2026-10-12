@@ -77,7 +77,9 @@ restarts. Archived projects cannot be sources or destinations. Move controls are
 disabled while archived or when no eligible destination exists.
 
 Project search and Task search apply trimmed substring queries, ignoring only ASCII
-letter case and preserving internal whitespace. Search intersects the other filters,
+letter case and collapsing each run of ASCII spaces and horizontal tabs to one space
+in both names/titles and queries for matching only. Stored and displayed names/titles
+retain their original whitespace and case. Search intersects the other filters,
 retains creation/remembered order, and never changes data or all-task summaries.
 Applied queries survive filter changes and edits, including task moves; archived
 pages still allow search. Opening from the project list resets task search, and

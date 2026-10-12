@@ -20,10 +20,11 @@ export function isValidDueDate(value) {
   return day <= daysInMonth[month - 1];
 }
 
-// Fold ASCII letters only; other characters and internal whitespace stay significant.
+// Normalize only for matching; saved names and titles remain unchanged.
 function matchesSearch(value, query) {
-  const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = text => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function page(title, content) {
