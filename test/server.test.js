@@ -302,6 +302,50 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     await postTask('/projects/1/restore', {});
     assert.equal(await combinedPage('Open', 'High'), saved);
     assert.match(await tasksPage(), /id="priority-filter"[\s\S]*?<option selected>All<\/option>/);
+
+    // Defaults are project-local and never rewrite existing tasks or filters.
+    const defaultSelect = html => html.match(/<select id="default-task-priority"[^>]*>[\s\S]*?<\/select>/)[0];
+    assert.match(defaultSelect(await tasksPage()), /<option selected>Normal<\/option>/);
+    const snapshot = () => {
+      const db = new DatabaseSync(join(dir, 'projects.sqlite'));
+      try { return db.prepare('SELECT * FROM tasks ORDER BY id').all(); }
+      finally { db.close(); }
+    };
+    const beforeDefault = snapshot();
+    const summaryDefault = await (await fetch(base)).text();
+    const changeDefault = await postTask('/projects/1/default-priority', {
+      ...selected, priority: 'High'
+    });
+    assert.equal(changeDefault.status, 303);
+    assert.equal(changeDefault.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Normal');
+    assertSelected(await combinedPage('Completed', 'Normal'));
+    assert.deepEqual(snapshot(), beforeDefault);
+    assert.equal(await (await fetch(base)).text(), summaryDefault);
+    assert.match(defaultSelect(await tasksPage()), /<option selected>High<\/option>/);
+    assert.match(defaultSelect(await tasksPage(2)), /<option selected>Normal<\/option>/);
+    await postTask('/projects/1/tasks', { title: 'Inherited high' });
+    await postTask('/projects/2/tasks', { title: 'Independent normal' });
+    assert.equal(snapshot().find(task => task.title === 'Inherited high').priority, 'High');
+    assert.equal(snapshot().find(task => task.title === 'Independent normal').priority, 'Normal');
+    await postTask('/projects/1/default-priority', { priority: 'Low' });
+    await postTask('/projects/1/tasks', { title: 'Inherited low' });
+    assert.equal(snapshot().find(task => task.title === 'Inherited low').priority, 'Low');
+    assert.equal(snapshot().find(task => task.title === 'Inherited high').priority, 'High');
+    assert.equal((await postTask('/projects/1/default-priority', { priority: 'Invalid' })).status, 422);
+    await postTask('/projects/1/rename', { name: 'Default retained' });
+    const savedDefaultTasks = snapshot();
+    await postTask('/projects/1/archive', {});
+    assert.match(defaultSelect(await tasksPage()), / disabled/);
+    assert.match(defaultSelect(await tasksPage()), /<option selected>Low<\/option>/);
+    assert.equal((await postTask('/projects/1/default-priority', { priority: 'High' })).status, 403);
+    await stop();
+    await start();
+    assert.match(defaultSelect(await tasksPage()), /<option selected>Low<\/option>/);
+    await postTask('/projects/1/restore', {});
+    assert.doesNotMatch(defaultSelect(await tasksPage()), / disabled/);
+    assert.deepEqual(snapshot(), savedDefaultTasks);
+    await postTask('/projects/1/tasks', { title: 'After restore' });
+    assert.equal(snapshot().find(task => task.title === 'After restore').priority, 'Low');
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
@@ -333,6 +377,7 @@ test('migrates existing tasks to Normal priority without changing saved data', a
     const html = await (await fetch('http://127.0.0.1:18081/projects/1')).text();
     assert.match(html, /aria-label="Complete Legacy task" checked/);
     assert.match(html, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.match(html, /id="default-task-priority"[\s\S]*?<option selected>Normal<\/option>/);
     const migrated = new DatabaseSync(path);
     try {
       assert.deepEqual({ ...migrated.prepare('SELECT * FROM tasks').get() }, {
