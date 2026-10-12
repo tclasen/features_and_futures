@@ -131,7 +131,11 @@ function renderDirectory() {
     else if (order === 'Due date') compared = !a.dueDate ? (!b.dueDate ? 0 : 1) : (!b.dueDate ? -1 : a.dueDate.localeCompare(b.dueDate));
     else if (order === 'Title') {
       const x = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), y = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-      compared = x < y ? -1 : x > y ? 1 : 0;
+      const left = Array.from(x, character => character.codePointAt(0));
+      const right = Array.from(y, character => character.codePointAt(0));
+      const length = Math.min(left.length, right.length);
+      for (let i = 0; i < length && compared === 0; i++) compared = left[i] - right[i];
+      if (compared === 0) compared = left.length - right.length;
     }
     return compared || originalIndex.get(a.id) - originalIndex.get(b.id);
   });
