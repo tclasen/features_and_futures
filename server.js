@@ -221,7 +221,7 @@ const server = http.createServer(async (req, res) => {
           if (!getTaskPosition.get(taskId, destination.id)) addTaskPosition.run(taskId, destination.id, position);
           db.exec('COMMIT');
         } catch (error) { db.exec('ROLLBACK'); throw error; }
-      } else if (typeof data.dueDate === 'string') {
+      } else if (Object.hasOwn(data, 'dueDate') && typeof data.dueDate === 'string') {
         const trimmed = data.dueDate.trim();
         let canonical = null;
         if (trimmed) {
