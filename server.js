@@ -14,6 +14,7 @@ db.exec(`
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0
+    ,default_priority TEXT NOT NULL DEFAULT 'Normal'
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
@@ -27,13 +28,14 @@ db.exec(`
 // Upgrade databases created by earlier checkpoints without disturbing their data.
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all().map(column => column.name);
 if (!projectColumns.includes('archived')) db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+if (!projectColumns.includes('default_priority')) db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name);
 if (!taskColumns.includes('priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.created_at, p.rowid`);
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
@@ -43,6 +45,7 @@ const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND 
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 
 const mimeTypes = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 const server = createServer(async (req, res) => {
@@ -92,6 +95,19 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { id: projectId, name, archived: false });
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/default-priority$/);
+  if (req.method === 'PATCH' && defaultPriorityMatch) {
+    const projectId = decodeURIComponent(defaultPriorityMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 409, { error: 'Archived projects cannot be changed' });
+    try {
+      const body = await readJson(req);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) return json(res, 400, { error: 'Invalid task priority' });
+      updateProjectDefaultPriority.run(body.priority, projectId);
+      return json(res, 200, { ...project, defaultPriority: body.priority, archived: false });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (req.method === 'GET' && projectMatch) {
     const project = findProject.get(decodeURIComponent(projectMatch[1]));
@@ -109,8 +125,8 @@ const server = createServer(async (req, res) => {
         const body = await readJson(req);
         const title = typeof body.title === 'string' ? body.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
-        const task = { id: randomUUID(), projectId, title, completed: false };
-        insertTask.run(task.id, projectId, title, Date.now());
+        const task = { id: randomUUID(), projectId, title, completed: false, priority: project.defaultPriority };
+        db.prepare('INSERT INTO tasks (id, project_id, title, completed, priority, created_at) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, task.priority, Date.now());
         return json(res, 201, task);
       } catch { return json(res, 400, { error: 'Invalid request' }); }
     }

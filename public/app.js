@@ -14,6 +14,7 @@ const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
 const renameAlert = document.querySelector('#rename-alert');
+const defaultPriority = document.querySelector('#default-priority');
 let activeProjectId = null;
 let currentTasks = [];
 let activeProjectArchived = false;
@@ -86,6 +87,8 @@ async function openProject(id) {
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
   setProjectArchived(project.archived);
+  defaultPriority.value = project.defaultPriority || 'Normal';
+  defaultPriority.dataset.saved = defaultPriority.value;
   listView.hidden = true;
   detailView.hidden = false;
   history.pushState({}, '', `/projects/${encodeURIComponent(project.id)}`);
@@ -100,6 +103,7 @@ function setProjectArchived(archived) {
   taskForm.setAttribute('aria-disabled', String(archived));
   renameInput.disabled = archived;
   renameForm.querySelector('button[type="submit"]').disabled = archived;
+  defaultPriority.disabled = archived;
 }
 
 function drawTasks() {
@@ -217,6 +221,8 @@ async function renderRoute() {
     document.querySelector('#detail-name').textContent = project.name;
     activeProjectId = project.id;
     setProjectArchived(project.archived);
+    defaultPriority.value = project.defaultPriority || 'Normal';
+    defaultPriority.dataset.saved = defaultPriority.value;
     listView.hidden = true;
     detailView.hidden = false;
     await loadTasks();
@@ -279,6 +285,22 @@ taskForm.addEventListener('submit', async event => {
 });
 taskFilter.addEventListener('change', drawTasks);
 priorityFilter.addEventListener('change', drawTasks);
+defaultPriority.addEventListener('change', async () => {
+  const previous = defaultPriority.dataset.saved || 'Normal';
+  const selected = defaultPriority.value;
+  try {
+    const project = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/default-priority`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ priority: selected })
+    });
+    defaultPriority.value = project.defaultPriority;
+    defaultPriority.dataset.saved = project.defaultPriority;
+  } catch (error) {
+    defaultPriority.value = previous;
+    taskAlert.textContent = error.message;
+    taskAlert.hidden = false;
+  }
+});
 projectFilter.addEventListener('change', loadProjects);
 window.addEventListener('popstate', renderRoute);
 renderRoute();
