@@ -110,8 +110,19 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(taskCompletion[1]); taskId = decodeURIComponent(taskCompletion[2]); } catch { return send(res, 400, { error: 'Invalid task id' }); }
     let body = '';
     for await (const chunk of req) body += chunk;
-    let completed;
-    try { completed = JSON.parse(body).completed; } catch { return send(res, 400, { error: 'Invalid request' }); }
+    let payload;
+    try { payload = JSON.parse(body); } catch { return send(res, 400, { error: 'Invalid request' }); }
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, { error: 'Project not found' });
+    if (project.archived) return send(res, 409, { error: 'Archived projects are read only' });
+    if (typeof payload.title === 'string') {
+      const title = payload.title.trim();
+      if (!title) return send(res, 400, { error: 'Task title is required' });
+      const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+      if (!result.changes) return send(res, 404, { error: 'Task not found' });
+      return send(res, 200, { id: taskId, projectId, title });
+    }
+    const completed = payload.completed;
     if (typeof completed !== 'boolean') return send(res, 400, { error: 'Invalid completion state' });
     const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(completed ? 1 : 0, taskId, projectId);
     if (!result.changes) return send(res, 404, { error: 'Task not found' });
