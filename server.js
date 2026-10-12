@@ -22,7 +22,8 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-    due_date TEXT
+    due_date TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0
   )
 `);
 // Upgrade databases created by the earlier task checkpoints.
@@ -40,6 +41,10 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  db.exec('UPDATE tasks SET sort_order = id');
+}
 
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount,
@@ -51,13 +56,15 @@ const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare("INSERT INTO tasks (project_id, title, priority) SELECT id, ?, default_priority FROM projects WHERE id = ?");
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const createTask = db.prepare("INSERT INTO tasks (project_id, title, priority, sort_order) SELECT p.id, ?, p.default_priority, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = p.id), 0) FROM projects p WHERE p.id = ?");
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const listActiveProjects = db.prepare('SELECT id, name FROM projects WHERE archived = 0 ORDER BY id');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 
 function isValidDueDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -382,6 +389,7 @@ const page = `<!doctype html>
         });
         const tasksResponse = await fetch('/api/projects/' + escId(id) + '/tasks');
         const tasks = await tasksResponse.json();
+        const activeProjects = await getProjects(false);
         const list = document.createElement('ul');
         function renderTasks() {
           list.replaceChildren();
@@ -491,7 +499,34 @@ const page = `<!doctype html>
                 alert.hidden = false;
               }
             });
-            row.append(checkbox, title, renameInput, renameButton, priority, dueDateInput, saveDueDate);
+            const destinations = activeProjects.filter((candidate) => String(candidate.id) !== String(id));
+            const destination = document.createElement('select');
+            destination.setAttribute('aria-label', 'Destination project');
+            for (const candidate of destinations) {
+              const option = document.createElement('option');
+              option.value = candidate.id;
+              option.textContent = candidate.name;
+              destination.append(option);
+            }
+            const moveButton = document.createElement('button');
+            moveButton.type = 'button';
+            moveButton.textContent = 'Move task';
+            destination.disabled = Boolean(project.archived) || destinations.length === 0;
+            moveButton.disabled = Boolean(project.archived) || destinations.length === 0;
+            moveButton.addEventListener('click', async () => {
+              if (!destination.value) return;
+              const moved = await fetch('/api/projects/' + escId(id) + '/tasks/' + escId(task.id) + '/move', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destinationProjectId: Number(destination.value) })
+              });
+              if (moved.ok) {
+                const index = tasks.findIndex((item) => item.id === task.id);
+                if (index !== -1) tasks.splice(index, 1);
+                if (savedView) Object.assign(savedView, currentView());
+                renderTasks();
+              }
+            });
+            row.append(checkbox, title, renameInput, renameButton, priority, dueDateInput, saveDueDate, destination, moveButton);
             list.append(row);
           }
         }
@@ -565,6 +600,24 @@ const server = createServer(async (request, response) => {
     }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (request.method === 'POST' && moveMatch) {
+    const projectId = Number(moveMatch[1]);
+    const taskId = Number(moveMatch[2]);
+    const source = findProject.get(projectId);
+    if (!source) return sendJson(response, 404, { error: 'Project not found' });
+    if (source.archived) return sendJson(response, 409, { error: 'Archived projects cannot move tasks' });
+    const body = await readJson(request);
+    const destinationId = Number(body?.destinationProjectId);
+    const destination = findProject.get(destinationId);
+    if (!destination || destination.archived || destinationId === projectId) {
+      return sendJson(response, 400, { error: 'Destination must be a different active project' });
+    }
+    const task = findTask.get(taskId, projectId);
+    if (!task) return sendJson(response, 404, { error: 'Task not found' });
+    moveTask.run(destinationId, destinationId, taskId, projectId);
+    return sendJson(response, 200, findTask.get(taskId, destinationId));
+  }
   if (request.method === 'PATCH' && taskMatch) {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
