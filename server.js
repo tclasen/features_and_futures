@@ -58,6 +58,16 @@ const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 };
 
+const validDate = value => {
+  if (value === '') return true;
+  const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days[month - 1];
+};
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') {
@@ -135,6 +145,43 @@ const server = createServer(async (req, res) => {
     if (!name) return send(res, 400, { error: 'Project name is required' });
     const project = { id: randomUUID(), name };
     db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)').run(project.id, project.name, Date.now());
+    return send(res, 201, project);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/import') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let payload;
+    try { payload = JSON.parse(body); } catch { return send(res, 400, { error: 'Invalid project JSON' }); }
+    const document = payload?.document;
+    const override = typeof payload?.name === 'string' ? payload.name.trim() : '';
+    if (!override) return send(res, 400, { error: 'Project name is required' });
+    const priorities = ['Low', 'Normal', 'High'];
+    const p = document?.project;
+    const valid = document?.format === 'workboard-project' && document?.version === 1 &&
+      p && typeof p === 'object' && !Array.isArray(p) && typeof p.name === 'string' && p.name.trim() &&
+      typeof p.archived === 'boolean' && priorities.includes(p.defaultPriority) && Array.isArray(p.tasks) &&
+      p.tasks.every(task => task && typeof task === 'object' && !Array.isArray(task) &&
+        typeof task.title === 'string' && task.title.trim() && typeof task.completed === 'boolean' &&
+        priorities.includes(task.priority) && typeof task.dueDate === 'string' && validDate(task.dueDate) &&
+        typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+    if (!valid) return send(res, 400, { error: 'Invalid project JSON' });
+    const project = { id: randomUUID(), name: override };
+    db.exec('BEGIN');
+    try {
+      const createdAt = Date.now();
+      db.prepare('INSERT INTO projects (id, name, created_at, archived, default_priority) VALUES (?, ?, ?, ?, ?)')
+        .run(project.id, project.name, createdAt, p.archived ? 1 : 0, p.defaultPriority);
+      const insert = db.prepare(`INSERT INTO tasks (id, project_id, title, completed, created_at, priority, due_date, notes, deleted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      const position = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+      p.tasks.forEach((task, index) => {
+        const id = randomUUID();
+        insert.run(id, project.id, task.title, task.completed ? 1 : 0, createdAt + index, task.priority,
+          task.dueDate || null, task.notes.replace(/\r\n?/g, '\n'), task.deleted ? 1 : 0);
+        position.run(id, project.id, index + 1);
+      });
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
     return send(res, 201, project);
   }
   const projectTasks = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks$/);
