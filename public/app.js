@@ -172,6 +172,7 @@ async function renderTasks(project) {
   const list = section.querySelector('ul');
   const endpoint = `/api/projects/${projectId}/tasks`;
   let tasks = [];
+  let destinations = [];
 
   function drawTasks() {
     list.replaceChildren();
@@ -313,7 +314,44 @@ async function renderTasks(project) {
       });
       dueControls.append(dueInput, dueButton);
       dueForm.append(dueLabel, dueControls);
-      row.append(title, checkbox, priorityControls, renameForm, dueForm);
+      const moveForm = document.createElement('form');
+      const destinationLabel = document.createElement('label');
+      destinationLabel.htmlFor = `destination-project-${task.id}`;
+      destinationLabel.textContent = 'Destination project';
+      const destinationSelect = document.createElement('select');
+      destinationSelect.id = destinationLabel.htmlFor;
+      for (const destination of destinations) {
+        const option = document.createElement('option');
+        option.value = String(destination.id);
+        option.textContent = destination.name;
+        destinationSelect.append(option);
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'submit';
+      moveButton.textContent = 'Move task';
+      destinationSelect.disabled = project.archived || destinations.length === 0;
+      moveButton.disabled = destinationSelect.disabled;
+      moveForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (moveButton.disabled) return;
+        app.querySelector('[role="alert"]')?.remove();
+        moveButton.disabled = true;
+        destinationSelect.disabled = true;
+        try {
+          await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destinationSelect.value) }),
+          });
+          tasks = tasks.filter((item) => item.id !== task.id);
+          drawTasks();
+        } catch (error) { showError(error); }
+        finally {
+          destinationSelect.disabled = project.archived || destinations.length === 0;
+          moveButton.disabled = destinationSelect.disabled;
+        }
+      });
+      moveForm.append(destinationLabel, destinationSelect, moveButton);
+      row.append(title, checkbox, priorityControls, renameForm, dueForm, moveForm);
       list.append(row);
     }
   }
@@ -356,7 +394,9 @@ async function renderTasks(project) {
     finally { submit.disabled = project.archived; }
   });
   try {
-    tasks = await request(endpoint);
+    const [savedTasks, projects] = await Promise.all([request(endpoint), request('/api/projects')]);
+    tasks = savedTasks;
+    destinations = projects.filter((item) => !item.archived && item.id !== projectId);
     drawTasks();
     submit.disabled = project.archived;
   } catch (error) { showError(error); }

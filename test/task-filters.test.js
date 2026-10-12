@@ -60,7 +60,7 @@ class Element {
   }
 }
 
-async function projectPage(archived = false, dates = []) {
+async function projectPage(archived = false, dates = [], destinations = []) {
   const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '' },
@@ -87,6 +87,11 @@ async function projectPage(archived = false, dates = []) {
         return { ok: true, json: async () => structuredClone(project) };
       }
       const task = tasks.find((task) => task.id === Number(path.split('/').at(-1)));
+      if (Object.hasOwn(change, 'destination_project_id')) {
+        writes.push(change);
+        tasks.splice(tasks.indexOf(task), 1);
+        return { ok: true, json: async () => structuredClone(task) };
+      }
       if (change.title !== undefined) change.title = change.title.trim();
       if (change.due_date !== undefined) {
         if (change.due_date === 'invalid') {
@@ -98,7 +103,8 @@ async function projectPage(archived = false, dates = []) {
       Object.assign(task, change);
       return { ok: true, json: async () => structuredClone(task) };
     }
-    return { ok: true, json: async () => structuredClone(path.endsWith('/tasks') ? tasks : project) };
+    return { ok: true, json: async () => structuredClone(path === '/api/projects' ?
+      [project, ...destinations] : path.endsWith('/tasks') ? tasks : project) };
   };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   await runInNewContext(source, {
@@ -266,6 +272,59 @@ async function applyRange(page, from, through) {
   page.app.querySelector('#due-through').value = through;
   await page.app.querySelector('#due-range').fire('submit');
 }
+
+test('moving uses only eligible destinations and preserves all source filters and remaining membership', async () => {
+  const destinations = [
+    { id: 2, name: 'Renamed destination', archived: false },
+    { id: 3, name: 'Archived destination', archived: true },
+    { id: 4, name: 'Another destination', archived: false },
+  ];
+  const page = await projectPage(false, ['', '2024-03-01', '', '', '', '2024-03-01'], destinations);
+  const { rows, app, select, completion, priority, titles, writes } = page;
+  await select(completion, 'completed');
+  await select(priority, 'all');
+  await applyRange(page, '2024-03-01', '2024-03-01');
+  assert.deepEqual(titles(), ['Low completed', 'High completed']);
+  const moveForm = rows()[0].querySelectorAll('form')[2];
+  const destination = moveForm.querySelector('select');
+  assert.equal(moveForm.querySelector('label').textContent, 'Destination project');
+  assert.equal(moveForm.querySelector('label').htmlFor, destination.id);
+  assert.deepEqual(destination.children.map((option) => option.textContent),
+    ['Renamed destination', 'Another destination']);
+  assert.deepEqual(destination.children.map((option) => option.value), ['2', '4']);
+  assert.equal(moveForm.querySelector('button').textContent, 'Move task');
+  destination.value = '4';
+  await moveForm.fire('submit');
+  assert.deepEqual(writes, [{ destination_project_id: 4 }]);
+  assert.deepEqual(titles(), ['High completed']);
+  assert.equal(completion.value, 'completed');
+  assert.equal(priority.value, 'all');
+  assert.equal(app.querySelector('#due-from').value, '2024-03-01');
+  assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  await select(priority, 'High');
+  assert.deepEqual(titles(), ['High completed']);
+  await select(completion, 'all');
+  assert.deepEqual(titles(), ['High completed']);
+});
+
+test('move controls are disabled without destinations or in an archived source', async () => {
+  for (const [archived, destinations] of [
+    [false, []],
+    [false, [{ id: 2, name: 'Archived', archived: true }]],
+    [true, [{ id: 2, name: 'Active', archived: false }]],
+  ]) {
+    const page = await projectPage(archived, [], destinations);
+    for (const row of page.rows()) {
+      const form = row.querySelectorAll('form')[2];
+      assert.equal(form.querySelector('select').disabled, true);
+      assert.equal(form.querySelector('button').disabled, true);
+      assert.equal(form.querySelector('select').children.length, archived ? 1 : 0);
+      await form.fire('submit');
+    }
+    assert.deepEqual(page.writes, []);
+    assert.equal(page.titles().length, 6);
+  }
+});
 
 test('inclusive due ranges intersect both filters, keep order, and work while archived', async () => {
   const dates = ['', '0001-01-01', '2024-02-29', '2024-03-01', '2024-03-01', '9999-12-31'];

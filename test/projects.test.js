@@ -41,8 +41,8 @@ test('existing tasks migrate to Normal and empty due dates without changing thei
     const [code] = await once(child, 'exit');
     assert.equal(code, 0, diagnostics);
     assert.deepEqual(JSON.parse(output), [
-      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal', due_date: '' },
-      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal', due_date: '' },
+      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal', due_date: '', position: 12 },
+      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal', due_date: '', position: 13 },
     ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -379,6 +379,46 @@ test('projects, tasks, archives, renames, priorities, and summaries persist with
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, inherited, afterRestore]);
     assert.deepEqual(await projects(), expected);
     assert.equal((await fetch(`${base}/api/projects/99999`)).status, 404);
+    const move = (source, task, destination_project_id) => fetch(`${base}/api/projects/${source}/tasks/${task}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ destination_project_id }),
+    });
+    for (const invalid of [first.id, 0, null, String(second.id)]) {
+      assert.equal((await move(first.id, secondTask.id, invalid)).status, 400);
+    }
+    assert.equal((await move(first.id, secondTask.id, 99999)).status, 404);
+    assert.equal((await move(second.id, secondTask.id, first.id)).status, 404);
+    await archiveProject(second.id, true);
+    assert.equal((await move(first.id, secondTask.id, second.id)).status, 409);
+    await archiveProject(second.id, false);
+    await archiveProject(first.id, true);
+    assert.equal((await move(first.id, secondTask.id, second.id)).status, 409);
+    await archiveProject(first.id, false);
+    // Move an older, completed, dated task after newer destination tasks.
+    secondTask.completed = true;
+    await completeTask(first.id, secondTask.id, true);
+    const moved = await move(first.id, secondTask.id, second.id);
+    assert.equal(moved.status, 200);
+    assert.deepEqual(await moved.json(), secondTask);
+    assert.deepEqual(await tasks(first.id), [firstTask, inherited, afterRestore]);
+    assert.deepEqual(await tasks(second.id), [otherTask, independent, secondTask]);
+    first.total--;
+    second.total++;
+    second.completed++;
+    assert.deepEqual(await projects(), expected);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(second.id), [otherTask, independent, secondTask]);
+    assert.deepEqual(await projects(), expected);
+    // A second move appends again, preserving a blank date and the task's priority.
+    assert.equal((await move(first.id, firstTask.id, second.id)).status, 200);
+    assert.deepEqual(await tasks(second.id), [otherTask, independent, secondTask, firstTask]);
+    assert.equal((await move(second.id, secondTask.id, first.id)).status, 200);
+    const newTask = await (await createTask(first.id, 'Created after move')).json();
+    assert.deepEqual(await tasks(first.id), [inherited, afterRestore, secondTask, newTask]);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), [inherited, afterRestore, secondTask, newTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask, independent, firstTask]);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

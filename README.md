@@ -45,6 +45,12 @@ Invalid dates or reversed boundaries show an alert and preserve the applied rang
 Task edits immediately update matching rows without resetting any filter. Range
 controls remain usable while archived, and opening a project starts with empty
 boundaries.
+Each task row offers Destination project and Move task. Destinations list other
+active projects in project creation order. Moving appends the task to its destination,
+preserves its identity, title, completion, priority and due date, and keeps the source
+page and all filters open. Summaries reflect current ownership. Archived projects
+cannot send or receive tasks; move controls are disabled when archived or when no
+eligible destination exists.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
 
