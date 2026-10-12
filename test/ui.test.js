@@ -279,3 +279,143 @@ test('failed priority writes show an alert and restore the saved selection', asy
   assert.equal(priority.disabled, false);
   assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Unable to save priority');
 });
+
+test('completion and priority filters combine in creation order without writes, including archived projects', async () => {
+  const tasks = [
+    { id: 1, title: 'Low open', completed: false, priority: 'Low' },
+    { id: 2, title: 'High done', completed: true, priority: 'High' },
+    { id: 3, title: 'Normal open', completed: false, priority: 'Normal' },
+    { id: 4, title: 'Low done', completed: true, priority: 'Low' },
+    { id: 5, title: 'High open', completed: false, priority: 'High' },
+    { id: 6, title: 'Normal done', completed: true, priority: 'Normal' },
+    { id: 7, title: 'Low open later', completed: false, priority: 'Low' },
+  ];
+  const expected = {
+    All: {
+      All: tasks.map((task) => task.title),
+      Low: ['Low open', 'Low done', 'Low open later'],
+      Normal: ['Normal open', 'Normal done'],
+      High: ['High done', 'High open'],
+    },
+    Open: {
+      All: ['Low open', 'Normal open', 'High open', 'Low open later'],
+      Low: ['Low open', 'Low open later'], Normal: ['Normal open'], High: ['High open'],
+    },
+    Completed: {
+      All: ['High done', 'Low done', 'Normal done'],
+      Low: ['Low done'], Normal: ['Normal done'], High: ['High done'],
+    },
+  };
+  const original = structuredClone(tasks);
+  for (const archived of [false, true, false]) {
+    const project = { id: 1, name: 'Alpha', archived, totalCount: 7, completedCount: 3 };
+    const ui = await page('/projects/1', (path, options) => {
+      assert.equal(options, undefined);
+      return path.endsWith('/tasks') ? structuredClone(tasks) : project;
+    });
+    const completion = ui.byId('task-filter');
+    const priority = ui.byId('priority-filter');
+    assert.equal(completion.value, 'All');
+    assert.equal(priority.value, 'All');
+    assert.equal(priority.disabled, false);
+    assert.equal(find(ui.app, (node) => node.attributes.for === 'priority-filter')[0].textContent, 'Priority filter');
+    assert.deepEqual(priority.children.map((option) => option.textContent), ['All', 'Low', 'Normal', 'High']);
+    for (const completionValue of ['All', 'Open', 'Completed']) {
+      const priorPriority = priority.value;
+      completion.value = completionValue;
+      await completion.fire('change');
+      assert.equal(priority.value, priorPriority);
+      for (const priorityValue of ['All', 'Low', 'Normal', 'High']) {
+        priority.value = priorityValue;
+        await priority.fire('change');
+        assert.equal(completion.value, completionValue);
+        assert.deepEqual(ui.rows('task').map(taskTitle), expected[completionValue][priorityValue]);
+        for (const row of ui.rows('task')) {
+          for (const control of find(row, (node) => ['input', 'button', 'select'].includes(node.tag))) {
+            assert.equal(control.disabled, archived);
+          }
+        }
+      }
+    }
+    assert.equal(ui.calls.length, 2);
+    assert.deepEqual(tasks, original);
+  }
+});
+
+test('task edits re-evaluate both filters and renames preserve selections and matching membership', async () => {
+  const project = { id: 1, name: 'Alpha', archived: false };
+  const savedTasks = [
+    { id: 1, title: 'First', completed: false, priority: 'High' },
+    { id: 2, title: 'Second', completed: false, priority: 'High' },
+    { id: 3, title: 'Third', completed: true, priority: 'Low' },
+  ];
+  const respond = (path, options) => {
+    if (!options) {
+      if (path.endsWith('/tasks')) return structuredClone(savedTasks);
+      const summary = { ...project, totalCount: 3, completedCount: savedTasks.filter((task) => task.completed).length };
+      return path === '/api/projects' ? [summary] : summary;
+    }
+    assert.equal(options.method, 'PATCH');
+    const task = savedTasks.find((task) => path.endsWith(`/${task.id}`));
+    Object.assign(task, JSON.parse(options.body));
+    return { ...task };
+  };
+  const ui = await page('/projects/1', respond);
+  const completion = ui.byId('task-filter');
+  const priority = ui.byId('priority-filter');
+  const assertFilters = () => {
+    assert.equal(completion.value, 'Open');
+    assert.equal(priority.value, 'High');
+  };
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['First', 'Second']);
+
+  ui.byId('new-task-title-1').value = '  Renamed first  ';
+  await find(ui.rows('task')[0], (node) => node.tag === 'form')[0].fire('submit');
+  assertFilters();
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Renamed first', 'Second']);
+  assert.equal(ui.byId('task-priority-1').value, 'High');
+  const checkbox = find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0];
+  assert.equal(checkbox.attributes['aria-label'], 'Complete Renamed first');
+  assert.equal(checkbox.checked, false);
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  assertFilters();
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Second']);
+
+  const taskPriority = ui.byId('task-priority-2');
+  taskPriority.value = 'Low';
+  await taskPriority.fire('change');
+  assertFilters();
+  assert.deepEqual(ui.rows('task').map(taskTitle), []);
+  assert.deepEqual(savedTasks, [
+    { id: 1, title: 'Renamed first', completed: true, priority: 'High' },
+    { id: 2, title: 'Second', completed: false, priority: 'Low' },
+    { id: 3, title: 'Third', completed: true, priority: 'Low' },
+  ]);
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Second']);
+  completion.value = 'Completed';
+  await completion.fire('change');
+  assert.equal(priority.value, 'Low');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Third']);
+  const completedCheckbox = find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0];
+  completedCheckbox.checked = false;
+  await completedCheckbox.fire('change');
+  assert.equal(completion.value, 'Completed');
+  assert.equal(priority.value, 'Low');
+  assert.deepEqual(ui.rows('task').map(taskTitle), []);
+
+  const reloaded = await page('/projects/1', respond);
+  assert.equal(reloaded.byId('task-filter').value, 'All');
+  assert.equal(reloaded.byId('priority-filter').value, 'All');
+  assert.deepEqual(reloaded.rows('task').map(taskTitle), ['Renamed first', 'Second', 'Third']);
+  assert.equal(reloaded.byId('task-priority-2').value, 'Low');
+  const list = await page('/', respond);
+  const summary = find(list.rows('project')[0], (node) => node.attributes['data-testid'] === 'project-summary')[0];
+  assert.equal(summary.textContent, '1/3 completed');
+});

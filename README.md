@@ -14,6 +14,10 @@ automatically, with existing projects remaining active. `GET /health` returns `{
 
 Open a project to create tasks, check or uncheck their completion, and filter
 the list by All, Open, or Completed. Lists display items in creation order.
+The Priority filter offers All, Low, Normal, and High, initially All. Both filters
+apply together and keep their selections when tasks are renamed or their priority
+or completion changes. Saved edits immediately update the matching rows. Filters
+remain usable in archived projects and never change saved data or completion counts.
 
 The project list defaults to Active. Archive a project to move it to Archived,
 then restore it from that list when needed. Archived projects allow viewing and

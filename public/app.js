@@ -185,7 +185,7 @@ function taskRenameForm(task, path, archived, onRename) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
-      Object.assign(task, saved);
+      task.title = saved.title;
       app.querySelector('[role="alert"]')?.remove();
       onRename();
     } catch (error) {
@@ -197,7 +197,7 @@ function taskRenameForm(task, path, archived, onRename) {
   return form;
 }
 
-function taskPriorityControl(task, path, archived) {
+function taskPriorityControl(task, path, archived, onPriorityChange) {
   const control = element('div', '', { class: 'task-priority' });
   const inputId = `task-priority-${task.id}`;
   const select = element('select', '', { id: inputId });
@@ -218,6 +218,7 @@ function taskPriorityControl(task, path, archived) {
       // This write only changes priority; other controls may have saved meanwhile.
       task.priority = saved.priority;
       app.querySelector('[role="alert"]')?.remove();
+      onPriorityChange();
     } catch (error) {
       showError(error.message);
     } finally {
@@ -241,14 +242,20 @@ async function showTasks(projectId, archived) {
   for (const option of ['All', 'Open', 'Completed']) {
     filter.append(element('option', option, { value: option }));
   }
+  const priorityFilter = element('select', '', { id: 'priority-filter' });
+  for (const option of ['All', 'Low', 'Normal', 'High']) {
+    priorityFilter.append(element('option', option, { value: option }));
+  }
   const filters = element('div', '', { class: 'task-filters' });
-  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter);
+  filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter,
+    element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
   const list = element('ul', '', { 'aria-label': 'Tasks', class: 'tasks' });
   app.append(form, filters, list);
 
   function renderTasks() {
-    const visible = tasks.filter((task) => filter.value === 'All'
-      || (filter.value === 'Completed' ? task.completed : !task.completed));
+    const visible = tasks.filter((task) =>
+      (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed))
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'task-row' });
       const checkbox = element('input', '', {
@@ -264,7 +271,7 @@ async function showTasks(projectId, archived) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: checkbox.checked }),
           });
-          Object.assign(task, saved);
+          task.completed = saved.completed;
           app.querySelector('[role="alert"]')?.remove();
           renderTasks();
         } catch (error) {
@@ -276,13 +283,14 @@ async function showTasks(projectId, archived) {
       });
       const details = element('div', '', { class: 'task-details' });
       details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
-        taskPriorityControl(task, path, archived));
+        taskPriorityControl(task, path, archived, renderTasks));
       row.append(checkbox, details);
       return row;
     }));
   }
 
   filter.addEventListener('change', renderTasks);
+  priorityFilter.addEventListener('change', renderTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
