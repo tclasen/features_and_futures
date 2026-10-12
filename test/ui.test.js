@@ -55,8 +55,8 @@ function taskTitle(row) {
 test('task rename validates, trims, updates accessible names, and preserves order and filtering', async () => {
   const project = { id: 1, name: 'Alpha', archived: false };
   const tasks = [
-    { id: 1, title: 'Original', completed: true },
-    { id: 2, title: 'Open task', completed: false },
+    { id: 1, title: 'Original', completed: true, priority: 'High' },
+    { id: 2, title: 'Open task', completed: false, priority: 'Normal' },
   ];
   const ui = await page('/projects/1', (path, options) => {
     if (!options) return path.endsWith('/tasks') ? tasks : project;
@@ -85,6 +85,7 @@ test('task rename validates, trims, updates accessible names, and preserves orde
   const checkbox = find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0];
   assert.equal(checkbox.attributes['aria-label'], 'Complete <b>New title</b>');
   assert.equal(checkbox.checked, true);
+  assert.equal(ui.byId('task-priority-1').value, 'High');
   const filter = ui.byId('task-filter');
   for (const [value, titles] of [['Open', ['Open task']], ['Completed', ['<b>New title</b>']], ['All', ['<b>New title</b>', 'Open task']]]) {
     filter.value = value;
@@ -153,8 +154,8 @@ test('project UI defaults to active and moves rows on archive and restore', asyn
 test('archived project UI shows saved tasks and keeps controls disabled through filtering', async () => {
   const project = { id: 1, name: 'Archived Alpha', archived: true };
   const tasks = [
-    { id: 1, title: 'Done task', completed: true },
-    { id: 2, title: 'Open task', completed: false },
+    { id: 1, title: 'Done task', completed: true, priority: 'High' },
+    { id: 2, title: 'Open task', completed: false, priority: 'Low' },
   ];
   const ui = await page('/projects/1', (path) => path.endsWith('/tasks') ? tasks : project);
   assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, project.name);
@@ -181,6 +182,10 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
       const renameButton = find(row, (node) => node.tag === 'button')[0];
       assert.equal(renameInput.disabled, true);
       assert.equal(renameButton.disabled, true);
+      const priority = find(row, (node) => node.tag === 'select')[0];
+      assert.equal(priority.disabled, true);
+      assert.equal(priority.value, taskTitle(row) === 'Done task' ? 'High' : 'Low');
+      await priority.fire('change');
       renameInput.value = 'Cannot rename';
       await find(row, (node) => node.tag === 'form')[0].fire('submit');
     }
@@ -194,7 +199,7 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
 
 test('active project UI validates and trims renames without changing its URL or tasks', async () => {
   const project = { id: 1, name: 'Original', archived: false };
-  const tasks = [{ id: 1, title: 'Saved task', completed: true }];
+  const tasks = [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
   const ui = await page('/projects/1', (path, options) => {
     if (!options) return path.endsWith('/tasks') ? tasks : project;
     assert.equal(path, '/api/projects/1');
@@ -220,4 +225,57 @@ test('active project UI validates and trims renames without changing its URL or 
   assert.equal(ui.window.location.href, '/projects/1');
   assert.deepEqual(ui.rows('task').map(taskTitle), ['Saved task']);
   assert.equal(find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0].checked, true);
+});
+
+test('task priority options save independently and survive completion filtering', async () => {
+  const project = { id: 1, name: 'Alpha', archived: false };
+  const tasks = [
+    { id: 1, title: 'Done', completed: true, priority: 'Normal' },
+    { id: 2, title: 'Open', completed: false, priority: 'Low' },
+  ];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return path.endsWith('/tasks') ? tasks : project;
+    assert.equal(path, '/api/projects/1/tasks/1');
+    assert.equal(options.method, 'PATCH');
+    assert.deepEqual(JSON.parse(options.body), { priority: 'High' });
+    return { ...tasks[0], priority: 'High' };
+  });
+  const priority = ui.byId('task-priority-1');
+  assert.equal(find(ui.rows('task')[0], (node) => node.attributes.for === priority.attributes.id)[0].textContent, 'Task priority');
+  assert.deepEqual(priority.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(priority.value, 'Normal');
+  assert.equal(priority.disabled, false);
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.equal(priority.value, 'High');
+  assert.equal(priority.disabled, false);
+  assert.equal(ui.byId('task-priority-2').value, 'Low');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Done', 'Open']);
+  assert.equal(find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0].checked, true);
+  const filter = ui.byId('task-filter');
+  filter.value = 'Open';
+  await filter.fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Open']);
+  filter.value = 'Completed';
+  await filter.fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Done']);
+  assert.equal(ui.byId('task-priority-1').value, 'High');
+  const restored = await page('/projects/1', (path) => path.endsWith('/tasks') ? tasks : project);
+  assert.equal(restored.byId('task-priority-1').disabled, false);
+  assert.equal(restored.byId('task-priority-1').value, 'High');
+});
+
+test('failed priority writes show an alert and restore the saved selection', async () => {
+  const project = { id: 1, name: 'Alpha', archived: false };
+  const tasks = [{ id: 1, title: 'Task', completed: false, priority: 'Normal' }];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return path.endsWith('/tasks') ? tasks : project;
+    throw new Error('Unable to save priority');
+  });
+  const priority = ui.byId('task-priority-1');
+  priority.value = 'High';
+  await priority.fire('change');
+  assert.equal(priority.value, 'Normal');
+  assert.equal(priority.disabled, false);
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Unable to save priority');
 });

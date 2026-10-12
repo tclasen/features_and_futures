@@ -17,13 +17,18 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id),
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
   );
   CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id);
 `);
 // Existing projects stay active when upgrading a projects/tasks database.
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+// Backfill existing tasks without changing their IDs, order, or completion.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const projectSelection = `
   SELECT projects.id, projects.name, projects.archived,
@@ -35,11 +40,12 @@ const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? 
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 
 function projectData(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -154,6 +160,16 @@ const server = createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const result = insertTask.run(projectId, title);
           return json(response, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
+        }
+        if (body && Object.hasOwn(body, 'priority')) {
+          if (Object.hasOwn(body, 'title') || Object.hasOwn(body, 'completed')) {
+            return json(response, 400, { error: 'Priority, rename, and completion must be separate requests' });
+          }
+          if (!['Low', 'Normal', 'High'].includes(body.priority)) {
+            return json(response, 400, { error: 'Task priority must be Low, Normal, or High' });
+          }
+          updateTaskPriority.run(body.priority, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
         }
         if (body && Object.hasOwn(body, 'title')) {
           if (Object.hasOwn(body, 'completed')) {

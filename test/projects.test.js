@@ -287,8 +287,8 @@ test('archive and restore preserve tasks, summaries, and IDs through migration a
     const path = '/api/projects/1';
     const project = { id: 1, name: 'Existing project', archived: false, totalCount: 2, completedCount: 1 };
     const tasks = [
-      { id: 1, title: 'Done task', completed: true },
-      { id: 2, title: 'Open task', completed: false },
+      { id: 1, title: 'Done task', completed: true, priority: 'Normal' },
+      { id: 2, title: 'Open task', completed: false, priority: 'Normal' },
     ];
     assert.deepEqual((await api(path)).body, project);
     assert.deepEqual((await api(`${path}/tasks`)).body, tasks);
@@ -389,6 +389,94 @@ test('rename preserves identity, order, tasks, and summaries across archive, res
     server = await startServer(databasePath);
     assert.deepEqual((await api('/api/projects')).body, [restored, second]);
     assert.deepEqual((await api(`${path}/tasks`)).body, [completed]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('priorities migrate and persist independently through rename, completion, archive, and restore', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (name) VALUES ('First'), ('Other');
+    INSERT INTO tasks (project_id, title, completed) VALUES
+      (1, 'Done', 1), (1, 'Open', 0), (2, 'Other task', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const path = '/api/projects/1/tasks';
+    const tasks = [
+      { id: 1, title: 'Done', completed: true, priority: 'Normal' },
+      { id: 2, title: 'Open', completed: false, priority: 'Normal' },
+    ];
+    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal' }];
+    const summaries = (await api('/api/projects')).body;
+    assert.deepEqual((await api(path)).body, tasks);
+    for (const priority of ['', 'normal', 'Urgent', ' High ', null, 1, true, {}]) {
+      assert.equal((await api(`${path}/1`, 'PATCH', { priority })).status, 400);
+    }
+    for (const body of [{ priority: 'High', title: 'Changed' }, { priority: 'High', completed: false }]) {
+      assert.equal((await api(`${path}/1`, 'PATCH', body)).status, 400);
+    }
+    assert.equal((await api('/api/projects/2/tasks/1', 'PATCH', { priority: 'High' })).status, 404);
+    assert.equal((await api(`${path}/999999`, 'PATCH', { priority: 'High' })).status, 404);
+    assert.deepEqual((await api(path)).body, tasks);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      tasks[0] = { ...tasks[0], priority };
+      assert.deepEqual(await api(`${path}/1`, 'PATCH', { priority }), { status: 200, body: tasks[0] });
+      assert.deepEqual((await api(path)).body, tasks);
+      assert.deepEqual((await api('/api/projects/2/tasks')).body, otherTasks);
+      assert.deepEqual((await api('/api/projects')).body, summaries);
+    }
+    tasks[1].priority = 'Low';
+    await api(`${path}/2`, 'PATCH', { priority: 'Low' });
+    tasks[0].title = 'Renamed';
+    assert.deepEqual((await api(`${path}/1`, 'PATCH', { title: '  Renamed  ' })).body, tasks[0]);
+    const created = (await api(path, 'POST', { title: 'New' })).body;
+    assert.equal(created.priority, 'Normal');
+    tasks.push(created);
+    tasks[2].completed = true;
+    assert.deepEqual((await api(`${path}/${created.id}`, 'PATCH', { completed: true })).body, tasks[2]);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, tasks);
+    await api('/api/projects/1', 'PATCH', { archived: true });
+    assert.deepEqual(await api(`${path}/1`, 'PATCH', { priority: 'Low' }), {
+      status: 409, body: { error: 'Archived project cannot be changed' },
+    });
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, tasks);
+    await api('/api/projects/1', 'PATCH', { archived: false });
+    tasks[0].priority = 'Low';
+    assert.deepEqual((await api(`${path}/1`, 'PATCH', { priority: 'Low' })).body, tasks[0]);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, tasks);
+    assert.deepEqual((await api('/api/projects/2/tasks')).body, otherTasks);
+    assert.deepEqual((await api('/api/projects')).body, [
+      { ...summaries[0], totalCount: 3, completedCount: 2 }, summaries[1],
+    ]);
   } finally {
     await server?.stop();
     await rm(directory, { recursive: true, force: true });

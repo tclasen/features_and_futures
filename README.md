@@ -32,8 +32,13 @@ Each task row provides New task title and Rename task. Titles are trimmed and
 must be nonblank. Renaming preserves task identity, ownership, creation order,
 completion state, and completion counts. Archived projects disable task renaming
 until restored. `PATCH /api/projects/<project-id>/tasks/<task-id>` accepts either
-`{ "title": "New title" }` or `{ "completed": true }` in separate requests.
+`{ "title": "New title" }`, `{ "completed": true }`, or `{ "priority": "High" }` in separate requests.
 Renamed titles persist across restarts; archived task writes return HTTP 409.
+
+Each task has a Task priority select with Low, Normal, and High options. Existing
+and new tasks default to Normal. Priorities persist across restarts independently
+of titles, completion, and ownership. Archived projects disable priority changes;
+restoring a project preserves its saved priorities and enables editing again.
 
 Run the integration tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.

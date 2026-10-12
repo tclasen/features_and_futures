@@ -197,6 +197,38 @@ function taskRenameForm(task, path, archived, onRename) {
   return form;
 }
 
+function taskPriorityControl(task, path, archived) {
+  const control = element('div', '', { class: 'task-priority' });
+  const inputId = `task-priority-${task.id}`;
+  const select = element('select', '', { id: inputId });
+  for (const priority of ['Low', 'Normal', 'High']) {
+    select.append(element('option', priority, { value: priority }));
+  }
+  select.value = task.priority;
+  select.disabled = archived;
+  select.addEventListener('change', async () => {
+    if (select.disabled) return;
+    select.disabled = true;
+    try {
+      const saved = await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: select.value }),
+      });
+      // This write only changes priority; other controls may have saved meanwhile.
+      task.priority = saved.priority;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      select.value = task.priority;
+      select.disabled = archived;
+    }
+  });
+  control.append(element('label', 'Task priority', { for: inputId }), select);
+  return control;
+}
+
 async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -243,7 +275,8 @@ async function showTasks(projectId, archived) {
         }
       });
       const details = element('div', '', { class: 'task-details' });
-      details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks));
+      details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
+        taskPriorityControl(task, path, archived));
       row.append(checkbox, details);
       return row;
     }));
