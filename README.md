@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0`, using `PORT` (default `8080`) and SQLite at
 `DB_PATH` (default `./data/workboard.sqlite`). Parent directories are created
 on startup. Keep that database file to preserve projects, archive states, tasks,
-completion states, task priorities, due dates, notes, and project priority defaults across restarts. Existing databases are migrated automatically.
+completion states, task priorities, due dates, notes, deletion states, and project priority defaults across restarts. Existing databases are migrated automatically.
 
 Example:
 
@@ -22,15 +22,15 @@ browser script to submit completion changes, priority changes, and filters autom
 Project names and task titles are trimmed and HTML-escaped. Projects and tasks
 are ordered by creation, with first-time arrivals appended and returning tasks restored
 to their remembered project-local positions. Each project's tasks can be
-filtered by All (the default), Open, or Completed, combined with a Priority filter
+filtered by All (the default), Open, Completed, or Deleted, combined with a Priority filter
 of All (the default), Low, Normal, or High. Both filters must match; changing a
 filter or editing a task preserves the other selection and creation order.
 Edits immediately re-evaluate visible tasks without changing summary counts
-except when completion itself changes. Both filters remain usable while archived.
+except when completion, deletion, restoration, or ownership changes. Both filters remain usable while archived.
 The project list defaults to
 Active and can show Archived projects instead. Archive and restore preserve all
 tasks; archived pages allow filtering but reject task changes and renaming. Each
-project row shows completed/total counts across all its tasks. Active project pages
+project row shows completed/total counts across all its live tasks. Active project pages
 allow renaming with a trimmed, nonblank name. Renaming preserves the project URL,
 creation order, tasks, and completion states; names persist across restarts.
 Each task row also supports renaming to a trimmed, nonblank title. Task renaming
@@ -63,6 +63,16 @@ data. Saving preserves all applied filters and search; notes do not add search
 matches. Archived projects show notes with editing disabled and reject saves;
 restoration enables editing again. Forms have a 64 KiB encoded request-body limit.
 
+Live rows offer Delete task; deleted rows offer Restore task. All, Open and Completed
+show only live tasks. Deleted shows only deleted tasks, intersecting priority, due
+range and title search. Deletion excludes the task from summaries but retains every
+field, ownership and remembered position. Restoration returns it to its reserved
+position, even before tasks created while it was deleted. Both actions retain all
+applied filters. Deleted tasks show saved fields with all editing and movement
+controls disabled; the server also rejects those edits. Archived projects disable
+both deletion and restoration but keep reading filters usable. Deletion persists
+across restarts; upgrades initialize all existing tasks as live.
+
 Project pages also offer Due from and Due through textboxes with Apply due range.
 These use the same calendar-date rules and inclusive boundaries. Blank boundaries
 are unbounded; undated tasks match only when both boundaries are blank. The applied
@@ -88,7 +98,7 @@ Project search and Task search apply trimmed substring queries, ignoring only AS
 letter case and collapsing each run of ASCII spaces and horizontal tabs to one space
 in both names/titles and queries for matching only. Stored and displayed names/titles
 retain their original whitespace and case. Search intersects the other filters,
-retains creation/remembered order, and never changes data or all-task summaries.
+retains creation/remembered order, and never changes data or live-task summaries.
 Applied queries survive filter changes and edits, including task moves; archived
 pages still allow search. Opening from the project list resets task search, and
 returning with Projects resets project search. Queries are carried in forms and URLs,

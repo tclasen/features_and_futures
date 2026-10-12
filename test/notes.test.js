@@ -63,7 +63,7 @@ test('notes migrate, preserve plain text and task data, travel with moves, and r
     const original = snapshot();
     await start();
     const migrated = snapshot();
-    assert.deepEqual(migrated, { ...original, tasks: original.tasks.map(task => ({ ...task, notes: '' })) });
+    assert.deepEqual(migrated, { ...original, tasks: original.tasks.map(task => ({ ...task, notes: '', deleted: 0 })) });
     const before = await html(filteredPath);
     assert.match(before, /<label for="task-notes-1">Task notes<\/label>/);
     assert.match(textarea(before, 1), />\s*<\/textarea>/);
