@@ -14,6 +14,10 @@ const dueRangeForm = document.querySelector('#due-range-form');
 const dueFromInput = document.querySelector('#due-from');
 const dueThroughInput = document.querySelector('#due-through');
 const projectFilter = document.querySelector('#project-filter');
+const projectSearchForm = document.querySelector('#project-search-form');
+const projectSearchInput = document.querySelector('#project-search');
+const taskSearchForm = document.querySelector('#task-search-form');
+const taskSearchInput = document.querySelector('#task-search');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
 const renameAlert = document.querySelector('#rename-alert');
@@ -24,6 +28,12 @@ let activeProjects = [];
 let activeProjectArchived = false;
 let appliedDueFrom = '';
 let appliedDueThrough = '';
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
+
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, character => character.toLowerCase());
+}
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -35,6 +45,8 @@ async function request(path, options) {
 function showList() {
   listView.hidden = false;
   detailView.hidden = true;
+  appliedProjectQuery = '';
+  projectSearchInput.value = '';
   history.pushState({}, '', '/');
   loadProjects();
 }
@@ -42,7 +54,9 @@ function showList() {
 async function loadProjects() {
   const projects = await request('/api/projects');
   projectsNode.replaceChildren();
-  const visibleProjects = projects.filter(project => project.archived === (projectFilter.value === 'Archived'));
+  const query = asciiLower(appliedProjectQuery);
+  const visibleProjects = projects.filter(project => project.archived === (projectFilter.value === 'Archived') &&
+    asciiLower(project.name).includes(query));
   document.querySelector('#project-count').textContent = visibleProjects.length ? String(visibleProjects.length).padStart(2, '0') : '';
   if (!visibleProjects.length) {
     const empty = document.createElement('div');
@@ -91,6 +105,8 @@ async function openProject(id) {
   taskFilter.value = 'All';
   priorityFilter.value = 'All';
   resetDueRange();
+  appliedTaskQuery = '';
+  taskSearchInput.value = '';
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
   setProjectArchived(project.archived);
@@ -122,7 +138,8 @@ function drawTasks() {
     (selectedPriority === 'All' || (task.priority || 'Normal') === selectedPriority) &&
     (!appliedDueFrom && !appliedDueThrough || Boolean(task.dueDate)) &&
     (!appliedDueFrom || (task.dueDate || '') >= appliedDueFrom) &&
-    (!appliedDueThrough || (task.dueDate || '') <= appliedDueThrough)
+    (!appliedDueThrough || (task.dueDate || '') <= appliedDueThrough) &&
+    asciiLower(task.title).includes(asciiLower(appliedTaskQuery))
   );
   if (!visible.length) {
     const empty = document.createElement('div');
@@ -298,6 +315,8 @@ async function renderRoute() {
     taskFilter.value = 'All';
     priorityFilter.value = 'All';
     resetDueRange();
+    appliedTaskQuery = '';
+    taskSearchInput.value = '';
     setProjectArchived(project.archived);
     defaultPriority.value = project.defaultPriority || 'Normal';
     defaultPriority.dataset.saved = defaultPriority.value;
@@ -415,5 +434,17 @@ defaultPriority.addEventListener('change', async () => {
   }
 });
 projectFilter.addEventListener('change', loadProjects);
+projectSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedProjectQuery = projectSearchInput.value.trim();
+  projectSearchInput.value = appliedProjectQuery;
+  loadProjects();
+});
+taskSearchForm.addEventListener('submit', event => {
+  event.preventDefault();
+  appliedTaskQuery = taskSearchInput.value.trim();
+  taskSearchInput.value = appliedTaskQuery;
+  drawTasks();
+});
 window.addEventListener('popstate', renderRoute);
 renderRoute();
