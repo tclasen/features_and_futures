@@ -16,7 +16,7 @@ async function availablePort() {
   return port;
 }
 
-test('projects and tasks validate, remain isolated and persist through restart', async () => {
+test('projects and tasks validate, rename, remain isolated and persist through restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await availablePort();
   const base = `http://127.0.0.1:${port}`;
@@ -118,6 +118,24 @@ test('projects and tasks validate, remain isolated and persist through restart',
     first.completedCount = 1;
     second.totalCount = 1;
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
+    async function renameProject(name) {
+      return fetch(`${base}/api/projects/${first.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    }
+    for (const name of ['', ' \t\n ', null]) {
+      const response = await renameProject(name);
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'Project name is required');
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    }
+    const renamed = await renameProject('  Renamed <project> & work  ');
+    assert.equal(renamed.status, 200);
+    first.name = 'Renamed <project> & work';
+    assert.deepEqual(await renamed.json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
+    assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     assert.equal((await createTask('Missing project', '/api/projects/999999/tasks')).status, 404);
     assert.equal((await fetch(`${base}/api/projects/999999/tasks`)).status, 404);
     async function archiveProject(archived) {
@@ -129,6 +147,9 @@ test('projects and tasks validate, remain isolated and persist through restart',
     assert.equal((await archiveProject('true')).status, 400);
     assert.equal((await archiveProject(true)).status, 200);
     first.archived = true;
+    const blockedRename = await renameProject('Blocked rename');
+    assert.equal(blockedRename.status, 409);
+    assert.equal((await blockedRename.json()).error, 'Archived project');
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
     assert.equal((await createTask('Blocked task')).status, 409);
     assert.equal((await completeTask(firstTask.id, false)).status, 409);
@@ -143,6 +164,10 @@ test('projects and tasks validate, remain isolated and persist through restart',
     assert.equal((await archiveProject(false)).status, 200);
     first.archived = false;
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const restoredRename = await renameProject('  Restored project  ');
+    assert.equal(restoredRename.status, 200);
+    first.name = 'Restored project';
+    assert.deepEqual(await restoredRename.json(), first);
     assert.equal((await completeTask(firstTask.id, false)).status, 200);
     firstTask.completed = false;
     first.completedCount = 0;

@@ -15,6 +15,7 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name 
 }
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const updateProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id),
@@ -76,10 +77,18 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'PATCH' && projectMatch) {
       if (!findProject.get(projectMatch[1])) return json(response, 404, { error: 'Project not found' });
       const input = await readBody(request);
-      if (typeof input?.archived !== 'boolean') {
+      const hasName = Object.hasOwn(input ?? {}, 'name');
+      const hasArchive = Object.hasOwn(input ?? {}, 'archived');
+      if ((!hasName && !hasArchive) || (hasArchive && typeof input.archived !== 'boolean')) {
         return json(response, 400, { error: 'Archive state must be a boolean' });
       }
-      updateProject.run(Number(input.archived), projectMatch[1]);
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      if (hasName) {
+        if (findProject.get(projectMatch[1]).archived) return json(response, 409, { error: 'Archived project' });
+        if (!name) return json(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, projectMatch[1]);
+      }
+      if (hasArchive) updateProject.run(Number(input.archived), projectMatch[1]);
       return json(response, 200, projectData(findProject.get(projectMatch[1])));
     }
     if (request.method === 'POST' && path === '/api/projects') {

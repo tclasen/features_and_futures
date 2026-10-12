@@ -38,7 +38,14 @@ async function renderProject(projectId) {
     <button type="button" id="projects">Projects</button>
     <h1></h1>
     <p id="archived-notice" hidden>Archived project</p>
-    <form>
+    <form id="rename-project">
+      <label for="new-project-name">New project name</label>
+      <div class="create-fields">
+        <input id="new-project-name" name="name" type="text" autocomplete="off" disabled>
+        <button type="submit" disabled>Rename project</button>
+      </div>
+    </form>
+    <form id="create-task">
       <label for="task-title">Task title</label>
       <div class="create-fields">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -54,7 +61,10 @@ async function renderProject(projectId) {
     </div>
     <section aria-label="Tasks" id="task-list"></section>`;
   app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
-  const form = app.querySelector('form');
+  const form = app.querySelector('#create-task');
+  const renameForm = app.querySelector('#rename-project');
+  const renameInput = app.querySelector('#new-project-name');
+  const renameButton = renameForm.querySelector('button');
   const input = app.querySelector('#task-title');
   const button = form.querySelector('button');
   const alert = app.querySelector('[role="alert"]');
@@ -116,6 +126,35 @@ async function renderProject(projectId) {
     app.setAttribute('aria-busy', 'false');
   }
   filter.addEventListener('change', displayTasks);
+  renameInput.disabled = archived;
+  renameButton.disabled = archived;
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (archived) return;
+    const name = renameInput.value.trim();
+    if (!name) {
+      showError(alert, 'Project name is required');
+      renameInput.focus();
+      return;
+    }
+    renameButton.disabled = true;
+    alert.hidden = true;
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      app.querySelector('h1').textContent = saved.name;
+      document.title = `${saved.name} · Workboard`;
+      renameInput.value = '';
+      renameInput.focus();
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      renameButton.disabled = archived;
+    }
+  });
   button.disabled = archived;
   form.addEventListener('submit', async event => {
     event.preventDefault();
