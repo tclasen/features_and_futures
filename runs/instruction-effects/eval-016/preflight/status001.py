@@ -1,0 +1,6 @@
+"""Report actual native event kinds without treating acceptance as the deployment barrier."""
+import json,collections,datetime
+from pathlib import Path
+r=Path('runs/instruction-effects/eval-016');events=[json.loads(x) for x in (r/'events.jsonl').read_text().splitlines()];usage=[json.loads(x) for x in (r/'usage.jsonl').read_text().splitlines()];state=json.loads((r/'state.json').read_text());counts=collections.Counter(x['kind'] for x in events)
+d={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':state['status'],'accepted_deployed_stages':{k:v['stage'] for k,v in state['accepted'].items()},'completed_round_barriers':counts['round_completed'],'accepted_submissions':counts['task_accepted'],'rejected_attempts':counts['attempt_rejected'],'retained_infrastructure_attempts':counts['infrastructure_attempt_retained'],'post_deployment_checks_passed':counts['post_deployment_checks_passed'],'finished_request_receipts':len(usage),'unknown_native_receipts':sum(x['counts'] is None for x in usage),'last_error':state['last_error']}
+p=Path('.local/eval016-execution-state.json');tracker=json.loads(p.read_text());tracker['latest_native_status']=d;p.write_text(json.dumps(tracker,indent=2)+'\n');print(json.dumps(d))

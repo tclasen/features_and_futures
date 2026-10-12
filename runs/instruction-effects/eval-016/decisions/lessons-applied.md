@@ -23,3 +23,5 @@ L068 verified for eval016: all12builder roots and starter independently match cl
 L026 observed at task002 b007attempt001: original upstream connection-refused transport response retained with missing native counters; all9raw request pairs and native exports rehashed, original history restored. Frozen same-task fresh-context measured retry is active. Unknown usage/cost retained; provider cause beyond literal response unknown; no builder assessment inferred.
 
 L026 measured recovery verified: b007task002attempt002 accepted with5complete native receipts, same public packet and deployment checks before the second shared barrier. Original missing native receipt preserved. Live315request audit verifies314known receipts with no arithmetic problems; oneunknown remains, and scheduling audit reports no violations.
+
+L060 PM status correction: use actual attempt_rejected events; the earlier ad hoc task_rejected counter omitted one task003b011 rejected attempt. Original result has4completion-persistence failures and measured attempt002accepted. Native evidence unchanged; status001 reports acceptance and deployment barriers separately.
