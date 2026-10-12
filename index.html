@@ -74,6 +74,12 @@
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
     </select>
+    <form id="due-range-form" class="task-controls">
+      <label for="due-from">Due from<input id="due-from" type="text" placeholder="YYYY-MM-DD"></label>
+      <label for="due-through">Due through<input id="due-through" type="text" placeholder="YYYY-MM-DD"></label>
+      <button type="submit">Apply due range</button>
+    </form>
+    <p id="range-alert" class="alert" role="alert" hidden></p>
     <section id="task-list" class="project-list" aria-label="Tasks"></section>
   </main>
   <!-- PROJECT_DATA -->
@@ -89,6 +95,11 @@
       const input = document.querySelector('#task-title-input');
       const filter = document.querySelector('#task-filter');
       const priorityFilter = document.querySelector('#priority-filter');
+      const rangeForm = document.querySelector('#due-range-form');
+      const fromInput = document.querySelector('#due-from');
+      const throughInput = document.querySelector('#due-through');
+      const rangeAlert = document.querySelector('#range-alert');
+      let appliedRange = { from: '', through: '' };
       const archived = Boolean(window.initialProject.archived);
       const defaultPriority = document.querySelector('#default-task-priority');
       defaultPriority.value = window.initialProject.default_task_priority || 'Normal';
@@ -113,7 +124,11 @@
             || (filter.value === 'Open' && !task.completed)
             || (filter.value === 'Completed' && task.completed);
           const matchesPriority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
-          return matchesCompletion && matchesPriority;
+          const hasRange = appliedRange.from || appliedRange.through;
+          const matchesDate = !hasRange || (task.due_date
+            && (!appliedRange.from || task.due_date >= appliedRange.from)
+            && (!appliedRange.through || task.due_date <= appliedRange.through));
+          return matchesCompletion && matchesPriority && matchesDate;
         });
         list.innerHTML = visibleTasks.map((task) => `
           <div class="task-row${task.completed ? ' completed' : ''}" data-testid="task-row">
@@ -152,6 +167,34 @@
       });
       filter.addEventListener('change', renderTasks);
       priorityFilter.addEventListener('change', renderTasks);
+      const validCalendarDate = (value) => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+        const [, y, m, d] = match.map(Number);
+        if (y < 1 || m < 1 || m > 12 || d < 1) return false;
+        const date = new Date(0);
+        date.setUTCHours(0, 0, 0, 0);
+        date.setUTCFullYear(y, m - 1, d);
+        return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+      };
+      rangeForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const from = fromInput.value.trim();
+        const through = throughInput.value.trim();
+        if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+          rangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          rangeAlert.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          rangeAlert.textContent = 'Due from must not be after Due through';
+          rangeAlert.hidden = false;
+          return;
+        }
+        appliedRange = { from, through };
+        rangeAlert.hidden = true;
+        renderTasks();
+      });
       list.addEventListener('submit', async (event) => {
         const dueDateForm = event.target.closest('form[data-due-date]');
         if (dueDateForm) {
@@ -171,6 +214,7 @@
           tasks = tasks.map((task) => task.id === updated.id ? updated : task);
           dueDateInput.value = updated.due_date || '';
           alert.hidden = true;
+          renderTasks();
           return;
         }
         const form = event.target.closest('form[data-rename-task]');
