@@ -46,6 +46,16 @@ if (!taskColumns.some(column => column.name === 'position')) {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET position = id');
 }
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
@@ -58,8 +68,10 @@ const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WH
 const setProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
-const nextTaskPosition = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM tasks WHERE project_id = ?');
 const moveTask = database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
+const getRememberedTaskPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextRememberedTaskPosition = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_project_positions WHERE project_id = ?');
+const rememberTaskPosition = database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -578,8 +590,9 @@ const server = createServer(async (request, response) => {
       const body = await readRequestBody(request);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
-      const position = nextTaskPosition.get(projectId).position;
+      const position = nextRememberedTaskPosition.get(projectId).position;
       const result = createTask.run(projectId, title, project.default_priority, position);
+      rememberTaskPosition.run(Number(result.lastInsertRowid), projectId, position);
       sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
@@ -604,7 +617,9 @@ const server = createServer(async (request, response) => {
       if (destination.archived || destinationId === sourceId) { sendJson(response, 409, { error: 'Destination must be a different active project' }); return; }
       const task = getTask.get(taskId, sourceId);
       if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
-      const position = nextTaskPosition.get(destinationId).position;
+      const rememberedPosition = getRememberedTaskPosition.get(taskId, destinationId);
+      const position = rememberedPosition?.position ?? nextRememberedTaskPosition.get(destinationId).position;
+      if (!rememberedPosition) rememberTaskPosition.run(taskId, destinationId, position);
       moveTask.run(destinationId, position, taskId, sourceId);
       sendJson(response, 200, { ...task, project_id: destinationId });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
