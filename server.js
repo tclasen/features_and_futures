@@ -1,8 +1,9 @@
 import http from 'node:http';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+const browserScript = readFileSync(new URL('./public/app.js', import.meta.url), 'utf8');
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new DatabaseSync(databasePath);
@@ -304,7 +305,7 @@ ${escapeHtml(importDraft.json).replace(/\r/g, '&#13;')}</textarea>
       <input id="project-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search projects</button>
     </form>
-    ${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No projects yet.</p>'}
+    <div data-filter-results>${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No projects yet.</p>'}</div>
   `);
 }
 
@@ -491,7 +492,7 @@ ${escapeHtml(task.notes).replace(/\r/g, '&#13;')}</textarea>
       <input id="task-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search tasks</button>
     </form>
-    ${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No matching tasks.</p>'}
+    <div data-filter-results>${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No matching tasks.</p>'}</div>
   `);
 }
 
@@ -550,7 +551,7 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
       <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search directory</button>
     </form>
-    ${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No matching tasks.</p>'}
+    <div data-filter-results>${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No matching tasks.</p>'}</div>
   `);
 }
 
@@ -611,9 +612,7 @@ const server = http.createServer(async (request, response) => {
       response.end(stylesheet);
     } else if (request.method === 'GET' && url.pathname === '/app.js') {
       response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-      response.end(`document.addEventListener('change', (event) => {
-        if (event.target.matches('[data-auto-submit]')) event.target.form.requestSubmit();
-      });`);
+      response.end(browserScript);
     } else if (request.method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter')), readSearch(url.searchParams)));
     } else if (request.method === 'GET' && url.pathname === '/directory') {
