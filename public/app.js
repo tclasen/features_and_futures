@@ -169,6 +169,20 @@ async function renderProject(id) {
         await renderTasks();
       });
       row.append(renameInput, renameButton);
+      const priority = element('select', undefined, { 'aria-label': 'Task priority' });
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = element('option', value, { value });
+        option.selected = task.priority === value;
+        priority.append(option);
+      }
+      priority.disabled = project.archived;
+      priority.addEventListener('change', async () => {
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
+        });
+        if (!update.ok) showError('Could not update task priority');
+      });
+      row.append(priority);
       list.append(row);
     }
   };
