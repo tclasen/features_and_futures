@@ -94,3 +94,13 @@ from their current task order; movements before this upgrade have no saved histo
 Task creation and movement update current ownership and position history atomically.
 Archived projects disable moving and cannot be sources or destinations. Invalid
 or stale destinations are rejected without changing task data.
+
+Project search and Task search apply literal substring queries, ignoring ASCII
+letter case and trimming surrounding query whitespace. Internal whitespace and
+non-ASCII case remain significant. Blank queries match everything. Project
+search intersects Active/Archived; task search intersects completion, priority,
+and the applied due range. Searches preserve ordering and all-task summaries.
+Applied queries travel in URLs and forms, so filter changes and task edits retain
+them while immediately refreshing membership. Search remains usable in archived
+projects. Opening a project from the list, or returning through Projects, begins
+with an empty query. Searches never modify stored projects or tasks.
