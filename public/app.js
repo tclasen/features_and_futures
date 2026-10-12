@@ -1,5 +1,13 @@
 const app = document.querySelector('#app');
 
+function asciiLower(value) {
+  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+function matchesSearch(value, query) {
+  return asciiLower(value).includes(asciiLower(query));
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const body = await response.json();
@@ -136,6 +144,11 @@ async function renderTasks(project) {
       </div>
     </form>
     <h2>Tasks</h2>
+    <form id="task-search-form">
+      <label for="task-search">Task search</label>
+      <input id="task-search" type="text" autocomplete="off">
+      <button type="submit">Search tasks</button>
+    </form>
     <label for="task-filter">Task filter</label>
     <select id="task-filter">
       <option value="all">All</option>
@@ -167,6 +180,9 @@ async function renderTasks(project) {
   const rangeForm = section.querySelector('#due-range');
   const dueFrom = section.querySelector('#due-from');
   const dueThrough = section.querySelector('#due-through');
+  const searchForm = section.querySelector('#task-search-form');
+  const searchInput = section.querySelector('#task-search');
+  let appliedQuery = '';
   let appliedFrom = '';
   let appliedThrough = '';
   const list = section.querySelector('ul');
@@ -177,6 +193,7 @@ async function renderTasks(project) {
   function drawTasks() {
     list.replaceChildren();
     const visible = tasks.filter((task) =>
+      matchesSearch(task.title, appliedQuery) &&
       (filter.value === 'all' ||
         (filter.value === 'completed' ? task.completed : !task.completed)) &&
       (priorityFilter.value === 'all' || task.priority === priorityFilter.value) &&
@@ -243,6 +260,7 @@ async function renderTasks(project) {
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           renameInput.value = '';
           renameInput.focus();
+          drawTasks();
         } catch (error) { showError(error); }
         finally { renameButton.disabled = project.archived; }
       });
@@ -358,6 +376,12 @@ async function renderTasks(project) {
 
   filter.addEventListener('change', drawTasks);
   priorityFilter.addEventListener('change', drawTasks);
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    appliedQuery = searchInput.value.trim();
+    searchInput.value = appliedQuery;
+    drawTasks();
+  });
   rangeForm.addEventListener('submit', (event) => {
     event.preventDefault();
     app.querySelector('[role="alert"]')?.remove();
@@ -434,6 +458,11 @@ async function render() {
         </div>
       </form>
       <h2>Projects</h2>
+      <form id="project-search-form">
+        <label for="project-search">Project search</label>
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </form>
       <label for="project-filter">Project filter</label>
       <select id="project-filter">
         <option value="active">Active</option>
@@ -445,15 +474,25 @@ async function render() {
     const input = app.querySelector('input');
     const submit = form.querySelector('button');
     const filter = app.querySelector('#project-filter');
+    const searchForm = app.querySelector('#project-search-form');
+    const searchInput = app.querySelector('#project-search');
+    let appliedQuery = '';
     let projects = [];
     function drawProjects() {
       app.querySelector('#projects').replaceChildren();
-      const visible = projects.filter((project) => project.archived === (filter.value === 'archived'));
+      const visible = projects.filter((project) =>
+        project.archived === (filter.value === 'archived') && matchesSearch(project.name, appliedQuery));
       app.querySelector('#empty').hidden = visible.length > 0;
       app.querySelector('#empty').textContent = 'No projects to show.';
       visible.forEach((project) => appendProject(project, drawProjects));
     }
     filter.addEventListener('change', drawProjects);
+    searchForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      appliedQuery = searchInput.value.trim();
+      searchInput.value = appliedQuery;
+      drawProjects();
+    });
     // Register after loading so creations always follow the persisted rows.
     try {
       submit.disabled = true;

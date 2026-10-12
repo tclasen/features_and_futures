@@ -46,12 +46,23 @@ Task edits immediately update matching rows without resetting any filter. Range
 controls remain usable while archived, and opening a project starts with empty
 boundaries.
 Each task row offers Destination project and Move task. Destinations list other
-active projects in project creation order. Moving appends the task to its destination,
+active projects in project creation order. A first arrival appends the task after all
+positions established in its destination; returning restores its remembered position.
+Positions are remembered independently per project and survive restarts. Moving
 preserves its identity, title, completion, priority and due date, and keeps the source
 page and all filters open. Summaries reflect current ownership. Archived projects
 cannot send or receive tasks; move controls are disabled when archived or when no
 eligible destination exists.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
+
+The project list provides Project search and Search projects. Each project page
+provides Task search and Search tasks. Search applies a substring query with ASCII
+case ignored and surrounding whitespace trimmed; internal whitespace is significant.
+Project search intersects Active/Archived, and task search intersects completion,
+priority, and the applied due range. Searches retain all other filters, order, and
+all-task summaries. Edits immediately update task search membership. Search remains
+usable while archived and starts empty when opening either page or returning through
+Projects.
 
 Run the integration checks with `npm test`.
