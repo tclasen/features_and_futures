@@ -317,3 +317,20 @@ const server = http.createServer(async (req, res) => {
 
 const port = Number(process.env.PORT) || 8080;
 server.listen(port, '0.0.0.0');
+
+// Gracefully flush SQLite's page cache on orchestrated process restarts.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    server.close(() => {
+      try {
+        db.exec('PRAGMA wal_checkpoint(FULL)');
+        db.close();
+      } finally {
+        process.exit(0);
+      }
+    });
+  });
+}
