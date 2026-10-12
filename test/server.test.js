@@ -12,6 +12,86 @@ function withoutMoveControls(html) {
   return html.replace(/<form[^>]*action="\/projects\/\d+\/tasks\/\d+\/move">[\s\S]*?<\/form>/g, '');
 }
 
+test('portable exports include all current tasks in stored order without modifying data or filters', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    // A legacy database exercises defaults for all subsequently added fields.
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Home  日本語 <b>'), ('Away'), ('Empty');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'First  <script> & 日本語', 1), (1, 'Second', 0), (2, 'Other project', 0);
+    `);
+    legacy.close();
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const download = async (id, query = '') => {
+      const response = await fetch(`${server.url}/projects/${id}/download${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    const first = { title: 'First  <script> & 日本語', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false };
+    const second = { title: 'Second', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false };
+    assert.deepEqual(await download(1), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Home  日本語 <b>', archived: false, defaultPriority: 'Normal', tasks: [first, second] },
+    });
+    assert.deepEqual((await download(3)).project.tasks, []);
+    const notes = '  \r\nUnicode 📝 日本語\rLiteral <script>&</script>\n  ';
+    await post('/projects/1/tasks/1/notes', { notes });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    await post('/projects/1/default-task-priority', { priority: 'Low' });
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    assert.deepEqual((await download(1)).project.tasks, [second]);
+    assert.equal((await download(2)).project.tasks[1].notes, notes.replace(/\r\n?/g, '\n'));
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    await post('/projects/1/tasks/1/delete');
+    await post('/projects/1/archive');
+    const query = '?filter=Deleted&priorityFilter=High&dueFrom=0001-01-01&dueThrough=0001-01-01&search=first';
+    const beforePage = await get('/projects/1' + query);
+    assert.match(beforePage, /<form method="get" action="\/projects\/1\/download"><button type="submit">Download project<\/button>/);
+    const snapshot = () => {
+      const database = new DatabaseSync(dbPath);
+      try {
+        return ['projects', 'tasks', 'task_project_positions'].map(table => database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+      } finally { database.close(); }
+    };
+    const beforeData = snapshot();
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Home  日本語 <b>', archived: true, defaultPriority: 'Low', tasks: [
+        { ...first, priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n'), deleted: true }, second,
+      ] },
+    };
+    assert.deepEqual(await download(1, query), expected);
+    assert.equal(await get('/projects/1' + query), beforePage);
+    assert.deepEqual(snapshot(), beforeData);
+    await post('/projects/1/restore');
+    await post('/projects/1/tasks/2/delete');
+    assert.ok((await download(1)).project.tasks.every(task => task.deleted));
+    assert.match(await get('/'), /data-testid="project-summary">0\/0 completed/);
+    await post('/projects/1/tasks/2/restore');
+    await post('/projects/1/archive');
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), beforeData);
+    assert.equal((await fetch(`${server.url}/projects/999/download`)).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('moves migrate ordering, preserve task data and filters, and enforce active destinations', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   let server;

@@ -275,6 +275,7 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form class="back" method="get" action="/"><button type="submit">Projects</button></form>
+    <form method="get" action="/projects/${project.id}/download"><button type="submit">Download project</button></form>
     <form class="create" method="post" action="/projects/${project.id}/rename">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priority}">
@@ -439,6 +440,37 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter')), readSearch(url.searchParams)));
       return;
+    }
+    const downloadMatch = /^\/projects\/([1-9]\d*)\/download$/.exec(url.pathname);
+    if (request.method === 'GET' && downloadMatch && Number.isSafeInteger(Number(downloadMatch[1]))) {
+      const project = findProject.get(Number(downloadMatch[1]));
+      if (project) {
+        const document = {
+          format: 'workboard-project',
+          version: 1,
+          project: {
+            name: project.name,
+            archived: Boolean(project.archived),
+            defaultPriority: project.default_task_priority,
+            tasks: listTasks.all(project.id).map(task => ({
+              title: task.title,
+              completed: Boolean(task.completed),
+              priority: task.priority,
+              dueDate: task.due_date,
+              // Browser textarea line breaks export as LF without changing storage.
+              notes: task.notes.replace(/\r\n?/g, '\n'),
+              deleted: Boolean(task.deleted),
+            })),
+          },
+        };
+        response.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="workboard-project.json"',
+          'Cache-Control': 'no-store',
+        });
+        response.end(JSON.stringify(document, null, 2));
+        return;
+      }
     }
     if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
