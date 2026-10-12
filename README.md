@@ -82,3 +82,11 @@ due range; edits retain every applied filter and immediately update matching
 rows. Searching never changes saved data or summary counts. Archived pages still
 allow searching. Opening a project or returning with Projects starts a fresh
 search; reloading a filtered URL retains its query.
+
+Each task row has a multiline Task notes textarea and Save notes button. Notes
+are optional plain text; saving preserves whitespace, line breaks, Unicode and
+literal markup, and empty text clears them. Notes persist through restarts,
+renames, moves and remembered return positions. Saving retains all applied
+filters, and searches continue matching only project names and task titles.
+Archived projects display saved notes with editing disabled until restored.
+Database upgrades initialize notes as empty without changing existing task data.
