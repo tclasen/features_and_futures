@@ -231,9 +231,12 @@ server.listen(port, '0.0.0.0');
 // Flush SQLite's connection state when the shared launcher stops the process.
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => {
-    server.close(() => {
-      db.close();
-      process.exit(0);
-    });
+    // Stop accepting requests and close keep-alive sockets before closing SQLite.
+    // Closing the database synchronously here ensures the committed tree is
+    // durable even when the launcher immediately replaces this process.
+    server.close();
+    server.closeAllConnections();
+    db.close();
+    process.exit(0);
   });
 }
