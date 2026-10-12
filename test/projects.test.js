@@ -44,6 +44,139 @@ async function startServer(databasePath) {
   };
 }
 
+test('directory bulk completion intersects filters, protects read-only tasks and persists only completion', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-bulk-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return {
+        projects: database.prepare('SELECT * FROM projects ORDER BY id').all(),
+        tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map(row => ({ ...row })),
+        positions: database.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(),
+      };
+    } finally { database.close(); }
+  };
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async (path = '/directory') => (await fetch(server.address + path)).text();
+    const titles = html => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map(match => match[1]);
+    const task = (title, fields = {}) => ({
+      title, completed: false, priority: 'High', dueDate: '2024-02-29',
+      notes: '  日本語 <b>literal</b>\nlast  ', deleted: false, ...fields,
+    });
+    const imported = async (name, archived, tasks) => {
+      assert.equal((await post('/projects/import', {
+        name, json: JSON.stringify({ format: 'workboard-project', version: 1,
+          project: { name, archived, defaultPriority: 'Low', tasks } }),
+      })).status, 303);
+    };
+    await imported('First owner', false, [
+      task('Alpha\t  FIRST'), task('Alpha first done', { completed: true }),
+      task('Alpha first deleted', { deleted: true }),
+      task('Alpha first low', { priority: 'Low' }),
+      task('Alpha first later', { dueDate: '2024-03-01' }),
+      task('Alpha first undated', { dueDate: '' }), task('Other title'),
+    ]);
+    await imported('Second owner', false, [task('ALPHA first second')]);
+    await imported('Archived owner', true, [task('Alpha first archived')]);
+    const original = snapshot();
+    const query = '?filter=Open&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-02-29&search=ALPHA%09++first&scope=Active';
+    const selected = await view('/directory' + query);
+    assert.deepEqual(titles(selected), ['Alpha\t  FIRST', 'ALPHA first second']);
+    assert.match(selected, /<button type="submit">Complete visible tasks<\/button>/);
+    assert.match(selected, /<button type="submit" disabled>Reopen visible tasks<\/button>/);
+    assert.doesNotMatch(selected, /No matching tasks/);
+    const complete = await post('/directory/complete' + query);
+    assert.equal(complete.status, 303);
+    const location = complete.headers.get('location');
+    const params = new URL(location, server.address).searchParams;
+    assert.equal(params.get('filter'), 'Open');
+    assert.equal(params.get('priorityFilter'), 'High');
+    assert.equal(params.get('dueFrom'), '2024-02-29');
+    assert.equal(params.get('dueThrough'), '2024-02-29');
+    assert.equal(params.get('search'), 'ALPHA\t  first');
+    assert.equal(params.get('scope'), 'Active');
+    const empty = await view(location);
+    assert.deepEqual(titles(empty), []);
+    assert.match(empty, /role="status">No matching tasks<\/p>/);
+    assert.match(empty, /<button type="submit" disabled>Complete visible tasks/);
+    assert.match(empty, /<button type="submit" disabled>Reopen visible tasks/);
+    // Native navigation renders resolved results; hide the old announcement on submission.
+    assert.match(empty, /document.addEventListener\('submit'/);
+    assert.match(empty, /announcement.hidden = true/);
+    const expected = {
+      ...original,
+      tasks: original.tasks.map(task => [1, 8].includes(task.id) ? { ...task, completed: 1 } : task),
+    };
+    assert.deepEqual(snapshot(), expected);
+    const home = await view('/');
+    assert.deepEqual([...home.matchAll(/data-testid="project-summary">([^<]*)/g)].map(match => match[1]),
+      ['2/6 completed', '1/1 completed']);
+    // All matches both completion states: only the still-open matching task is changed.
+    const allQuery = query.replace('filter=Open', 'filter=All');
+    assert.match(await view('/directory' + allQuery), /<button type="submit" disabled>Complete visible tasks/);
+    await post('/directory/complete' + allQuery);
+    assert.deepEqual(snapshot(), expected);
+    // Disabled actions cannot mutate archived/deleted tasks even via direct requests.
+    for (const suffix of ['?scope=Archived', '?filter=Deleted', '?search=absent']) {
+      const html = await view('/directory' + suffix);
+      for (const label of ['Complete visible tasks', 'Reopen visible tasks']) {
+        assert.ok(html.includes(`<button type="submit" disabled>${label}</button>`));
+      }
+      for (const action of ['complete', 'reopen']) {
+        assert.equal((await post('/directory/' + action + suffix)).status, 303);
+      }
+      assert.deepEqual(snapshot(), expected);
+    }
+    assert.equal((await post('/directory/reopen?dueFrom=2023-02-29')).status, 400);
+    assert.deepEqual(snapshot(), expected);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), expected);
+    assert.equal(await view(location), empty);
+    // Moves and returns retain the bulk-updated state and reserved positions.
+    await post('/projects/1/tasks/1/move', { destinationProject: '2' });
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(snapshot().tasks, expected.tasks);
+    const completedQuery = query.replace('filter=Open', 'filter=Completed');
+    assert.deepEqual(titles(await view('/directory' + completedQuery)),
+      ['Alpha\t  FIRST', 'Alpha first done', 'ALPHA first second']);
+    const reopened = await post('/directory/reopen' + completedQuery);
+    const reopenedPage = await view(reopened.headers.get('location'));
+    assert.deepEqual(titles(reopenedPage), []);
+    assert.match(reopenedPage, /No matching tasks/);
+    const afterReopen = snapshot();
+    assert.deepEqual(afterReopen.tasks, original.tasks.map(task => task.id === 2 ? { ...task, completed: 0 } : task));
+    assert.deepEqual(afterReopen.projects, original.projects);
+    assert.deepEqual([...(await view('/')).matchAll(/data-testid="project-summary">([^<]*)/g)].map(match => match[1]),
+      ['0/6 completed', '0/1 completed']);
+    // Mixed All results enable both actions and use the full matching result set.
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const mixed = await view('/directory' + allQuery);
+    assert.match(mixed, /<button type="submit">Complete visible tasks/);
+    assert.match(mixed, /<button type="submit">Reopen visible tasks/);
+    await post('/directory/complete' + allQuery);
+    assert.deepEqual(snapshot().tasks, expected.tasks);
+    await post('/directory/reopen' + allQuery);
+    assert.deepEqual(snapshot().tasks, afterReopen.tasks);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), afterReopen);
+    assert.equal(await view(reopened.headers.get('location')), reopenedPage);
+    assert.deepEqual(await (await fetch(server.address + '/health')).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('directory intersects read-only filters, preserves literal fields and order, and starts fresh on opening', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
   const databasePath = join(directory, 'workboard.sqlite');
