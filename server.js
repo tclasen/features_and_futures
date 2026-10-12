@@ -35,12 +35,20 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try {
+  db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER');
+  db.exec('UPDATE tasks SET position = id');
+} catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
+const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1) WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -109,6 +117,7 @@ const server = http.createServer(async (req, res) => {
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && req.method === 'GET' && url.searchParams.has('destinations')) return json(res, 200, eligibleDestinations.all(Number(tasksMatch[1])));
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
     if (!getProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
@@ -125,11 +134,26 @@ const server = http.createServer(async (req, res) => {
       const project = getProject.get(projectId);
       if (!project) return json(res, 404, { error: 'Project not found' });
       if (project.archived) return json(res, 409, { error: 'Archived projects cannot accept tasks' });
-      const result = addTask.run(projectId, title, project.defaultPriority);
+      const result = addTask.run(projectId, title, project.defaultPriority, projectId);
       return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority });
     } catch {
       return json(res, 400, { error: 'Invalid request' });
     }
+  }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (moveMatch && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const { destinationId } = JSON.parse(body);
+      const sourceId = Number(moveMatch[1]), taskId = Number(moveMatch[2]), targetId = Number(destinationId);
+      const source = getProject.get(sourceId), target = getProject.get(targetId);
+      if (!source || !target || source.archived || target.archived || !getTask.get(taskId, sourceId)) return json(res, 400, { error: 'Invalid move' });
+      db.exec('BEGIN IMMEDIATE');
+      try { moveTask.run(targetId, targetId, taskId, sourceId); db.exec('COMMIT'); }
+      catch (error) { db.exec('ROLLBACK'); throw error; }
+      return json(res, 200, { status: 'ok' });
+    } catch { return json(res, 400, { error: 'Invalid move' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   if (taskMatch && req.method === 'PATCH') {
