@@ -41,14 +41,26 @@ try {
 } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks`);
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
+const getTaskPosition = db.prepare('SELECT position FROM tasks WHERE id = ?');
 const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1) WHERE id = ? AND project_id = ?');
+const rememberedPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const nextPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 1) AS position FROM task_project_positions WHERE project_id = ?');
+const rememberPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -135,7 +147,9 @@ const server = http.createServer(async (req, res) => {
       if (!project) return json(res, 404, { error: 'Project not found' });
       if (project.archived) return json(res, 409, { error: 'Archived projects cannot accept tasks' });
       const result = addTask.run(projectId, title, project.defaultPriority, projectId);
-      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority });
+      const taskId = Number(result.lastInsertRowid);
+      rememberPosition.run(taskId, projectId, getTaskPosition.get(taskId).position);
+      return json(res, 201, { id: taskId, projectId, title, completed: false, priority: project.defaultPriority });
     } catch {
       return json(res, 400, { error: 'Invalid request' });
     }
@@ -150,8 +164,15 @@ const server = http.createServer(async (req, res) => {
       const source = getProject.get(sourceId), target = getProject.get(targetId);
       if (!source || !target || source.archived || target.archived || !getTask.get(taskId, sourceId)) return json(res, 400, { error: 'Invalid move' });
       db.exec('BEGIN IMMEDIATE');
-      try { moveTask.run(targetId, targetId, taskId, sourceId); db.exec('COMMIT'); }
-      catch (error) { db.exec('ROLLBACK'); throw error; }
+      try {
+        let position = rememberedPosition.get(taskId, targetId)?.position;
+        if (position === undefined) {
+          position = nextPosition.get(targetId).position;
+          rememberPosition.run(taskId, targetId, position);
+        }
+        moveTask.run(targetId, position, taskId, sourceId);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
       return json(res, 200, { status: 'ok' });
     } catch { return json(res, 400, { error: 'Invalid move' }); }
   }
