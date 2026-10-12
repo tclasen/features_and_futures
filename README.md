@@ -17,6 +17,11 @@ Active project pages support renaming with trimmed, nonblank names while retaini
 project identity, order, and tasks. Archived project pages allow viewing and
 filtering but prevent task changes and renaming.
 Existing databases are migrated automatically without losing projects or tasks.
+Each task has a multiline Task notes field and Save notes button. Notes preserve
+whitespace, Unicode and literal markup as plain text, persist across restarts,
+and travel with moved tasks. They do not participate in search or change filters
+or other task data. Existing and new tasks start with empty notes. Archived
+projects show notes with editing disabled; restoration enables editing again.
 Open a project to create tasks, toggle completion, and filter All, Open, or
 Completed tasks. Each task row supports renaming with a trimmed, nonblank title;
 renaming preserves ownership, creation order, and completion. Archived projects
