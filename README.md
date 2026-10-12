@@ -79,5 +79,13 @@ tasks in stored order. Export ignores page filters, preserves original names
 and titles, and includes completion, priority, due date, notes and deleted state.
 Notes line endings become LF only in the export. Downloading changes neither
 stored data nor page selections; remembered return positions remain in the app.
+The home page offers Project JSON, Imported project name and Import project.
+Import validates the complete version-1 document before saving anything, then
+creates an independent project with the trimmed override name and opens it.
+All task fields, live/deleted order, archive state and default priority are
+preserved; imported notes use LF line endings. Imported identities and return
+positions are new and independent of the original project. Invalid documents
+or blank override names display an alert and retain the submitted form values
+without changing existing data.
 Projects, names, tasks, and archive state persist across server restarts. `GET /health` returns
 `{"status":"ok"}`. Run the integration checks with `npm test`.
