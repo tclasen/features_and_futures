@@ -155,3 +155,11 @@ L060 resource ledger reconciliation: registered 1 additional names (1 present an
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L062 partial021 publication verified:311 source checkpoints and622 original refs, including independently restored rejected001–030 and before-recovery006/012/018/024/030. All prior remote heads preserved, zero-finding exact-target scan, temporary snapshot removed. Accounting totals remain scoped to closed020; current and later native attempts are excluded.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 archive-first task021 recovery verified: five identical b004 diagnostics, all thirty-six original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt037 start. Effective task021 repair remains pending; no comparison change or implementation hint.
+
+L060 retired archive coverage verified at308 native application resources (six beyond prior302), with independent SQLite restore/integrity and recorded resource absence; active25 retained. Two PM-rescued task016 launches remain separately verified. Evidence: preflight/retired-resources-20261012T234619388248Z/verified.json. No comparison change.
