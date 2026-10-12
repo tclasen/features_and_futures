@@ -35,6 +35,9 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec("ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
@@ -53,10 +56,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, position FROM tasks`);
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
-  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS totalCount, COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
 const getTaskPosition = db.prepare('SELECT position FROM tasks WHERE id = ?');
 const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
@@ -64,11 +67,12 @@ const rememberedPosition = db.prepare('SELECT position FROM task_project_positio
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 1) AS position FROM task_project_positions WHERE project_id = ?');
 const rememberPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, deleted FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
+const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function isValidDate(value) {
@@ -166,7 +170,7 @@ const server = http.createServer(async (req, res) => {
       const { destinationId } = JSON.parse(body);
       const sourceId = Number(moveMatch[1]), taskId = Number(moveMatch[2]), targetId = Number(destinationId);
       const source = getProject.get(sourceId), target = getProject.get(targetId);
-      if (!source || !target || source.archived || target.archived || !getTask.get(taskId, sourceId)) return json(res, 400, { error: 'Invalid move' });
+      if (!source || !target || source.archived || target.archived || getTask.get(taskId, sourceId)?.deleted) return json(res, 400, { error: 'Invalid move' });
       db.exec('BEGIN IMMEDIATE');
       try {
         let position = rememberedPosition.get(taskId, targetId)?.position;
@@ -190,8 +194,13 @@ const server = http.createServer(async (req, res) => {
       const taskId = Number(taskMatch[2]);
       const task = getTask.get(taskId, projectId);
       if (!task) return json(res, 404, { error: 'Task not found' });
-      if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
-      if (Object.hasOwn(data, 'title')) {
+      const project = getProject.get(projectId);
+      if (project.archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
+      if (Object.hasOwn(data, 'deleted') && typeof data.deleted === 'boolean') {
+        if (task.deleted && data.deleted) return json(res, 400, { error: 'Invalid task state' });
+        setTaskDeleted.run(data.deleted ? 1 : 0, taskId, projectId);
+      } else if (task.deleted) return json(res, 409, { error: 'Deleted tasks cannot be edited' });
+      else if (Object.hasOwn(data, 'title')) {
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
         renameTask.run(title, taskId, projectId);
