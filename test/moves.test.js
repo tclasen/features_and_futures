@@ -178,3 +178,83 @@ test('upgrading preserves existing position order and remembers it across restar
     } finally { db.close(); }
   });
 });
+
+test('notes preserve exact text and task data through edits, moves, archive and restart', async () => {
+  await withServer(async ({ api, taskPath, move, restart }) => {
+    const source = await api('', 'POST', { name: 'Source' }, 201);
+    const destination = await api('', 'POST', { name: 'Destination' }, 201);
+    const first = await api(taskPath(source), 'POST', { title: 'First' }, 201);
+    const second = await api(taskPath(source), 'POST', { title: 'Second' }, 201);
+    assert.equal(first.notes, '');
+    assert.equal(second.notes, '');
+    const path = `${taskPath(source)}/${first.id}`;
+    const original = await api(path, 'PATCH', { completed: true, priority: 'High', dueDate: '2024-02-29' });
+    const summary = await api(`/${source.id}`);
+    const notes = '  First line\n\t第二行 🌱\n<script>alert("literal")</script> & <b>text</b>  \n';
+    const saved = await api(path, 'PATCH', { notes });
+    assert.deepEqual(saved, { ...original, notes });
+    assert.deepEqual(await api(taskPath(source)), [saved, second]);
+    assert.deepEqual(await api(`/${source.id}`), summary);
+    for (const invalid of [null, 4, true, [], {}]) {
+      await api(path, 'PATCH', { notes: invalid, title: 'Must not change' }, 400);
+      assert.deepEqual(await api(taskPath(source)), [saved, second]);
+    }
+    await api(`${taskPath(destination)}/${first.id}`, 'PATCH', { notes: 'Wrong owner' }, 404);
+    await restart();
+    assert.deepEqual(await api(taskPath(source)), [saved, second]);
+    const renamed = await api(path, 'PATCH', { title: 'Renamed' });
+    assert.deepEqual(renamed, { ...saved, title: 'Renamed' });
+    await move(source, renamed, destination);
+    await move(source, second, destination);
+    const changedNotes = `${notes}\nUpdated while away`;
+    const changed = await api(`${taskPath(destination)}/${first.id}`, 'PATCH', { notes: changedNotes });
+    await restart();
+    await move(destination, second, source);
+    await move(destination, changed, source);
+    assert.deepEqual(await api(taskPath(source)), [changed, second]);
+    await api(`/${source.id}`, 'PATCH', { archived: true });
+    await api(path, 'PATCH', { notes: 'Blocked' }, 409);
+    await restart();
+    assert.deepEqual(await api(taskPath(source)), [changed, second]);
+    await api(`/${source.id}`, 'PATCH', { archived: false });
+    const whitespace = await api(path, 'PATCH', { notes: ' \t\n ' });
+    assert.deepEqual(whitespace, { ...changed, notes: ' \t\n ' });
+    const cleared = await api(path, 'PATCH', { notes: '' });
+    assert.deepEqual(cleared, { ...changed, notes: '' });
+    await restart();
+    assert.deepEqual(await api(taskPath(source)), [cleared, second]);
+  });
+});
+
+test('notes migration preserves prior task fields and remembered positions', async () => {
+  await withServer(async ({ api, taskPath, move, restart }) => {
+    const source = { id: 1 };
+    const destination = { id: 2 };
+    const expected = { id: 9, title: 'Saved\t  title', completed: true, priority: 'Low', dueDate: '0001-01-01', notes: '' };
+    assert.deepEqual(await api(taskPath(source)), [expected]);
+    assert.equal((await api('/1')).defaultPriority, 'High');
+    assert.equal((await api('/2')).archived, true);
+    await api('/2', 'PATCH', { archived: false });
+    await move(source, expected, destination);
+    const newcomer = await api(taskPath(destination), 'POST', { title: 'New arrival' }, 201);
+    const saved = await api(`${taskPath(destination)}/9`, 'PATCH', { notes: 'New notes\n  ' });
+    await restart();
+    await move(destination, saved, source);
+    await move(source, saved, destination);
+    assert.deepEqual(await api(taskPath(destination)), [saved, newcomer]);
+  }, path => {
+    const db = new DatabaseSync(path);
+    try {
+      db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+        INSERT INTO projects (name, archived, default_priority) VALUES ('Source', 0, 'High'), ('Destination', 1, 'Low');
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+          title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+          due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO tasks VALUES (9, 1, 'Saved\t  title', 1, 'Low', '0001-01-01', 4);
+        CREATE TABLE task_positions (task_id INTEGER NOT NULL, project_id INTEGER NOT NULL, position INTEGER NOT NULL,
+          PRIMARY KEY (task_id, project_id));
+        INSERT INTO task_positions VALUES (9, 1, 4), (9, 2, 2)`);
+    } finally { db.close(); }
+  });
+});

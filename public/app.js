@@ -315,7 +315,44 @@ async function renderProject(projectId) {
           destination.disabled = moveButton.disabled = archived || destinations.length === 0;
         }
       });
-      row.append(title, checkbox, priorityField, renameForm, dueDateForm, moveForm);
+      const notesForm = document.createElement('form');
+      notesForm.className = 'task-notes';
+      const notesLabel = document.createElement('label');
+      notesLabel.textContent = 'Task notes';
+      const notesInput = document.createElement('textarea');
+      notesInput.id = `task-notes-${task.id}`;
+      notesInput.rows = 4;
+      notesInput.value = task.notes;
+      notesInput.disabled = archived;
+      notesLabel.htmlFor = notesInput.id;
+      const notesButton = document.createElement('button');
+      notesButton.type = 'submit';
+      notesButton.textContent = 'Save notes';
+      notesButton.disabled = archived;
+      const notesFields = document.createElement('div');
+      notesFields.className = 'create-fields';
+      notesFields.append(notesInput, notesButton);
+      notesForm.append(notesLabel, notesFields);
+      notesForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (archived) return;
+        notesButton.disabled = true;
+        alert.hidden = true;
+        try {
+          const saved = await request(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          Object.assign(task, saved);
+          displayTasks();
+        } catch (error) {
+          showError(alert, error.message);
+        } finally {
+          notesButton.disabled = archived;
+        }
+      });
+      row.append(title, checkbox, priorityField, renameForm, dueDateForm, moveForm, notesForm);
       return row;
     }));
   }

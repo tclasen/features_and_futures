@@ -38,6 +38,11 @@ Invalid ranges leave the previous applied range intact. Editing a task updates
 matching rows, and opening a project starts with an empty range. Archived
 projects allow all filters while keeping saved task data read-only.
 
+Task notes saves optional multiline plain text exactly as entered, including
+spaces, line breaks, Unicode and literal markup. Empty text clears notes. Notes
+persist across restarts and moves, and do not participate in search. Archived
+projects display notes with their editing controls disabled.
+
 Move task sends a task to another active project, preserving its title,
 completion, priority and due date. First arrivals append after all positions
 established in the destination; returning tasks recover their remembered

@@ -57,15 +57,16 @@ async function projectPage(archived = false, destinations = [
   { id: 2, name: 'Second project', archived: false },
   { id: 3, name: 'Archived destination', archived: true },
   { id: 4, name: 'Fourth project', archived: false },
-]) {
+], initialNotes = '') {
   const app = new Element('main');
   const tasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
     for (const completed of [false, true]) {
-      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority, dueDate: '' });
+      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority, dueDate: '', notes: '' });
     }
   }
-  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High', dueDate: '0001-01-01' });
+  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High', dueDate: '0001-01-01', notes: '' });
+  tasks[0].notes = initialNotes;
   const requests = [];
   let nextError;
   const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
@@ -86,7 +87,7 @@ async function projectPage(archived = false, destinations = [
         data = tasks.splice(tasks.findIndex(task => task.id === taskId), 1)[0];
       } else if (options?.method === 'POST') {
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
-          completed: false, priority: project.defaultPriority, dueDate: '' };
+          completed: false, priority: project.defaultPriority, dueDate: '', notes: '' };
         tasks.push(data);
       } else if (options?.method === 'PATCH') {
         const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
@@ -645,4 +646,78 @@ test('project search collapses mixed spaces and tabs and keeps original names', 
   assert.equal(page.names().at(-1), name);
   assert.deepEqual(page.projects, saved);
   assert.equal(page.requests.length, requests);
+});
+
+function notesForm(row) {
+  return row.querySelectorAll('form').find(form => form.querySelector('textarea'));
+}
+
+async function saveNotes(page, row, text) {
+  const form = notesForm(row);
+  form.querySelector('textarea').value = text;
+  await form.trigger('submit');
+}
+
+test('notes UI saves exact plain text and retains intersecting filters and search', async () => {
+  const page = await projectPage();
+  const form = notesForm(page.rows()[0]);
+  const textarea = form.querySelector('textarea');
+  assert.equal(textarea.value, '');
+  assert.equal(form.querySelector('label').textContent, 'Task notes');
+  assert.equal(form.querySelector('label').htmlFor, textarea.id);
+  assert.equal(form.querySelector('button').textContent, 'Save notes');
+  const notes = '  Unrelated keyword\n\tUnicode 日本語 🌱\n<script>literal markup</script>  \n';
+  await saveNotes(page, page.rows()[0], notes);
+  assert.equal(page.rows()[0].querySelector('textarea').value, notes);
+  await searchTasks(page, 'Unrelated keyword');
+  assert.deepEqual(page.titles(), []);
+  await searchTasks(page, 'low');
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'Low');
+  await saveDate(page, 1, '2024-02-29');
+  await applyRange(page, '2024-02-01', '2024-02-29');
+  const before = structuredClone(page.tasks);
+  const summary = structuredClone(page.project);
+  for (const value of [notes, ' \t\n ', '']) {
+    await saveNotes(page, page.rows()[0], value);
+    assert.deepEqual(page.titles(), ['Low open']);
+    assert.deepEqual(page.tasks, before.map(task => task.id === 1 ? { ...task, notes: value } : task));
+    assert.equal(page.rows()[0].querySelector('textarea').value, value);
+    assert.equal(page.completion.value, 'Open');
+    assert.equal(page.priority.value, 'Low');
+    assert.equal(page.app.querySelector('#due-from').value, '2024-02-01');
+    assert.equal(page.app.querySelector('#due-through').value, '2024-02-29');
+    assert.equal(page.app.querySelector('#task-search').value, 'low');
+    assert.deepEqual(page.project, summary);
+    assert.deepEqual(JSON.parse(page.requests.at(-1).options.body), { notes: value });
+  }
+  const failed = notesForm(page.rows()[0]);
+  failed.querySelector('textarea').value = 'Unsaved draft';
+  page.rejectNext('Unable to complete request');
+  await failed.trigger('submit');
+  assert.equal(page.tasks[0].notes, '');
+  assert.equal(failed.querySelector('textarea').value, 'Unsaved draft');
+  assert.equal(failed.querySelector('button').disabled, false);
+  assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Unable to complete request');
+});
+
+test('archived notes remain visible and disabled; restoring enables editing', async () => {
+  const savedNotes = '  Saved notes\n<b>literal</b>  ';
+  const archived = await projectPage(true, undefined, savedNotes);
+  const form = notesForm(archived.rows()[0]);
+  assert.equal(form.querySelector('textarea').value, savedNotes);
+  assert.equal(form.querySelector('textarea').disabled, true);
+  assert.equal(form.querySelector('button').disabled, true);
+  const count = archived.requests.length;
+  await form.trigger('submit');
+  assert.equal(archived.requests.length, count);
+  await searchTasks(archived, 'Low');
+  assert.deepEqual(archived.titles(), ['Low open', 'Low done']);
+  const restored = await projectPage(false, undefined, savedNotes);
+  const restoredForm = notesForm(restored.rows()[0]);
+  assert.equal(restoredForm.querySelector('textarea').value, savedNotes);
+  assert.equal(restoredForm.querySelector('textarea').disabled, false);
+  assert.equal(restoredForm.querySelector('button').disabled, false);
+  await saveNotes(restored, restored.rows()[0], 'Restored notes\n  ');
+  assert.equal(restored.rows()[0].querySelector('textarea').value, 'Restored notes\n  ');
 });
