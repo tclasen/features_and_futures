@@ -1,3 +1,5 @@
+import { orderDirectoryTasks } from './directory-order.js';
+
 const app = document.querySelector('#app');
 
 function asciiLower(value) {
@@ -69,6 +71,13 @@ async function renderDirectory() {
       <option value="Normal">Normal</option>
       <option value="High">High</option>
     </select>
+    <label for="directory-order">Directory order</label>
+    <select id="directory-order">
+      <option value="original">Original</option>
+      <option value="priority">Priority</option>
+      <option value="due-date">Due date</option>
+      <option value="title">Title</option>
+    </select>
     <form id="directory-search-form">
       <label for="directory-search">Directory search</label>
       <input id="directory-search" type="text" autocomplete="off">
@@ -89,6 +98,7 @@ async function renderDirectory() {
   const scope = app.querySelector('#project-scope');
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
+  const order = app.querySelector('#directory-order');
   const search = app.querySelector('#directory-search');
   const from = app.querySelector('#due-from');
   const through = app.querySelector('#due-through');
@@ -103,8 +113,8 @@ async function renderDirectory() {
   let resolved = false;
   function draw() {
     list.replaceChildren();
-    const visible = tasks.filter((task) => task.archived === (scope.value === 'archived') &&
-      matchesTask(task, completion.value, priority.value, appliedFrom, appliedThrough, query));
+    const visible = orderDirectoryTasks(tasks.filter((task) => task.archived === (scope.value === 'archived') &&
+      matchesTask(task, completion.value, priority.value, appliedFrom, appliedThrough, query)), order.value);
     app.querySelector('#empty-directory').hidden = loading || !resolved || visible.length > 0;
     list.setAttribute('aria-busy', String(loading));
     const readOnly = loading || scope.value === 'archived' || completion.value === 'deleted';
@@ -150,7 +160,7 @@ async function renderDirectory() {
   }
   complete.addEventListener('click', () => setVisibleCompletion(true));
   reopen.addEventListener('click', () => setVisibleCompletion(false));
-  for (const select of [scope, completion, priority]) select.addEventListener('change', draw);
+  for (const select of [scope, completion, priority, order]) select.addEventListener('change', draw);
   app.querySelector('#directory-search-form').addEventListener('submit', (event) => {
     event.preventDefault();
     query = search.value.trim();

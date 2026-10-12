@@ -2,6 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
+import { orderDirectoryTasks } from '../public/directory-order.js';
+
+function runAppScript(source, context) {
+  return runInNewContext(source.replace(/^import .*directory-order\.js';\n/m, ''), {
+    ...context, orderDirectoryTasks,
+  });
+}
 
 // A small DOM adapter exercises the actual application event handlers without
 // adding browser or application dependencies. It supports the markup used here.
@@ -117,7 +124,7 @@ async function projectPage(archived = false, dates = [], destinations = [], init
       [project, ...destinations] : path.endsWith('/tasks') ? tasks : project) };
   };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  await runInNewContext(source, {
+  await runAppScript(source, {
     document, fetch, window: { location: { pathname: '/projects/1' } },
   });
   const completion = app.querySelector('#task-filter');
@@ -603,7 +610,7 @@ async function projectList(initialNames = []) {
     }
     return { ok: true, json: async () => structuredClone(project) };
   };
-  await runInNewContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
+  await runAppScript(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), {
     document: { querySelector: () => app, createElement: (tag) => new Element(tag) }, fetch, window,
   });
   const rows = () => app.querySelector('#projects').children;
@@ -882,7 +889,7 @@ test('project import retains submitted fields on errors and opens the independen
     return { ok: !error, json: async () => error ? { error } : { id: 42 } };
   };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  await runInNewContext(source, {
+  await runAppScript(source, {
     document: { querySelector: () => app, createElement: (tag) => new Element(tag) },
     fetch, window: { location },
   });
@@ -924,7 +931,7 @@ async function directoryPage(tasks, bulkRequest) {
   const location = { pathname: '/task-directory' };
   const requests = [];
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
-  await runInNewContext(source, {
+  await runAppScript(source, {
     document: { querySelector: () => app, createElement: (tag) => new Element(tag) },
     window: { location },
     fetch: async (path, options) => {
@@ -1077,6 +1084,7 @@ test('directory bulk controls preserve intersections and hide empty announcement
   assert.equal(complete.disabled, false);
   assert.equal(reopen.disabled, false);
   await select('#task-filter', 'open');
+  await select('#directory-order', 'title');
   await select('#priority-filter', 'High');
   await search('  MATCH  task  ');
   await range('2024-02-29', '2024-02-29');
@@ -1100,6 +1108,7 @@ test('directory bulk controls preserve intersections and hide empty announcement
   assert.deepEqual(titles(), []);
   assert.equal(empty.hidden, false);
   assert.equal(app.querySelector('#task-filter').value, 'open');
+  assert.equal(app.querySelector('#directory-order').value, 'title');
   assert.equal(app.querySelector('#priority-filter').value, 'High');
   assert.equal(app.querySelector('#due-from').value, '2024-02-29');
   await select('#task-filter', 'completed');
@@ -1110,6 +1119,7 @@ test('directory bulk controls preserve intersections and hide empty announcement
   await reopening;
   assert.deepEqual(titles(), []);
   assert.equal(app.querySelector('#task-filter').value, 'completed');
+  assert.equal(app.querySelector('#directory-order').value, 'title');
   assert.equal(empty.hidden, false);
   assert.equal(complete.disabled, true);
   assert.equal(reopen.disabled, true);
@@ -1124,4 +1134,60 @@ test('directory bulk controls preserve intersections and hide empty announcement
   await complete.fire('click');
   await reopen.fire('click');
   assert.equal(page.requests.length, count);
+});
+
+test('directory order applies to every scope and retains intersecting view controls', async () => {
+  const base = { completed: false, notes: '', deleted: false, archived: false, project_id: 1, project_name: 'First' };
+  const tasks = [
+    { ...base, title: 'Zulu', priority: 'Low', due_date: '' },
+    { ...base, title: 'alpha', priority: 'High', due_date: '2024-03-01' },
+    { ...base, title: 'Beta', priority: 'Normal', due_date: '2024-02-29', project_id: 2 },
+    { ...base, title: 'ALPHA', priority: 'High', due_date: '2024-03-01', project_id: 2 },
+    { ...base, title: 'Deleted Z', priority: 'Low', due_date: '', deleted: true },
+    { ...base, title: 'Deleted A', priority: 'High', due_date: '', deleted: true },
+    { ...base, title: 'Archived Z', priority: 'Low', due_date: '', archived: true },
+    { ...base, title: 'Archived A', priority: 'High', due_date: '', archived: true },
+  ];
+  const before = structuredClone(tasks);
+  const { app, titles, select, range, search, requests, rows, location } = await directoryPage(tasks);
+  const order = app.querySelector('#directory-order');
+  assert.deepEqual(order.children.map((option) => option.textContent), ['Original', 'Priority', 'Due date', 'Title']);
+  assert.equal(order.value, 'original');
+  assert.equal(app.querySelector('label').htmlFor, 'project-scope');
+  assert.equal(app.querySelectorAll('label').find((label) => label.htmlFor === order.id).textContent, 'Directory order');
+  await select('#directory-order', 'priority');
+  assert.deepEqual(titles(), ['alpha', 'ALPHA', 'Beta', 'Zulu']);
+  await select('#directory-order', 'due-date');
+  assert.deepEqual(titles(), ['Beta', 'alpha', 'ALPHA', 'Zulu']);
+  await select('#directory-order', 'title');
+  assert.deepEqual(titles(), ['alpha', 'ALPHA', 'Beta', 'Zulu']);
+  await select('#task-filter', 'open');
+  await select('#priority-filter', 'High');
+  await range('2024-03-01', '2024-03-01');
+  await search(' ALPHA ');
+  for (const value of ['original', 'priority', 'due-date', 'title']) {
+    await select('#directory-order', value);
+    assert.deepEqual(titles(), ['alpha', 'ALPHA']);
+    assert.equal(app.querySelector('#task-filter').value, 'open');
+    assert.equal(app.querySelector('#priority-filter').value, 'High');
+    assert.equal(app.querySelector('#due-from').value, '2024-03-01');
+    assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+    assert.equal(app.querySelector('#directory-search').value, 'ALPHA');
+  }
+  await range('', '');
+  await search('');
+  await select('#priority-filter', 'all');
+  await select('#task-filter', 'deleted');
+  assert.deepEqual(titles(), ['Deleted A', 'Deleted Z']);
+  await select('#project-scope', 'archived');
+  await select('#task-filter', 'all');
+  assert.deepEqual(titles(), ['Archived A', 'Archived Z']);
+  assert.equal(order.value, 'title');
+  await rows()[0].children.at(-1).fire('click');
+  assert.equal(location.href, '/projects/1');
+  assert.deepEqual(tasks, before);
+  assert.equal(requests.length, 1);
+  const reopened = await directoryPage(tasks);
+  assert.equal(reopened.app.querySelector('#directory-order').value, 'original');
+  assert.deepEqual(reopened.titles(), ['Zulu', 'alpha', 'Beta', 'ALPHA']);
 });

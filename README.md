@@ -119,3 +119,10 @@ positions. Archived scope and Deleted disable both actions; each action is also
 disabled when no matching live task needs that change. Summaries reflect the saved
 completion state. Empty resolved results show No matching tasks; this announcement
 stays hidden while directory results are loading or a bulk update is pending.
+
+Directory order starts at Original on every opening. Priority orders High, Normal,
+then Low; Due date orders calendar dates ascending with undated tasks last; Title
+orders literal titles by Unicode code point after folding only ASCII uppercase.
+Ties retain original project/task order. Ordering retains all directory filters,
+search and applied range, including after bulk completion actions, and never
+changes saved positions, project task views, exports or later moves.
