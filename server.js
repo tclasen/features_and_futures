@@ -13,8 +13,12 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0
 )`);
+if (!db.prepare("PRAGMA table_info(projects)").all().some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -34,7 +38,23 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { status: 'ok' });
   }
   if (req.method === 'GET' && url.pathname === '/api/projects') {
-    return send(res, 200, db.prepare('SELECT id, name FROM projects ORDER BY created_at, rowid').all());
+    return send(res, 200, db.prepare(`SELECT p.id, p.name, p.archived,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
+      (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
+      FROM projects p ORDER BY p.created_at, p.rowid`).all());
+  }
+  const projectArchive = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
+  if (req.method === 'PATCH' && projectArchive) {
+    let projectId;
+    try { projectId = decodeURIComponent(projectArchive[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let archived;
+    try { archived = JSON.parse(body).archived; } catch { return send(res, 400, { error: 'Invalid request' }); }
+    if (typeof archived !== 'boolean') return send(res, 400, { error: 'Invalid archive state' });
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, projectId);
+    if (!result.changes) return send(res, 404, { error: 'Project not found' });
+    return send(res, 200, { id: projectId, archived: archived ? 1 : 0 });
   }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
