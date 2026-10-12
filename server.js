@@ -11,7 +11,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0
+  archived INTEGER NOT NULL DEFAULT 0,
+  default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const indexPath = join(dirname(fileURLToPath(import.meta.url)), 'index.html');
 const server = http.createServer(async (req, res) => {
@@ -29,7 +31,7 @@ const server = http.createServer(async (req, res) => {
   const send = (status, type, body) => { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
   if (url.pathname === '/health' && req.method === 'GET') return send(200, 'application/json; charset=utf-8', JSON.stringify({ status: 'ok' }));
   if (url.pathname === '/api/projects' && req.method === 'GET') {
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority, COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed FROM projects p LEFT JOIN tasks t ON t.project_id = p.id GROUP BY p.id ORDER BY p.id`).all().map(p => ({ ...p, archived: Boolean(p.archived) }))));
   }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
@@ -55,13 +57,13 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     try {
       const projectId = Number(tasks[1]);
-      const owner = db.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+      const owner = db.prepare('SELECT id, archived, default_priority FROM projects WHERE id = ?').get(projectId);
       if (!owner) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
       if (owner.archived) return send(409, 'application/json; charset=utf-8', JSON.stringify({ error: 'Archived project' }));
       const data = JSON.parse(body);
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
-      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      const result = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, owner.default_priority);
       return send(201, 'application/json; charset=utf-8', JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
@@ -71,6 +73,12 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = JSON.parse(body);
       const id = Number(project[1]);
+      if (data.defaultPriority !== undefined) {
+        if (!['Low', 'Normal', 'High'].includes(data.defaultPriority)) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid priority' }));
+        const result = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0').run(data.defaultPriority, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+      }
       if (typeof data.name === 'string') {
         const name = data.name.trim();
         if (!name) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project name is required' }));
@@ -111,7 +119,7 @@ const server = http.createServer(async (req, res) => {
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
   if (project && req.method === 'GET') {
-    const item = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(project[1]));
+    const item = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(Number(project[1]));
     return item ? send(200, 'application/json; charset=utf-8', JSON.stringify({ ...item, archived: Boolean(item.archived) })) : send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
   }
   if (req.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
