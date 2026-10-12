@@ -160,8 +160,32 @@ function drawTasks() {
       }
     });
     renameForm.append(renameInput, renameButton);
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = activeProjectArchived;
+    priority.addEventListener('change', async () => {
+      const previous = task.priority || 'Normal';
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ priority: priority.value })
+        });
+        task.priority = updated.priority;
+      } catch (error) {
+        priority.value = previous;
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
     label.append(checkbox);
-    row.append(title, renameForm, label);
+    row.append(title, renameForm, priority, label);
     tasksNode.append(row);
   }
 }
