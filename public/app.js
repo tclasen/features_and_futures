@@ -3,6 +3,10 @@ const detailSection = document.querySelector('#project-detail');
 const projectContainer = document.querySelector('#projects');
 const errorMessage = document.querySelector('#error-message');
 const taskContainer = document.querySelector('#tasks');
+const directorySection = document.querySelector('#directory');
+let directoryRows = [];
+let directoryRange = { from: '', through: '' };
+let directoryQuery = '';
 let activeProjectId = null;
 let projectTasks = [];
 let allProjects = [];
@@ -46,6 +50,19 @@ async function loadProjects() {
 }
 
 async function showRoute() {
+  if (location.pathname === '/directory') {
+    activeProjectId = null;
+    listSection.hidden = true; detailSection.hidden = true; directorySection.hidden = false;
+    document.querySelector('#directory-scope').value = 'Active';
+    document.querySelector('#directory-task-filter').value = 'All';
+    document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-search').value = '';
+    document.querySelector('#directory-due-from').value = '';
+    document.querySelector('#directory-due-through').value = '';
+    directoryQuery = ''; directoryRange = { from: '', through: '' };
+    const response = await fetch('/api/directory'); directoryRows = await response.json(); renderDirectory(); return;
+  }
+  directorySection.hidden = true;
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (!match) {
     activeProjectId = null;
@@ -89,6 +106,27 @@ async function showRoute() {
   await loadTasks();
 }
 
+function renderDirectory() {
+  const out = document.querySelector('#directory-results'); out.replaceChildren();
+  const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
+  for (const task of directoryRows) {
+    if (Boolean(task.projectArchived) !== (scope === 'Archived')) continue;
+    if ((filter === 'Deleted') !== Boolean(task.deleted) || (filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
+    if (priority !== 'All' && task.priority !== priority) continue;
+    if (!normalizeSearch(task.title).includes(directoryQuery)) continue;
+    if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
+    if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
+    const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
+    const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
+    const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
+    const completion = document.createElement('span'); completion.dataset.testid = 'directory-task-completion'; completion.textContent = task.completed ? 'Completed' : 'Open';
+    const pr = document.createElement('span'); pr.dataset.testid = 'directory-task-priority'; pr.textContent = task.priority || 'Normal';
+    const due = document.createElement('span'); due.dataset.testid = 'directory-task-due-date'; due.textContent = task.dueDate || '';
+    const notes = document.createElement('span'); notes.dataset.testid = 'directory-task-notes'; notes.textContent = task.notes || '';
+    const open = document.createElement('button'); open.textContent = 'Open project'; open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
+    row.append(title, owner, completion, pr, due, notes, open); out.append(row);
+  }
+}
 function navigate(path, replace = false) {
   if (replace) history.replaceState({}, '', path);
   else history.pushState({}, '', path);
@@ -363,6 +401,19 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
   await showRoute();
 });
 
+document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
+document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
+document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
+document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
+document.querySelector('#directory-apply-range').addEventListener('click', () => {
+  const from = document.querySelector('#directory-due-from').value.trim(), through = document.querySelector('#directory-due-through').value.trim();
+  const valid = value => { if (!value) return true; const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value); if (!m) return false; const y=+m[1], mo=+m[2], d=+m[3], leap=y%4===0&&(y%100!==0||y%400===0); return y>=1&&mo>=1&&mo<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };
+  const error = document.querySelector('#directory-error');
+  if (!valid(from) || !valid(through)) { error.textContent = 'Due range must use valid YYYY-MM-DD dates'; error.hidden = false; return; }
+  if (from && through && from > through) { error.textContent = 'Due from must not be after Due through'; error.hidden = false; return; }
+  error.hidden = true; directoryRange = { from, through }; renderDirectory();
+});
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 window.addEventListener('popstate', showRoute);
 showRoute();
