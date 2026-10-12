@@ -119,13 +119,49 @@ async function showProject(id) {
   app.append(back);
   try {
     const project = await request(`/api/projects/${id}`);
-    app.append(element('h1', project.name));
+    const heading = element('h1', project.name);
+    app.append(heading);
     document.title = `${project.name} · Workboard`;
     if (project.archived) app.append(element('p', 'Archived project'));
+    showProjectRename(project, heading);
     await showTasks(id, project.archived);
   } finally {
     app.setAttribute('aria-busy', 'false');
   }
+}
+
+function showProjectRename(project, heading) {
+  const form = element('form', '', { class: 'project-rename' });
+  const input = element('input', '', { id: 'new-project-name', name: 'name', type: 'text' });
+  const rename = element('button', 'Rename project', { type: 'submit' });
+  input.value = project.name;
+  input.disabled = project.archived;
+  rename.disabled = project.archived;
+  form.append(element('label', 'New project name', { for: 'new-project-name' }), input, rename);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (rename.disabled) return;
+    const name = input.value.trim();
+    if (!name) return showError('Project name is required');
+    rename.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      Object.assign(project, saved);
+      heading.textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = project.name;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      rename.disabled = project.archived;
+    }
+  });
+  app.append(form);
 }
 
 async function showTasks(projectId, archived) {

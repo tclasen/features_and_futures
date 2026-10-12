@@ -32,7 +32,8 @@ const projectSelection = `
 `;
 const listProjects = database.prepare(`${projectSelection} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? GROUP BY projects.id`);
-const updateProject = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
@@ -104,10 +105,23 @@ const server = createServer(async (request, response) => {
       } catch {
         return json(response, 400, { error: 'Invalid JSON request' });
       }
+      if (body && Object.hasOwn(body, 'name')) {
+        if (Object.hasOwn(body, 'archived')) {
+          return json(response, 400, { error: 'Rename and archive must be separate requests' });
+        }
+        // Check after reading input so a concurrent archive cannot allow a rename.
+        if (findProject.get(projectId).archived) {
+          return json(response, 409, { error: 'Archived project cannot be changed' });
+        }
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name) return json(response, 400, { error: 'Project name is required' });
+        renameProject.run(name, projectId);
+        return json(response, 200, projectData(findProject.get(projectId)));
+      }
       if (typeof body?.archived !== 'boolean') {
         return json(response, 400, { error: 'Project archive state must be a boolean' });
       }
-      updateProject.run(Number(body.archived), projectId);
+      updateProjectArchive.run(Number(body.archived), projectId);
       return json(response, 200, projectData(findProject.get(projectId)));
     }
     const tasksRoute = pathname.match(/^\/api\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);

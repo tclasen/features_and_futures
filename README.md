@@ -21,5 +21,12 @@ filtering tasks but disable task creation and completion changes. Each project
 row shows completed/total counts across all of its tasks. The API also rejects
 task writes to archived projects with HTTP 409.
 
+Use New project name and Rename project on an active project page to rename it.
+Names are trimmed and must be nonblank. Renaming preserves the URL, list order,
+tasks, and completion counts, and the new name persists across restarts. Archived
+projects disable renaming until restored. `PATCH /api/projects/<id>` accepts
+either `{ "name": "New name" }` or `{ "archived": true }` in separate requests;
+renaming an archived project returns HTTP 409.
+
 Run the integration tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.

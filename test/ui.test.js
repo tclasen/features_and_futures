@@ -114,6 +114,10 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
   assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, project.name);
   assert.ok(find(ui.app, (node) => node.tag === 'p' && node.textContent === 'Archived project').length);
   assert.equal(ui.button('Create task').disabled, true);
+  assert.equal(ui.byId('new-project-name').disabled, true);
+  assert.equal(ui.button('Rename project').disabled, true);
+  ui.byId('new-project-name').value = 'Cannot rename';
+  await find(ui.app, (node) => node.tag === 'form' && node.attributes.class === 'project-rename')[0].fire('submit');
   assert.equal(find(ui.app, (node) => node.attributes.for === 'task-title')[0].textContent, 'Task title');
   const filter = ui.byId('task-filter');
   assert.equal(filter.value, 'All');
@@ -130,8 +134,38 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
     }
   }
   ui.byId('task-title').value = 'Cannot create';
-  await find(ui.app, (node) => node.tag === 'form')[0].fire('submit');
+  await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'task-title'))[0].fire('submit');
   assert.equal(ui.calls.length, 2);
   await ui.button('Projects').fire('click');
   assert.equal(ui.window.location.href, '/');
+});
+
+test('active project UI validates and trims renames without changing its URL or tasks', async () => {
+  const project = { id: 1, name: 'Original', archived: false };
+  const tasks = [{ id: 1, title: 'Saved task', completed: true }];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return path.endsWith('/tasks') ? tasks : project;
+    assert.equal(path, '/api/projects/1');
+    assert.equal(options.method, 'PATCH');
+    assert.deepEqual(JSON.parse(options.body), { name: 'New name' });
+    return { ...project, name: 'New name' };
+  });
+  const input = ui.byId('new-project-name');
+  const form = find(ui.app, (node) => node.tag === 'form' && node.attributes.class === 'project-rename')[0];
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'new-project-name')[0].textContent, 'New project name');
+  assert.equal(input.disabled, false);
+  assert.equal(ui.button('Rename project').disabled, false);
+  input.value = ' \t\n ';
+  await form.fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, 'Original');
+  assert.equal(ui.calls.length, 2);
+  input.value = '  New name \n';
+  await form.fire('submit');
+  assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, 'New name');
+  assert.equal(input.value, 'New name');
+  assert.equal(ui.app.querySelector('[role="alert"]'), null);
+  assert.equal(ui.window.location.href, '/projects/1');
+  assert.deepEqual(ui.rows('task').map((row) => row.textContent), ['Saved task']);
+  assert.equal(find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0].checked, true);
 });
