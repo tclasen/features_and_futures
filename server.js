@@ -96,6 +96,34 @@ function createTask(projectId, title, priority) {
     rememberPosition.run(result.lastInsertRowid, projectId, position);
   });
 }
+function validPortableProject(document) {
+  if (!document || document.format !== 'workboard-project' || document.version !== 1) return false;
+  const project = document.project;
+  const nonblank = value => typeof value === 'string' && value.trim().length > 0;
+  if (!project || !nonblank(project.name) || typeof project.archived !== 'boolean' ||
+      !priorities.includes(project.defaultPriority) || !Array.isArray(project.tasks)) return false;
+  return project.tasks.every(task => task && nonblank(task.title) &&
+    typeof task.completed === 'boolean' && priorities.includes(task.priority) &&
+    typeof task.dueDate === 'string' && (task.dueDate === '' || validDueDate(task.dueDate)) &&
+    typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+}
+const insertImportedProject = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const insertImportedTask = db.prepare(`INSERT INTO tasks
+  (project_id, title, completed, priority, due_date, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+function importProject(name, project) {
+  let projectId;
+  transaction(() => {
+    projectId = insertImportedProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid;
+    project.tasks.forEach((task, index) => {
+      const position = index + 1;
+      const result = insertImportedTask.run(projectId, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), position);
+      rememberPosition.run(result.lastInsertRowid, projectId, position);
+    });
+  });
+  return projectId;
+}
 const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id ASC');
 const updateTaskProject = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 function moveTask(destinationId, taskId, sourceId) {
@@ -177,7 +205,7 @@ function page(title, content) {
 </html>`;
 }
 
-function projectsPage(error = '', filter = 'Active', query = '') {
+function projectsPage(error = '', filter = 'Active', query = '', importJson = '', importName = '') {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0).filter(project => matchesSearch(project.name, query));
   return page('Projects', `
     <h1>Workboard</h1>
@@ -188,6 +216,16 @@ function projectsPage(error = '', filter = 'Active', query = '') {
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text" autocomplete="off">
       <button type="submit">Create project</button>
+    </form>
+    <h2>Import project</h2>
+    <form class="create" method="post" action="/projects/import">
+      ${searchField(query)}
+      <input type="hidden" name="filter" value="${filter}">
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="8">\n${escapeHtml(importJson)}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="name" type="text" value="${escapeHtml(importName)}">
+      <button type="submit">Import project</button>
     </form>
     <h2>Projects</h2>
     <form method="get" action="/">
@@ -424,6 +462,26 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ status: 'ok' }));
     } else if (req.method === 'GET' && path === '/') {
       html(res, 200, projectsPage('', validProjectFilter(url.searchParams.get('filter')), appliedQuery));
+    } else if (req.method === 'POST' && path === '/projects/import') {
+      const body = await formBody(req);
+      const json = body.get('json') || '';
+      const override = body.get('name') || '';
+      const name = override.trim();
+      const reject = error => html(res, 422, projectsPage(error,
+        validProjectFilter(body.get('filter')), appliedQuery, json, override));
+      if (!name) {
+        reject('Project name is required');
+        return;
+      }
+      let document;
+      try { document = JSON.parse(json); } catch { /* Invalid input has no side effects. */ }
+      if (!validPortableProject(document)) {
+        reject('Invalid project JSON');
+        return;
+      }
+      const id = importProject(name, document.project);
+      res.writeHead(303, { Location: `/projects/${id}` });
+      res.end();
     } else if (req.method === 'POST' && path === '/projects') {
       const body = await formBody(req);
       const name = (body.get('name') || '').trim();

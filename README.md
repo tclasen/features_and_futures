@@ -34,6 +34,13 @@ UTF-8 `workboard-project.json` with format `workboard-project`, version 1, proje
 state, and all live/deleted tasks in stored order, independent of visible filters.
 Task notes use LF line endings in the export; downloading changes no stored data
 or selected controls.
+On the home page, paste a version 1 document into Project JSON, enter an Imported
+project name, and choose Import project. Imports validate the entire document
+before inserting anything, then open a new independent project using the trimmed
+override name. Invalid documents or blank names show an alert and retain both
+inputs without changing data. Imported order, literal text (notes normalized to
+LF), priorities, dates, completion, deletion, archive state and defaults persist;
+internal IDs and remembered positions are newly allocated, never taken from JSON.
 Open a project to create tasks, toggle completion, and filter All, Open,
 Completed, or Deleted tasks. Each task row supports renaming with a trimmed, nonblank title;
 renaming preserves ownership, creation order, and completion. Archived projects
@@ -120,3 +127,7 @@ rewriting stored text, significant non-ASCII whitespace,
 combined filters, rendered form state, query retention through edits and invalid
 ranges, movement/return order, archived search, initial empty queries, unchanged
 summaries, and restart persistence.
+Import tests cover required fields/types, invalid JSON and dates, late-task atomic
+rejection, retained inputs, blank overrides, extra identity properties, empty and
+archived imports, independent data, deletion restoration, subsequent moves and
+remembered order, explicit priorities, exact text, and process-restart persistence.
