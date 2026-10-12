@@ -7,6 +7,8 @@ let activeProjectId = null;
 let projectTasks = [];
 let allProjects = [];
 let appliedDueRange = { from: '', through: '' };
+let appliedProjectQuery = '';
+let appliedTaskQuery = '';
 
 async function loadProjects() {
   const response = await fetch('/api/projects');
@@ -14,7 +16,7 @@ async function loadProjects() {
   const projects = await response.json();
   projectContainer.replaceChildren();
   const filter = document.querySelector('#project-filter').value;
-  for (const project of projects.filter(p => Boolean(p.archived) === (filter === 'Archived'))) {
+  for (const project of projects.filter(p => Boolean(p.archived) === (filter === 'Archived') && p.name.toLowerCase().includes(appliedProjectQuery))) {
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -43,6 +45,8 @@ async function showRoute() {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (!match) {
     activeProjectId = null;
+    appliedProjectQuery = '';
+    document.querySelector('#project-search').value = '';
     listSection.hidden = false;
     detailSection.hidden = true;
     await loadProjects();
@@ -56,6 +60,8 @@ async function showRoute() {
     return;
   }
   if (String(activeProjectId) !== match[1]) {
+    appliedTaskQuery = '';
+    document.querySelector('#task-search').value = '';
     document.querySelector('#task-filter').value = 'All';
     document.querySelector('#priority-filter').value = 'All';
     appliedDueRange = { from: '', through: '' };
@@ -118,6 +124,7 @@ function renderTasks() {
   const priorityFilter = document.querySelector('#priority-filter').value;
   taskContainer.replaceChildren();
   for (const task of projectTasks) {
+    if (!task.title.toLowerCase().includes(appliedTaskQuery)) continue;
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
@@ -271,6 +278,14 @@ document.querySelector('#apply-due-range').addEventListener('click', () => {
   renderTasks();
 });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
+document.querySelector('#search-projects').addEventListener('click', () => {
+  appliedProjectQuery = document.querySelector('#project-search').value.trim().toLowerCase();
+  loadProjects();
+});
+document.querySelector('#search-tasks').addEventListener('click', () => {
+  appliedTaskQuery = document.querySelector('#task-search').value.trim().toLowerCase();
+  renderTasks();
+});
 document.querySelector('#task-form').addEventListener('submit', async event => {
   event.preventDefault();
   const error = document.querySelector('#task-error-message');
