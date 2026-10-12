@@ -107,6 +107,15 @@ async function showRoute() {
   await loadTasks();
 }
 
+function compareCodePoints(left, right) {
+  const a = Array.from(left, character => character.codePointAt(0));
+  const b = Array.from(right, character => character.codePointAt(0));
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  }
+  return a.length < b.length ? -1 : a.length > b.length ? 1 : 0;
+}
+
 function renderDirectory() {
   const out = document.querySelector('#directory-results'); out.replaceChildren();
   const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
@@ -121,7 +130,7 @@ function renderDirectory() {
     else if (order === 'Title') {
       const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
       const right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-      comparison = left < right ? -1 : left > right ? 1 : 0;
+      comparison = compareCodePoints(left, right);
     }
     return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
   });
