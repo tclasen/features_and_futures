@@ -197,3 +197,61 @@ test('archive migration, summaries, read-only tasks, restoration, and persistenc
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test('renaming preserves project identity, order, tasks, and archive protection', async () => {
+  const directory = await mkdtemp(resolve('data-test-'));
+  let server;
+  try {
+    const dbPath = resolve(directory, 'test.sqlite');
+    server = await launch(dbPath);
+    const get = async (path) => (await fetch(server.base + path)).text();
+    const post = (path, values = {}) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    await post('/projects', { name: 'Original' });
+    await post('/projects', { name: 'Second' });
+    await post('/projects/1/tasks', { title: 'Done' });
+    await post('/projects/1/tasks', { title: 'Pending' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    const original = await get('/projects/1');
+    assert.match(original, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(original, />Rename project<\/button>/);
+    for (const name of ['', '   ']) {
+      const response = await post('/projects/1/rename', { name });
+      assert.equal(response.status, 400);
+      assert.match(await response.text(), /role="alert">Project name is required/);
+      assert.equal(await get('/projects/1'), original);
+    }
+    const renamed = await post('/projects/1/rename', { name: '  New & <name>  ', filter: 'Open' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Open');
+    let detail = await get('/projects/1');
+    assert.match(detail, /<h1>New &amp; &lt;name&gt;<\/h1>/);
+    assert.match(detail, /aria-label="Complete Done" checked/);
+    assert.match(detail, /aria-label="Complete Pending" onchange/);
+    let list = await get('/');
+    assert.ok(list.indexOf('New &amp; &lt;name&gt;') < list.indexOf('Second'));
+    assert.match(list, /data-testid="project-summary">1\/2 completed/);
+    assert.match(list, /action="\/projects\/1"/);
+    await server.stop();
+    server = await launch(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    assert.equal(await get('/'), list);
+    await post('/projects/1/archive');
+    detail = await get('/projects/1');
+    assert.match(detail, /id="new-project-name" name="name" type="text" disabled/);
+    assert.match(detail, /disabled>Rename project<\/button>/);
+    assert.equal((await post('/projects/1/rename', { name: 'Blocked' })).status, 403);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(await get('/projects/1'), /id="new-project-name"[^>]*disabled|disabled>Rename project/);
+    assert.equal((await post('/projects/1/rename', { name: 'Restored' })).status, 303);
+    assert.match(await get('/projects/1'), /<h1>Restored<\/h1>/);
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    assert.equal((await post('/projects/999/rename', { name: 'Missing' })).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
