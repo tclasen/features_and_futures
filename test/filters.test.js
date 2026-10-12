@@ -433,7 +433,7 @@ test('task search intersects every filter and only applied queries affect rows',
   await page.select(page.priority, 'All');
   assert.deepEqual(page.titles(), ['High open', 'Second high open']);
   await searchTasks(page, 'high  open');
-  assert.deepEqual(page.titles(), []);
+  assert.deepEqual(page.titles(), ['High open', 'Second high open']);
   await searchTasks(page, 'SECOND');
   assert.deepEqual(page.titles(), ['Second high open']);
   await searchTasks(page, ' \t ');
@@ -488,7 +488,7 @@ test('task edits retain search and other filters, including rename membership an
   assert.equal(reopened.rows().length, 7);
 });
 
-test('archived task search stays usable and preserves non-ASCII case and internal whitespace', async () => {
+test('archived task search stays usable and preserves non-ASCII case and displayed whitespace', async () => {
   const page = await projectPage();
   const rename = page.rows()[0].querySelector('form');
   rename.querySelector('input').value = 'ÄBC  work';
@@ -498,7 +498,7 @@ test('archived task search stays usable and preserves non-ASCII case and interna
   await searchTasks(page, 'Äbc  WORK');
   assert.deepEqual(page.titles(), ['ÄBC  work']);
   await searchTasks(page, 'Äbc work');
-  assert.deepEqual(page.titles(), []);
+  assert.deepEqual(page.titles(), ['ÄBC  work']);
   const archived = await projectPage(true);
   for (const tag of ['input', 'button']) {
     assert.ok(archived.app.querySelector('#task-search-form').querySelectorAll(tag).every(control => !control.disabled));
@@ -512,6 +512,35 @@ test('archived task search stays usable and preserves non-ASCII case and interna
   await searchTasks(archived, '');
   assert.deepEqual(archived.titles(), ['Low done', 'Normal done', 'High done']);
   assert.equal(archived.requests.length, 3);
+});
+
+test('task search collapses mixed spaces and tabs without changing saved titles or filters', async () => {
+  const page = await projectPage();
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'Low');
+  await saveDate(page, 1, '2024-02-29');
+  await applyRange(page, '2024-02-01', '2024-02-29');
+  const rename = page.rows()[0].querySelector('form');
+  const title = 'MiXeD \t\t  Space\tTitle';
+  rename.querySelector('input').value = title;
+  await rename.trigger('submit');
+  const saved = structuredClone(page.tasks);
+  const requests = page.requests.length;
+  for (const query of ['mixed space title', ' \tMIXED\t \tSPACE  TITLE\n', 'space\t\ttitle']) {
+    await searchTasks(page, query);
+    assert.deepEqual(page.titles(), [title]);
+    assert.equal(page.rows()[0].querySelector('input').attributes['aria-label'], `Complete ${title}`);
+  }
+  await searchTasks(page, 'mixed\nspace');
+  assert.deepEqual(page.titles(), []);
+  await searchTasks(page, ' \t ');
+  assert.deepEqual(page.titles(), [title]);
+  assert.deepEqual(page.tasks, saved);
+  assert.equal(page.requests.length, requests);
+  assert.equal(page.completion.value, 'Open');
+  assert.equal(page.priority.value, 'Low');
+  assert.equal(page.app.querySelector('#due-from').value, '2024-02-01');
+  assert.equal(page.app.querySelector('#due-through').value, '2024-02-29');
 });
 
 async function projectListPage() {
@@ -569,7 +598,7 @@ test('project search intersects archive state, retains order and summaries, and 
   assert.deepEqual(page.names(), ['Alpha  Work', 'ALPHA archived', 'Alpha later']);
   assert.deepEqual(page.projects, original.map(project => ({ ...project, archived: false })));
   await page.search('alpha work');
-  assert.deepEqual(page.names(), []);
+  assert.deepEqual(page.names(), ['Alpha  Work']);
   await page.search('alpha  WORK');
   assert.deepEqual(page.names(), ['Alpha  Work']);
   await page.search('äbc');
@@ -592,4 +621,28 @@ test('project search intersects archive state, retains order and summaries, and 
   const reopened = await projectListPage();
   assert.equal(reopened.app.querySelector('#project-search').value, '');
   assert.deepEqual(reopened.names(), ['Alpha  Work', 'Other', 'ÄBC work', 'Alpha later']);
+});
+
+test('project search collapses mixed spaces and tabs and keeps original names', async () => {
+  const page = await projectListPage();
+  const create = page.app.querySelector('form');
+  const name = 'MiXeD\t \tSpaces  Project';
+  create.querySelector('input').value = name;
+  await create.trigger('submit');
+  const saved = structuredClone(page.projects);
+  const requests = page.requests.length;
+  for (const query of ['mixed spaces project', ' \tMIXED  SPACES\t\tPROJECT\n', 'spaces\t project']) {
+    await page.search(query);
+    assert.deepEqual(page.names(), [name]);
+  }
+  await page.filter('Archived');
+  assert.deepEqual(page.names(), []);
+  await page.filter('Active');
+  assert.deepEqual(page.names(), [name]);
+  await page.search('mixed\nspaces');
+  assert.deepEqual(page.names(), []);
+  await page.search('');
+  assert.equal(page.names().at(-1), name);
+  assert.deepEqual(page.projects, saved);
+  assert.equal(page.requests.length, requests);
 });

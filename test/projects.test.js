@@ -278,9 +278,9 @@ test('projects and tasks validate, rename, save priorities, remain isolated and 
     assert.equal(restoredRename.status, 200);
     first.name = 'Restored project';
     assert.deepEqual(await restoredRename.json(), first);
-    const restoredTaskRename = await renameTask(firstTask.id, '  Restored task title  ');
+    const restoredTaskRename = await renameTask(firstTask.id, '  Restored\t \ttask  TITLE  ');
     assert.equal(restoredTaskRename.status, 200);
-    firstTask.title = 'Restored task title';
+    firstTask.title = 'Restored\t \ttask  TITLE';
     assert.deepEqual(await restoredTaskRename.json(), firstTask);
     assert.equal((await completeTask(firstTask.id, false)).status, 200);
     firstTask.completed = false;
@@ -326,8 +326,8 @@ test('projects and tasks validate, rename, save priorities, remain isolated and 
     const otherInherited = await (await createTask('Inherited low', `/api/projects/${second.id}/tasks`)).json();
     assert.equal(otherInherited.priority, 'Low');
     second.totalCount++;
-    assert.equal((await renameProject('  Default preserved  ')).status, 200);
-    first.name = 'Default preserved';
+    assert.equal((await renameProject('  Default\t \tPRESERVED  name  ')).status, 200);
+    first.name = 'Default\t \tPRESERVED  name';
     assert.equal((await archiveProject(true)).status, 200);
     first.archived = true;
     assert.equal((await setDefault('Low')).status, 409);

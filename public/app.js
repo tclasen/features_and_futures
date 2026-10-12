@@ -14,8 +14,8 @@ function showError(container, message) {
   container.hidden = false;
 }
 
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 function projectRow(project, changeArchive) {
@@ -120,7 +120,7 @@ async function renderProject(projectId) {
 
   function displayTasks() {
     const matching = tasks.filter(task =>
-      foldAscii(task.title).includes(appliedSearch) &&
+      normalizeSearch(task.title).includes(appliedSearch) &&
       (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)) &&
       (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
       ((!appliedFrom && !appliedThrough) || (task.dueDate &&
@@ -361,7 +361,7 @@ async function renderProject(projectId) {
   priorityFilter.addEventListener('change', displayTasks);
   searchForm.addEventListener('submit', event => {
     event.preventDefault();
-    appliedSearch = foldAscii(searchInput.value.trim());
+    appliedSearch = normalizeSearch(searchInput.value.trim());
     alert.hidden = true;
     displayTasks();
   });
@@ -481,7 +481,7 @@ async function render() {
     function displayProjects() {
       list.replaceChildren(...projects
         .filter(project => project.archived === (filter.value === 'Archived') &&
-          foldAscii(project.name).includes(appliedSearch))
+          normalizeSearch(project.name).includes(appliedSearch))
         .map(project => projectRow(project, changeArchive)));
     }
     async function changeArchive(project, archiveButton) {
@@ -504,7 +504,7 @@ async function render() {
     filter.addEventListener('change', displayProjects);
     searchForm.addEventListener('submit', event => {
       event.preventDefault();
-      appliedSearch = foldAscii(searchInput.value.trim());
+      appliedSearch = normalizeSearch(searchInput.value.trim());
       alert.hidden = true;
       displayProjects();
     });

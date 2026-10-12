@@ -17,8 +17,9 @@ The project list starts with Active projects. Use Project filter to view Archive
 projects and restore them. Each row shows completed and total task counts.
 Project search matches names by substring and intersects Project filter. Task
 search matches titles and intersects completion, priority and due-range filters.
-Search ignores ASCII letter case, trims surrounding query whitespace and keeps
-internal whitespace significant. Apply queries with Search projects or Search
+Search ignores ASCII letter case, trims surrounding query whitespace and treats
+runs of ASCII spaces and tabs as one space without changing saved names or titles.
+Apply queries with Search projects or Search
 tasks; clear and apply to match all rows allowed by the other filters. Edits keep
 the applied task query and re-evaluate matching rows. Search works in archived
 projects. Opening either page starts with an empty query.
