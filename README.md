@@ -34,6 +34,12 @@ Normal. Changes persist independently per project and apply only to subsequently
 created tasks, leaving existing tasks, summaries, and selected filters unchanged.
 The default survives renaming, restart, archival, and restoration; archived
 projects display it in a disabled selector.
+Each task has an optional Task due date textbox and Save due date button. Dates
+are trimmed and validated as real Gregorian YYYY-MM-DD calendar days (years
+0001–9999), without timezone conversion. Blank values clear the saved date;
+invalid values show an alert without changing data. Dates persist independently
+through renaming and restart. Archived projects disable date editing; restoration
+preserves dates and enables editing again.
 Native HTML forms handle creation and navigation; small inline browser event
 handlers submit completion, priority, default priority, and filter changes.
 
@@ -56,3 +62,6 @@ unchanged summaries, archived filtering, and saved data across restarts.
 Project-default tests cover migration, independent defaults, inheritance only by
 new tasks, unchanged filters and summaries, validation, renaming, archived write
 protection, restoration, and process-restart persistence.
+Due-date tests cover migration, blank defaults, strict date validation including
+leap years and year boundaries, clearing, task isolation, unchanged summaries and
+filters, renaming, archive protection, restoration, and restart persistence.
