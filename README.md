@@ -17,12 +17,18 @@ Active project pages support renaming with trimmed, nonblank names while retaini
 project identity, order, and tasks. Archived project pages allow viewing and
 filtering but prevent task changes and renaming.
 Existing databases are migrated automatically without losing projects or tasks.
-The home page's Task directory opens a read-only cross-project view. Project scope,
+The home page's Task directory opens a cross-project view with read-only rows. Project scope,
 completion/deletion, priority, inclusive due range, and normalized title search
 intersect without modifying stored data. Results show literal task fields and
 owner names in project creation order and stored task order. Open project returns
 to the owning project's default view. Each directory opening starts with Active
 scope, All task/priority filters, and empty range/search.
+Complete visible tasks and Reopen visible tasks update only matching live tasks
+in Active scope, preserving every other field and all selected filters. Controls
+are disabled for archived/deleted views or when no visible task needs that action.
+Bulk updates are atomic and persist across restarts. Resolved empty directory
+results announce No matching tasks; results are server-rendered, not asynchronously
+replaced with temporary empty results.
 Each task has a multiline Task notes field and Save notes button. Notes preserve
 whitespace, Unicode and literal markup as plain text, persist across restarts,
 and travel with moved tasks. They do not participate in search or change filters
@@ -99,6 +105,10 @@ Native HTML forms handle creation and navigation; small inline browser event
 handlers submit completion, priority, default priority, and filter changes.
 
 ## Verify
+
+Directory bulk tests cover intersecting filters, cross-project updates, disabled
+controls, archived/deleted protection, unchanged fields and remembered positions,
+summary refresh, empty-result feedback, movement and real process restarts.
 
 ```sh
 npm test

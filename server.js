@@ -286,11 +286,11 @@ function directoryPage(scope, filter, priorityFilter, range, query, error = '', 
     <form method="get" action="/directory">
       ${searchField(query)}${rangeFields}
       <label for="project-scope">Project scope</label>
-      <select id="project-scope" name="scope" onchange="this.form.submit()">${options(['Active', 'Archived'], scope)}</select>
+      <select id="project-scope" name="scope" onchange="this.form.requestSubmit()">${options(['Active', 'Archived'], scope)}</select>
       <label for="directory-task-filter">Task filter</label>
-      <select id="directory-task-filter" name="filter" onchange="this.form.submit()">${options(taskFilters, filter)}</select>
+      <select id="directory-task-filter" name="filter" onchange="this.form.requestSubmit()">${options(taskFilters, filter)}</select>
       <label for="directory-priority-filter">Priority filter</label>
-      <select id="directory-priority-filter" name="priorityFilter" onchange="this.form.submit()">${options(['All', ...priorities], priorityFilter)}</select>
+      <select id="directory-priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${options(['All', ...priorities], priorityFilter)}</select>
     </form>
     <form method="get" action="/directory">
       ${filterFields}${rangeFields}
@@ -308,6 +308,12 @@ function directoryPage(scope, filter, priorityFilter, range, query, error = '', 
       <input id="directory-due-through" type="text" name="dueThrough" value="${escapeHtml(draft.through)}">
       <button type="submit">Apply due range</button>
     </form>
+    ${['complete', 'reopen'].map(action => `
+      <form method="post" action="/directory/${action}">
+        ${filterFields}${rangeFields}${searchField(query)}
+        <button type="submit"${scope === 'Archived' || filter === 'Deleted' ||
+          !tasks.some(task => Boolean(task.completed) === (action === 'reopen')) ? ' disabled' : ''}>${action === 'complete' ? 'Complete visible tasks' : 'Reopen visible tasks'}</button>
+      </form>`).join('')}
     ${tasks.length ? tasks.map(task => `
       <div class="row" data-testid="directory-task-row">
         <span data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</span>
@@ -317,7 +323,18 @@ function directoryPage(scope, filter, priorityFilter, range, query, error = '', 
         <span data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</span>
         <span data-testid="directory-task-notes" style="white-space: pre-wrap">${escapeHtml(task.notes)}</span>
         <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
-      </div>`).join('') : '<p>No matching tasks.</p>'}
+      </div>`).join('') : '<p role="status">No matching tasks</p>'}
+    <script>
+      // Hide stale empty-result feedback while a native form navigation resolves.
+      document.addEventListener('submit', () => {
+        const announcement = document.querySelector('[role="status"]');
+        if (announcement) announcement.hidden = true;
+      });
+      window.addEventListener('pageshow', () => {
+        const announcement = document.querySelector('[role="status"]');
+        if (announcement) announcement.hidden = false;
+      });
+    </script>
   `);
 }
 
@@ -520,6 +537,25 @@ const server = http.createServer(async (req, res) => {
     } else if (req.method === 'GET' && path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
+    } else if (req.method === 'POST' && ['/directory/complete', '/directory/reopen'].includes(path)) {
+      const body = await formBody(req);
+      const scope = validProjectFilter(body.get('scope'));
+      const filter = validFilter(body.get('filter'));
+      const priorityFilter = validPriorityFilter(body.get('priorityFilter'));
+      const completed = path === '/directory/complete' ? 1 : 0;
+      // Resolve matching ownership and state from saved data, never from client IDs.
+      // Selection and updates share a transaction; archived/deleted tasks are excluded.
+      if (scope === 'Active' && filter !== 'Deleted') {
+        transaction(() => {
+          const tasks = listDirectoryTasks.all(0).filter(task =>
+            matchesTask(task, filter, priorityFilter, appliedRange, appliedQuery) && task.completed !== completed);
+          for (const task of tasks) completeTask.run(completed, task.id, task.project_id);
+        });
+      }
+      const params = new URLSearchParams({ scope, filter, priorityFilter,
+        dueFrom: appliedRange.from, dueThrough: appliedRange.through, search: appliedQuery });
+      res.writeHead(303, { Location: `/directory?${params}` });
+      res.end();
     } else if (req.method === 'GET' && (path === '/directory' || path === '/directory/due-range')) {
       const params = url.searchParams;
       const scope = validProjectFilter(params.get('scope'));
