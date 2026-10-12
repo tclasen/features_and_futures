@@ -36,6 +36,8 @@ The home page's Task directory opens `/directory`, a cross-project view with rea
 
 Complete visible tasks and Reopen visible tasks atomically update completion for the matching live tasks in Active scope, retaining every applied directory filter. Each button is disabled when no visible task needs that action; both are disabled for Archived scope and Deleted filtering. The server independently enforces those restrictions and resolves matches using the same rules as the displayed results. Other fields and remembered positions remain unchanged. Empty resolved results announce No matching tasks; pending result updates hide that announcement and temporarily disable bulk controls to avoid acting on stale rows.
 
+Directory order offers Original, Priority, Due date and Title, defaulting to Original on each opening. Priority sorts High/Normal/Low; dates sort ascending with undated tasks last; titles sort by literal ASCII-folded Unicode code points without whitespace normalization. Ties retain Original order across owners. Ordering remains selected through filtering, search, range validation and bulk completion, and never changes stored task positions, project views or exports.
+
 ## Verify
 
 ```sh

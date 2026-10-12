@@ -84,6 +84,79 @@ function directoryRows(html) {
   });
 }
 
+test('directory order spans owners, retains filters and bulk actions, and never changes stored order', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const task = (title, priority, dueDate, deleted = false) => ({ title, priority, dueDate,
+      deleted, completed: false, notes: 'unchanged' });
+    const imported = async (name, archived, tasks) => {
+      const response = await post(server.baseUrl, '/projects/import', { name,
+        json: JSON.stringify({ format: 'workboard-project', version: 1,
+          project: { name, archived, defaultPriority: 'Normal', tasks } }) });
+      return response.headers.get('location');
+    };
+    const first = await imported('First', false, [task('Zulu', 'Low', ''),
+      task('beta', 'High', '2025-01-02'), task('Deleted Z', 'Low', '', true),
+      task('Deleted A', 'High', '2024-01-01', true)]);
+    const second = await imported('Second', false, [task('Alpha', 'Normal', '2024-01-01'),
+      task('BETA', 'High', '2025-01-02')]);
+    await imported('Archived', true, [task('Zulu archived', 'Low', ''),
+      task('Alpha archived', 'High', '2024-01-01')]);
+    const snapshot = async (path) => (await fetch(`${server.baseUrl}${path}/download`)).json();
+    const before = [await snapshot(first), await snapshot(second)];
+    const view = async (query = '') => (await fetch(`${server.baseUrl}/directory${query ? `?${query}` : ''}`)).text();
+    const titles = (html) => directoryRows(html).map((row) => row.title);
+    const initial = await view();
+    assert.match(initial, /<option selected>Original<\/option>/);
+    assert.deepEqual(titles(initial), ['Zulu', 'beta', 'Alpha', 'BETA']);
+    for (const [order, expected] of [
+      ['Priority', ['beta', 'BETA', 'Alpha', 'Zulu']],
+      ['Due date', ['Alpha', 'beta', 'BETA', 'Zulu']],
+      ['Title', ['Alpha', 'beta', 'BETA', 'Zulu']],
+    ]) {
+      const html = await view(new URLSearchParams({ order }).toString());
+      assert.deepEqual(titles(html), expected);
+      assert.match(html, new RegExp(`<option selected>${order}<\\/option>`));
+      assert.equal([...html.matchAll(new RegExp(`name="order" value="${order}"`, 'g'))].length, 3);
+    }
+    assert.deepEqual(titles(await view('scope=Archived&order=Title')), ['Alpha archived', 'Zulu archived']);
+    assert.deepEqual(titles(await view('filter=Deleted&order=Priority')), ['Deleted A', 'Deleted Z']);
+    const fields = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      dueFrom: '2025-01-01', dueThrough: '2025-12-31', search: 'beta', order: 'Title' };
+    const filtered = await view(new URLSearchParams(fields).toString());
+    assert.deepEqual(titles(filtered), ['beta', 'BETA']);
+    const invalid = await view(new URLSearchParams({ ...fields, dueFrom: '2025-02-30',
+      appliedFrom: fields.dueFrom, appliedThrough: fields.dueThrough }).toString());
+    assert.deepEqual(titles(invalid), ['beta', 'BETA']);
+    assert.match(invalid, /<option selected>Title<\/option>/);
+    assert.deepEqual([await snapshot(first), await snapshot(second)], before);
+    const response = await post(server.baseUrl, '/directory/completion', { ...fields, completed: '1' });
+    const location = response.headers.get('location');
+    const params = new URL(location, server.baseUrl).searchParams;
+    for (const [key, value] of Object.entries(fields)) assert.equal(params.get(key), value);
+    const empty = await (await fetch(`${server.baseUrl}${location}`)).text();
+    assert.deepEqual(titles(empty), []);
+    assert.match(empty, /No matching tasks/);
+    assert.match(empty, /<option selected>Title<\/option>/);
+    const after = [await snapshot(first), await snapshot(second)];
+    before[0].project.tasks[1].completed = true;
+    before[1].project.tasks[1].completed = true;
+    assert.deepEqual(after, before);
+    assert.deepEqual(taskRows(await (await fetch(`${server.baseUrl}${first}`)).text()).map((row) => row.title), ['Zulu', 'beta']);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual([await snapshot(first), await snapshot(second)], after);
+    assert.deepEqual(titles(await view()), ['Zulu', 'beta', 'Alpha', 'BETA']);
+    assert.match(await view(), /<option selected>Original<\/option>/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('directory bulk completion changes only eligible matching tasks and persists', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-bulk-'));
   const databasePath = join(directory, 'board.sqlite');

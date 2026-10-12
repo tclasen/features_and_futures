@@ -5,9 +5,10 @@ import { runInNewContext } from 'node:vm';
 
 test('rapid automatic filter changes preserve drafts and propagate the latest selection', async () => {
   const handlers = {};
-  const hidden = [{ name: 'filter', value: 'All' }, { name: 'priorityFilter', value: 'All' }];
+  const hidden = [{ name: 'filter', value: 'All' }, { name: 'priorityFilter', value: 'All' },
+    { name: 'order', value: 'Original' }];
   const drafts = { search: 'Hit', dueFrom: '2025-01-01', dueThrough: '2025-12-31' };
-  const selected = { filter: 'All', priorityFilter: 'All' };
+  const selected = { filter: 'All', priorityFilter: 'All', order: 'Original' };
   const requests = [];
   const replacements = [];
   const locations = [];
@@ -60,7 +61,11 @@ test('rapid automatic filter changes preserve drafts and propagate the latest se
   assert.deepEqual(replacements, [['latest rows']]);
   assert.deepEqual(drafts, { search: 'Hit', dueFrom: '2025-01-01', dueThrough: '2025-12-31' });
 
-  const third = change('filter', 'All');
+  const third = change('order', 'Due date');
+  assert.equal(hidden[2].value, 'Due date');
+  assert.equal(requests[2].url.searchParams.get('filter'), 'Deleted');
+  assert.equal(requests[2].url.searchParams.get('priorityFilter'), 'High');
+  assert.equal(requests[2].url.searchParams.get('order'), 'Due date');
   handlers.submit();
   assert.equal(requests[2].options.signal.aborted, true);
   requests[2].resolve({ ok: true, text: async () => 'discarded rows' });

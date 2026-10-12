@@ -2,6 +2,7 @@ import http from 'node:http';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { directoryOrders, directoryOrder, orderDirectoryTasks } from './directory-order.js';
 
 const browserScript = readFileSync(new URL('./public/app.js', import.meta.url), 'utf8');
 const databasePath = process.env.DB_PATH || 'data/workboard.sqlite';
@@ -501,8 +502,9 @@ function matchingDirectoryTasks(scope, filter, priority, range, search) {
     .filter((task) => matchesTask(task, filter, priority, range, search));
 }
 
-function directoryPage(scope, filter, priority, range, search, error = '', draftRange = range) {
-  const tasks = matchingDirectoryTasks(scope, filter, priority, range, search);
+function directoryPage(scope, filter, priority, range, search, error = '', draftRange = range, order = 'Original') {
+  const tasks = orderDirectoryTasks(matchingDirectoryTasks(scope, filter, priority, range, search), order);
+  const orderField = `<input type="hidden" name="order" value="${order}">`;
   const editable = scope === 'Active' && filter !== 'Deleted';
   const rows = tasks.map((task) => `
       <li data-testid="directory-task-row">
@@ -521,6 +523,10 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
     <form action="/directory" method="get" class="task-filter">
       ${searchField(search)}
       ${dueRangeFields(range)}
+      <label for="directory-order">Directory order</label>
+      <select id="directory-order" name="order" data-auto-submit>
+        ${directoryOrders.map((option) => `<option${option === order ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
       <label for="project-scope">Project scope</label>
       <select id="project-scope" name="scope" data-auto-submit>
         ${['Active', 'Archived'].map((option) => `<option${option === scope ? ' selected' : ''}>${option}</option>`).join('')}
@@ -535,6 +541,7 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
       </select>
     </form>
     <form action="/directory" method="get" class="task-filter">
+      ${orderField}
       <input type="hidden" name="scope" value="${scope}">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priority}">
@@ -548,6 +555,7 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
       <button type="submit" name="applyDueRange" value="1">Apply due range</button>
     </form>
     <form action="/directory" method="get" class="task-filter">
+      ${orderField}
       <input type="hidden" name="scope" value="${scope}">
       <input type="hidden" name="filter" value="${filter}">
       <input type="hidden" name="priorityFilter" value="${priority}">
@@ -558,6 +566,7 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
     </form>
     <div data-filter-results>
       <form action="/directory/completion" method="post">
+        ${orderField}
         <input type="hidden" name="scope" value="${scope}">
         ${taskFilterFields(filter, priority, range, search)}
         <button type="submit" name="completed" value="1" data-directory-action${editable && tasks.some((task) => !task.completed) ? '' : ' disabled'}>Complete visible tasks</button>
@@ -632,10 +641,12 @@ const server = http.createServer(async (request, response) => {
       const { range, draftRange, error } = readRangeState(url.searchParams);
       sendHtml(response, error ? 400 : 200, directoryPage(
         projectFilter(url.searchParams.get('scope')), taskFilter(url.searchParams.get('filter')),
-        priorityFilter(url.searchParams.get('priorityFilter')), range, readSearch(url.searchParams), error, draftRange));
+        priorityFilter(url.searchParams.get('priorityFilter')), range, readSearch(url.searchParams), error, draftRange,
+        directoryOrder(url.searchParams.get('order'))));
     } else if (request.method === 'POST' && url.pathname === '/directory/completion') {
       const form = await readForm(request);
       const scope = projectFilter(form.get('scope'));
+      const order = directoryOrder(form.get('order'));
       const filter = taskFilter(form.get('filter'));
       const priority = priorityFilter(form.get('priorityFilter'));
       const search = readSearch(form);
@@ -643,7 +654,7 @@ const server = http.createServer(async (request, response) => {
       const error = dueRangeError(range);
       if (error || !['0', '1'].includes(form.get('completed'))) {
         sendHtml(response, 400, directoryPage(scope, filter, priority, savedDueRange(form), search,
-          error || 'Invalid completion state', range));
+          error || 'Invalid completion state', range, order));
         return;
       }
       if (scope === 'Active' && filter !== 'Deleted') {
@@ -654,7 +665,7 @@ const server = http.createServer(async (request, response) => {
           }
         });
       }
-      const query = new URLSearchParams({ scope, filter, priorityFilter: priority,
+      const query = new URLSearchParams({ scope, order, filter, priorityFilter: priority,
         dueFrom: range.from, dueThrough: range.through, search });
       response.writeHead(303, { Location: `/directory?${query}` });
       response.end();
