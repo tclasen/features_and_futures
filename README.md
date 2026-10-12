@@ -34,6 +34,13 @@ optional and must be real Gregorian dates in YYYY-MM-DD format, with years
 0001–9999. Saving a blank value clears the date; invalid values leave the saved
 date unchanged. Due dates persist independently without timezone conversion,
 and archived projects disable date editing until restored.
+Due from and Due through textboxes apply an inclusive calendar-date range with
+Apply due range. Blank boundaries are unbounded; both blank includes undated
+tasks, while any boundary excludes them. The range intersects completion and
+priority filters, survives edits and filter changes, and remains usable in
+archived projects. Invalid ranges retain the previous applied range. Opening a
+project from the list starts with empty boundaries. Summaries always count all
+tasks regardless of filters.
 Existing databases are migrated automatically.
 Projects, names, tasks, and archive state persist across server restarts. `GET /health` returns
 `{"status":"ok"}`. Run the integration checks with `npm test`.

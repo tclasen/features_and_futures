@@ -331,9 +331,9 @@ test('combined filters preserve selections through edits, archives, and restarts
     assert.equal(await view('/'), summary);
     const selectedPath = '/projects/1?filter=Open&priorityFilter=High';
     const selected = await view(selectedPath);
-    // Every edit form carries both filters, including the project default and due date.
+    // Every edit and range form carries both completion and priority filters.
     const actions = [...selected.matchAll(/method="post" action="([^"]*)"/g)].map(match => match[1]);
-    assert.equal(actions.length, 7);
+    assert.equal(actions.length, 8);
     for (const action of actions) assert.ok(action.endsWith('?filter=Open&amp;priorityFilter=High'));
     for (const path of ['/projects/1/tasks', '/projects/1/tasks/5/rename', '/projects/1/rename']) {
       const invalid = await post(`${path}?filter=Open&priorityFilter=High`, { title: '  ', name: '  ' });
@@ -902,6 +902,121 @@ test('tasks validate, filter, toggle, stay project-scoped, and persist across re
     server = await startServer(databasePath);
     assert.doesNotMatch(await view(), / checked/);
     assert.equal(rowCount(await view('/projects/1?filter=Open')), 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('inclusive due ranges intersect filters and survive edits, invalid applications, and archives', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-range-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    async function post(path, fields = {}) {
+      return fetch(server.address + path, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function view(path = '/projects/1') {
+      return (await fetch(server.address + path)).text();
+    }
+    const titles = html => [...html.matchAll(/class="task-title">([^<]*)<\/span>/g)].map(match => match[1]);
+    async function apply(fields, query = '?filter=All') {
+      const response = await post('/projects/1/due-range' + query, fields);
+      assert.equal(response.status, 303);
+      return response.headers.get('location');
+    }
+    await post('/projects', { name: 'Ranges' });
+    for (const title of ['Undated', 'Before', 'Start', 'Middle', 'End', 'After']) {
+      await post('/projects/1/tasks', { title });
+    }
+    for (const [id, date] of [[2, '2024-02-28'], [3, '2024-02-29'], [4, '2024-03-01'], [5, '2024-03-02'], [6, '2024-03-03']]) {
+      await post(`/projects/1/tasks/${id}/due-date`, { dueDate: date });
+    }
+    await post('/projects/1/tasks/4', { completed: '1' });
+    await post('/projects/1/tasks/4/priority', { priority: 'High' });
+    const summary = await view('/');
+    let path = await apply({ dueFrom: ' 2024-02-29 ', dueThrough: '\t2024-03-02\n' });
+    const rangeQuery = path.slice(path.indexOf('?'));
+    const ranged = await view(path);
+    assert.deepEqual(titles(ranged), ['Start', 'Middle', 'End']);
+    assert.match(ranged, /<label for="due-from">Due from<\/label>/);
+    assert.match(ranged, /id="due-from" name="dueFrom" type="text" value="2024-02-29"/);
+    assert.match(ranged, /id="due-through" name="dueThrough" type="text" value="2024-03-02"/);
+    assert.match(ranged, /<button type="submit">Apply due range<\/button>/);
+    const comboForm = ranged.match(/<form method="get" action="\/projects\/1">[\s\S]*?<\/form>/)[0];
+    assert.match(comboForm, /type="hidden" name="dueFrom" value="2024-02-29"/);
+    assert.match(comboForm, /type="hidden" name="dueThrough" value="2024-03-02"/);
+    assert.deepEqual(titles(await view(path.replace('filter=All', 'filter=Open'))), ['Start', 'End']);
+    const combinedQuery = rangeQuery.replace('filter=All', 'filter=Completed&priorityFilter=High');
+    assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), ['Middle']);
+    for (const [fields, error] of [
+      [{ dueFrom: '2023-02-29' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueThrough: '1900-02-29' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueFrom: '0000-01-01' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueFrom: '2024-3-01' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueThrough: '2024-04-31' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueFrom: '2024-03-02', dueThrough: '2024-02-29' }, 'Due from must not be after Due through'],
+    ]) {
+      const response = await post('/projects/1/due-range' + combinedQuery, fields);
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.ok(html.includes(`role="alert">${error}`));
+      assert.deepEqual(titles(html), ['Middle']);
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.match(html, /<option selected>High<\/option>/);
+      assert.equal(await view(path), ranged);
+    }
+    const lower = await apply({ dueFrom: '2024-03-02' });
+    assert.deepEqual(titles(await view(lower)), ['End', 'After']);
+    const upper = await apply({ dueThrough: '2024-02-29' });
+    assert.deepEqual(titles(await view(upper)), ['Before', 'Start']);
+    const all = await apply({ dueFrom: ' \t ', dueThrough: '\n ' }, rangeQuery);
+    assert.deepEqual(titles(await view(all)), ['Undated', 'Before', 'Start', 'Middle', 'End', 'After']);
+    const extremes = await apply({ dueFrom: '0001-01-01', dueThrough: '9999-12-31' });
+    assert.equal(titles(await view(extremes)).length, 5);
+    for (const [route, fields] of [
+      ['/tasks/4/rename', { title: 'Renamed middle' }],
+      ['/rename', { name: 'Renamed project' }],
+      ['/default-task-priority', { priority: 'Low' }],
+      ['/tasks', { title: 'New undated' }],
+    ]) {
+      const response = await post('/projects/1' + route + combinedQuery, fields);
+      assert.equal(response.headers.get('location'), '/projects/1' + combinedQuery);
+      assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), ['Renamed middle']);
+    }
+    await post('/projects/1/tasks/4/priority' + combinedQuery, { priority: 'Low' });
+    assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), []);
+    await post('/projects/1/tasks/4/priority' + combinedQuery, { priority: 'High' });
+    await post('/projects/1/tasks/4' + combinedQuery);
+    assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), []);
+    await post('/projects/1/tasks/4' + combinedQuery, { completed: '1' });
+    await post('/projects/1/tasks/4/due-date' + combinedQuery, { dueDate: '2024-03-03' });
+    assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), []);
+    await post('/projects/1/tasks/4/due-date' + combinedQuery, { dueDate: '2024-03-02' });
+    assert.deepEqual(titles(await view('/projects/1' + combinedQuery)), ['Renamed middle']);
+    assert.match(summary, /1\/6 completed/);
+    assert.match(await view('/'), /1\/7 completed/);
+    await post('/projects/1/archive');
+    path = await apply({ dueFrom: '2024-03-02', dueThrough: '2024-03-02' }, combinedQuery);
+    const archived = await view(path);
+    assert.deepEqual(titles(archived), ['Renamed middle']);
+    assert.match(archived, /id="task-due-date-4"[^>]* disabled/);
+    assert.doesNotMatch(archived, /id="due-(?:from|through)"[^>]* disabled/);
+    assert.doesNotMatch(archived, /<button[^>]*disabled>Apply due range/);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(path), archived);
+    await post('/projects/1/restore');
+    assert.deepEqual(titles(await view(path)), ['Renamed middle']);
+    const reopened = await view();
+    assert.match(reopened, /id="due-from" name="dueFrom" type="text" value=""/);
+    assert.match(reopened, /id="due-through" name="dueThrough" type="text" value=""/);
+    assert.equal(titles(reopened).length, 7);
+    assert.match(reopened, /id="task-due-date-4" name="dueDate" type="text" value="2024-03-02">/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
