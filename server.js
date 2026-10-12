@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   due_date TEXT,
-  sort_order INTEGER
+  sort_order INTEGER,
+  notes TEXT NOT NULL DEFAULT ''
 )`);
 const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
@@ -41,6 +42,9 @@ if (!taskColumns.some(column => column.name === 'due_date')) {
 }
 if (!taskColumns.some(column => column.name === 'sort_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER');
+}
+if (!taskColumns.some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 db.exec(`UPDATE tasks SET sort_order = id WHERE sort_order IS NULL;
 CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -115,7 +119,7 @@ const server = createServer(async (request, response) => {
     const projectId = Number(taskRoute[1]);
     const taskId = taskRoute[2] ? Number(taskRoute[2]) : null;
     if (request.method === 'GET' && !taskId) {
-      return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+      return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
     const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
@@ -136,6 +140,11 @@ const server = createServer(async (request, response) => {
       if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
       const body = await readBody(request);
       if (body.error) return sendJson(response, 400, { error: body.error });
+      if (typeof body.value?.notes === 'string') {
+        const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(body.value.notes, taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, notes: body.value.notes });
+      }
       if (Object.hasOwn(body.value || {}, 'dueDate')) {
         const rawDate = body.value.dueDate;
         const dueDate = typeof rawDate === 'string' ? rawDate.trim() : null;

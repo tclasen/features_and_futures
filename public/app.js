@@ -254,6 +254,24 @@ async function renderProject(id) {
         }
       });
       row.append(dueDate, saveDueDate);
+      const notes = element('textarea', undefined, { 'aria-label': 'Task notes' });
+      notes.value = task.notes || '';
+      notes.disabled = project.archived;
+      const saveNotes = element('button', 'Save notes', { type: 'button' });
+      saveNotes.disabled = project.archived;
+      saveNotes.addEventListener('click', async () => {
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ notes: notes.value })
+        });
+        if (!update.ok) {
+          const error = await update.json();
+          showError(error.error || 'Could not save notes');
+        } else {
+          app.querySelector('[role="alert"]')?.remove();
+          await renderTasks();
+        }
+      });
+      row.append(notes, saveNotes);
       const destination = element('select', undefined, { 'aria-label': 'Destination project' });
       const eligibleProjects = projects.filter(item => !item.archived && String(item.id) !== id);
       for (const candidate of eligibleProjects) {
