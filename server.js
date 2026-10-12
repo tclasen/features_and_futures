@@ -290,6 +290,7 @@ ${escape(task.notes)}</textarea>
   const content = `<h1>${escape(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form action="/projects/${project.id}/download" method="get"><button type="submit">Download project</button></form>
     ${error ? `<p role="alert">${escape(error)}</p>` : ''}
     <form class="create" action="/projects/${project.id}/rename" method="post">
       <label for="new-project-name">New project name</label>
@@ -387,6 +388,35 @@ const server = http.createServer(async (req, res) => {
       createProject.run(name);
       res.writeHead(303, { Location: `/?${new URLSearchParams({ filter, search })}` });
       return res.end();
+    }
+    const downloadMatch = url.pathname.match(/^\/projects\/(\d+)\/download$/);
+    if (req.method === 'GET' && downloadMatch) {
+      const project = findProject.get(downloadMatch[1]);
+      if (!project) return html(res, 404, page('<h1>Page not found</h1>'));
+      const document = {
+        format: 'workboard-project',
+        version: 1,
+        project: {
+          name: project.name,
+          archived: Boolean(project.archived),
+          defaultPriority: project.default_priority,
+          tasks: listTasks.all(project.id).map(task => ({
+            title: task.title,
+            completed: Boolean(task.completed),
+            priority: task.priority,
+            dueDate: task.due_date,
+            // Textarea line breaks are portable LF; leave stored notes untouched.
+            notes: task.notes.replace(/\r\n?/g, '\n'),
+            deleted: Boolean(task.deleted)
+          }))
+        }
+      };
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        'Cache-Control': 'no-store'
+      });
+      return res.end(JSON.stringify(document));
     }
     // Deleted tasks are readable but cannot be edited or moved via direct requests.
     const taskAction = url.pathname.match(/^\/projects\/(\d+)\/tasks\/(\d+)(?:\/(priority|due-date|notes|move|rename|delete|restore))?$/);
