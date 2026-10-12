@@ -320,8 +320,10 @@ async function renderProject(id) {
 }
 
 function searchMatches(value, query) {
-  const asciiLower = text => text.replace(/[A-Z]/g, character => character.toLowerCase());
-  return asciiLower(value).includes(asciiLower(query));
+  const normalize = text => text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, character => character.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function isValidDate(value) {
