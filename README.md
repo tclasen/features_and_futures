@@ -110,3 +110,13 @@ everything allowed by the other filters. Queries apply on submission, remain
 applied during filtering and edits, and reset when opening their page. Archived
 projects still allow searching. Search never writes saved data or changes the
 all-task completion summaries.
+
+Each task row has a multiline Task notes textarea and Save notes button. Notes
+are optional plain text and preserve spaces, line breaks, Unicode, and literal
+markup exactly as entered. Empty text clears them. Existing and new tasks start
+with empty notes. Notes persist through restarts, moves, and return-position
+restoration without changing other task fields, ordering, filters, or summaries.
+Search continues to match only names and titles. Archived projects show saved
+notes with editing disabled until restored. The task PATCH endpoint accepts
+`{ "notes": "Text\nMore text" }` separately from other edits; non-string notes
+return HTTP 400, and archived task writes return HTTP 409.

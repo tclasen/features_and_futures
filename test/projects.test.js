@@ -287,8 +287,8 @@ test('archive and restore preserve tasks, summaries, and IDs through migration a
     const path = '/api/projects/1';
     const project = { id: 1, name: 'Existing project', archived: false, defaultPriority: 'Normal', totalCount: 2, completedCount: 1 };
     const tasks = [
-      { id: 1, title: 'Done task', completed: true, priority: 'Normal', dueDate: '' },
-      { id: 2, title: 'Open task', completed: false, priority: 'Normal', dueDate: '' },
+      { id: 1, title: 'Done task', completed: true, priority: 'Normal', dueDate: '', notes: '' },
+      { id: 2, title: 'Open task', completed: false, priority: 'Normal', dueDate: '', notes: '' },
     ];
     assert.deepEqual((await api(path)).body, project);
     assert.deepEqual((await api(`${path}/tasks`)).body, tasks);
@@ -426,10 +426,10 @@ test('priorities migrate and persist independently through rename, completion, a
     };
     const path = '/api/projects/1/tasks';
     const tasks = [
-      { id: 1, title: 'Done', completed: true, priority: 'Normal', dueDate: '' },
-      { id: 2, title: 'Open', completed: false, priority: 'Normal', dueDate: '' },
+      { id: 1, title: 'Done', completed: true, priority: 'Normal', dueDate: '', notes: '' },
+      { id: 2, title: 'Open', completed: false, priority: 'Normal', dueDate: '', notes: '' },
     ];
-    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal', dueDate: '' }];
+    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal', dueDate: '', notes: '' }];
     const summaries = (await api('/api/projects')).body;
     assert.deepEqual((await api(path)).body, tasks);
     for (const priority of ['', 'normal', 'Urgent', ' High ', null, 1, true, {}]) {
@@ -837,6 +837,101 @@ test('per-project positions restore reverse returns and reserve absent slots thr
     server = await startServer(databasePath);
     assert.deepEqual(await tasks(1), restored);
     assert.deepEqual(await tasks(2), [secondResident, newSecond]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes migration and saves preserve task data, remembered order, and summaries across moves and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE task_project_positions (
+      task_id INTEGER NOT NULL REFERENCES tasks(id), project_id INTEGER NOT NULL REFERENCES projects(id),
+      position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id)
+    );
+    INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+    INSERT INTO tasks (project_id, title, completed, priority, due_date, position) VALUES
+      (1, 'Later', 0, 'Low', '', 20), (1, 'First', 1, 'High', '2024-02-29', 10);
+    INSERT INTO task_project_positions VALUES (1, 1, 20), (2, 1, 10), (2, 2, 5);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const path = '/api/projects/1/tasks';
+    const taskPath = `${path}/2`;
+    const original = [
+      { id: 2, title: 'First', completed: true, priority: 'High', dueDate: '2024-02-29', notes: '' },
+      { id: 1, title: 'Later', completed: false, priority: 'Low', dueDate: '', notes: '' },
+    ];
+    assert.deepEqual((await api(path)).body, original);
+    const created = (await api(path, 'POST', { title: 'New' })).body;
+    assert.equal(created.notes, '');
+    const summary = (await api('/api/projects')).body;
+    const notes = '  Leading spaces\n\t日本語 😀 <script>alert("literal")</script>\nTrailing spaces  ';
+    let saved = { ...original[0], notes };
+    assert.deepEqual(await api(taskPath, 'PATCH', { notes }), { status: 200, body: saved });
+    for (const invalid of [null, false, 123, [], {}]) {
+      assert.equal((await api(taskPath, 'PATCH', { notes: invalid })).status, 400);
+    }
+    for (const edit of [{ title: 'Changed' }, { completed: false }, { priority: 'Low' }, { dueDate: '' }, { destinationProjectId: 2 }]) {
+      assert.equal((await api(taskPath, 'PATCH', { notes: 'Combined', ...edit })).status, 400);
+    }
+    assert.equal((await api('/api/projects/2/tasks/2', 'PATCH', { notes: 'Wrong owner' })).status, 404);
+    assert.equal((await api(`${path}/999`, 'PATCH', { notes: 'Missing' })).status, 404);
+    assert.deepEqual((await api(path)).body, [saved, original[1], created]);
+    assert.deepEqual((await api('/api/projects')).body, summary);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [saved, original[1], created]);
+    for (const edit of [{ title: 'Renamed' }, { priority: 'Low' }, { completed: false }, { dueDate: '' }]) {
+      saved = { ...saved, ...edit };
+      assert.deepEqual((await api(taskPath, 'PATCH', edit)).body, saved);
+    }
+    await api('/api/projects/1', 'PATCH', { name: 'Renamed source' });
+    assert.deepEqual((await api(taskPath, 'PATCH', { destinationProjectId: 2 })).body, saved);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api('/api/projects/2/tasks')).body, [saved]);
+    assert.deepEqual((await api('/api/projects/2/tasks/2', 'PATCH', { destinationProjectId: 1 })).body, saved);
+    assert.deepEqual((await api(path)).body, [saved, original[1], created]);
+    await api('/api/projects/1', 'PATCH', { archived: true });
+    assert.equal((await api(taskPath, 'PATCH', { notes: 'Blocked' })).status, 409);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [saved, original[1], created]);
+    await api('/api/projects/1', 'PATCH', { archived: false });
+    for (const notes of [' \t\n ', '']) {
+      saved = { ...saved, notes };
+      const beforeSummary = (await api('/api/projects')).body;
+      assert.deepEqual((await api(taskPath, 'PATCH', { notes })).body, saved);
+      assert.deepEqual((await api('/api/projects')).body, beforeSummary);
+    }
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [saved, original[1], created]);
   } finally {
     await server?.stop();
     await rm(directory, { recursive: true, force: true });

@@ -22,6 +22,7 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id);
@@ -41,6 +42,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 // Existing tasks have no due date; this migration preserves every other field.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+// Notes are plain text; upgrades initialize only this new field.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 // Preserve legacy creation order while allowing moved tasks to append independently of IDs.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
@@ -77,8 +82,8 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
-const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
   SELECT id, ?, default_priority,
@@ -89,6 +94,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const rememberCurrentPosition = database.prepare(`
   INSERT INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, position FROM tasks WHERE id = ?
@@ -262,6 +268,16 @@ const server = createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const createdId = createTask(title, projectId);
           return json(response, 201, taskData(findTask.get(projectId, createdId)));
+        }
+        if (body && Object.hasOwn(body, 'notes')) {
+          if (['destinationProjectId', 'dueDate', 'priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {
+            return json(response, 400, { error: 'Notes and other task edits must be separate requests' });
+          }
+          if (typeof body.notes !== 'string') {
+            return json(response, 400, { error: 'Task notes must be text' });
+          }
+          updateTaskNotes.run(body.notes, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
         }
         if (body && Object.hasOwn(body, 'destinationProjectId')) {
           if (['dueDate', 'priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {

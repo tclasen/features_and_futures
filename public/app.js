@@ -317,6 +317,38 @@ function taskDueDateForm(task, path, archived, onDueDateChange) {
   return form;
 }
 
+function taskNotesForm(task, path, archived, onNotesChange) {
+  const form = element('form', '', { class: 'task-notes' });
+  const inputId = `task-notes-${task.id}`;
+  const input = element('textarea', '', { id: inputId, name: 'notes', rows: '4' });
+  const save = element('button', 'Save notes', { type: 'submit' });
+  input.value = task.notes ?? '';
+  input.disabled = archived;
+  save.disabled = archived;
+  form.append(element('label', 'Task notes', { for: inputId }), input, save);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (save.disabled) return;
+    save.disabled = true;
+    try {
+      const saved = await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: input.value }),
+      });
+      // Update only notes so concurrent saves from other controls are retained.
+      task.notes = saved.notes;
+      app.querySelector('[role="alert"]')?.remove();
+      onNotesChange();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      save.disabled = archived;
+    }
+  });
+  return form;
+}
+
 function taskMoveForm(task, path, archived, destinations, onMove) {
   const form = element('form', '', { class: 'task-move' });
   const inputId = `destination-project-${task.id}`;
@@ -431,6 +463,7 @@ async function showTasks(projectId, archived) {
       const details = element('div', '', { class: 'task-details' });
       details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
         taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived, renderTasks),
+        taskNotesForm(task, path, archived, renderTasks),
         taskMoveForm(task, path, archived, destinations, () => {
           tasks = tasks.filter((remaining) => remaining.id !== task.id);
           renderTasks();

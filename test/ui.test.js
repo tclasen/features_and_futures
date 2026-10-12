@@ -1082,3 +1082,76 @@ test('archived task search remains usable and clearing preserves the other filte
   assert.equal(ui.byId('due-through').value, '2024-03-01');
   assert.equal(ui.calls.length, 3);
 });
+
+test('notes save as plain multiline text, retain all filters, and remain separate from title search', async () => {
+  const project = { id: 1, name: 'Notes', archived: false, defaultPriority: 'Normal' };
+  const tasks = [
+    { id: 1, title: 'Match first', completed: false, priority: 'High', dueDate: '2024-02-29', notes: '' },
+    { id: 2, title: 'Other', completed: false, priority: 'High', dueDate: '2024-02-29', notes: 'Match in notes only' },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    const body = JSON.parse(options.body);
+    assert.deepEqual(Object.keys(body), ['notes']);
+    tasks[0].notes = body.notes;
+    return { ...tasks[0] };
+  };
+  const ui = await page('/projects/1', respond);
+  const input = ui.byId('task-notes-1');
+  assert.equal(input.tag, 'textarea');
+  assert.equal(input.value, '');
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'task-notes-1')[0].textContent, 'Task notes');
+  ui.byId('task-filter').value = 'Open';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  ui.byId('task-search').value = 'match';
+  await find(ui.app, (node) => node.attributes.class === 'search-form')[0].fire('submit');
+  const original = structuredClone(tasks[0]);
+  for (const notes of ['  Spaces\n\tUnicode 日本語 😀\n<script>literal</script>  ', ' \t\n ', '']) {
+    ui.byId('task-notes-1').value = notes;
+    await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-notes')[0].fire('submit');
+    assert.deepEqual(tasks[0], { ...original, notes });
+    assert.equal(ui.byId('task-notes-1').value, notes);
+    assert.equal(ui.byId('task-filter').value, 'Open');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2024-02-29');
+    assert.equal(ui.byId('due-through').value, '2024-03-01');
+    assert.equal(ui.byId('task-search').value, 'match');
+    assert.deepEqual(ui.rows('task').map(taskTitle), ['Match first']);
+    assert.equal(find(ui.app, (node) => node.tag === 'script').length, 0);
+  }
+  tasks[0].notes = 'Saved\n<em>plain text</em>';
+  for (const archived of [true, false]) {
+    project.archived = archived;
+    const reopened = await page('/projects/1', respond);
+    assert.equal(reopened.byId('task-notes-1').value, tasks[0].notes);
+    for (const row of reopened.rows('task')) {
+      const textarea = find(row, (node) => node.tag === 'textarea')[0];
+      const save = find(row, (node) => node.tag === 'button' && node.textContent === 'Save notes')[0];
+      assert.equal(textarea.disabled, archived);
+      assert.equal(save.disabled, archived);
+    }
+    if (archived) {
+      const calls = reopened.calls.length;
+      await find(reopened.rows('task')[0], (node) => node.attributes.class === 'task-notes')[0].fire('submit');
+      assert.equal(reopened.calls.length, calls);
+    }
+  }
+});
+
+test('failed notes save preserves the saved task and allows retry', async () => {
+  const project = { id: 1, name: 'Notes', archived: false, defaultPriority: 'Normal' };
+  const task = { id: 1, title: 'Task', completed: false, priority: 'Normal', dueDate: '', notes: 'Saved' };
+  const ui = await page('/projects/1', (path, options) => {
+    if (options) throw new Error('Save failed');
+    return structuredClone(path.endsWith('/tasks') ? [task] : project);
+  });
+  ui.byId('task-notes-1').value = 'Draft';
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-notes')[0].fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Save failed');
+  assert.equal(ui.byId('task-notes-1').value, 'Draft');
+  assert.equal(task.notes, 'Saved');
+  assert.equal(ui.button('Save notes').disabled, false);
+});
