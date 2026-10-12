@@ -88,8 +88,16 @@ const server = http.createServer(async (req, res) => {
     for await (const chunk of req) body += chunk;
     try {
       const data = JSON.parse(body);
+      const id = Number(task[1]);
+      if (typeof data.title === 'string') {
+        const title = data.title.trim();
+        if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(title, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, title }));
+      }
       if (typeof data.completed !== 'boolean') return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
-      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.completed ? 1 : 0, Number(task[1]));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.completed ? 1 : 0, id);
       if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
       return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
