@@ -728,3 +728,117 @@ test('task moves append after migration, preserve data and summaries, and surviv
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('per-project positions restore reverse returns and reserve absent slots through migration and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-return-order-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  // Task 011 schema, with an order deliberately different from task ID order.
+  legacy.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+      position INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO projects (name) VALUES ('Original'), ('Second'), ('Third');
+    INSERT INTO tasks (project_id, title, position) VALUES
+      (1, 'Middle', 20), (1, 'First', 10), (1, 'Last', 30),
+      (2, 'Second resident', 1), (3, 'Third resident', 1);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const tasks = async (project) => (await api(`/api/projects/${project}/tasks`)).body;
+    const move = async (source, task, destinationProjectId, status = 200) => {
+      const result = await api(`/api/projects/${source}/tasks/${task}`, 'PATCH', { destinationProjectId });
+      assert.equal(result.status, status);
+      return result.body;
+    };
+    const create = async (project, title) => {
+      const result = await api(`/api/projects/${project}/tasks`, 'POST', { title });
+      assert.equal(result.status, 201);
+      return result.body;
+    };
+    const original = await tasks(1);
+    assert.deepEqual(original.map((task) => task.id), [2, 1, 3]);
+    const [first, middle, last] = original;
+    const secondResident = (await tasks(2))[0];
+    const thirdResident = (await tasks(3))[0];
+    for (const task of original) await move(1, task.id, 2);
+    assert.deepEqual(await tasks(1), []);
+    assert.deepEqual(await tasks(2), [secondResident, ...original]);
+    // New and first-arrival tasks must follow positions of all absent tasks.
+    const newOriginal = await create(1, 'Created while everyone was away');
+    await move(3, thirdResident.id, 1);
+    let editedFirst = first;
+    for (const edit of [{ title: 'Current title' }, { priority: 'High' }, { completed: true }, { dueDate: '2024-02-29' }]) {
+      editedFirst = { ...editedFirst, ...edit };
+      assert.deepEqual((await api(`/api/projects/2/tasks/${first.id}`, 'PATCH', edit)).body, editedFirst);
+    }
+    await api('/api/projects/1', 'PATCH', { name: 'Renamed original' });
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await tasks(1), [newOriginal, thirdResident]);
+    // Return out of order, across restarts, without reverting the edited fields.
+    await move(2, middle.id, 1);
+    assert.deepEqual(await tasks(1), [middle, newOriginal, thirdResident]);
+    await server.stop();
+    server = await startServer(databasePath);
+    await move(2, last.id, 1);
+    await move(2, first.id, 1);
+    const restored = [editedFirst, middle, last, newOriginal, thirdResident];
+    assert.deepEqual(await tasks(1), restored);
+    assert.deepEqual(await tasks(2), [secondResident]);
+    const newSecond = await create(2, 'Created after visitors left');
+    await api('/api/projects/2', 'PATCH', { name: 'Renamed second' });
+    await api('/api/projects/2', 'PATCH', { archived: true });
+    await move(1, first.id, 2, 409);
+    assert.deepEqual(await tasks(1), restored);
+    await server.stop();
+    server = await startServer(databasePath);
+    await api('/api/projects/2', 'PATCH', { archived: false });
+    // Each destination remembers its own order, including reserved visitor slots.
+    for (const task of [last, middle, editedFirst]) await move(1, task.id, 2);
+    const secondOrder = [secondResident, editedFirst, middle, last, newSecond];
+    assert.deepEqual(await tasks(2), secondOrder);
+    assert.deepEqual(await tasks(1), [newOriginal, thirdResident]);
+    const summaries = (await api('/api/projects')).body;
+    assert.deepEqual(summaries.map((project) => [project.completedCount, project.totalCount]),
+      [[0, 2], [1, 5], [0, 0]]);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await tasks(2), secondOrder);
+    assert.deepEqual((await api('/api/projects')).body, summaries);
+    await api('/api/projects/2', 'PATCH', { archived: true });
+    await move(2, first.id, 1, 409);
+    await api('/api/projects/2', 'PATCH', { archived: false });
+    for (const task of [last, middle, editedFirst]) await move(2, task.id, 1);
+    // Returning to a third project also reuses its independent remembered slot.
+    await move(1, thirdResident.id, 3);
+    assert.deepEqual(await tasks(3), [thirdResident]);
+    await move(3, thirdResident.id, 1);
+    assert.deepEqual(await tasks(1), restored);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await tasks(1), restored);
+    assert.deepEqual(await tasks(2), [secondResident, newSecond]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

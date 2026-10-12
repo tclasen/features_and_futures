@@ -77,14 +77,22 @@ Range filtering remains available in archived projects, never changes saved data
 or summary counts, and resets to empty boundaries when reopening a project.
 
 Each task row offers Destination project and Move task. Destinations are other
-active projects in project creation order, using their current names. Moving
-appends the task after the destination's existing tasks, preserving its identity,
+active projects in project creation order, using their current names. A first visit
+appends the task after all positions established in the destination. Returning
+to a previous project restores the task's remembered position relative to other
+tasks, even when several tasks return in a different order. New tasks also follow
+all established positions, including those reserved for tasks currently away.
+Moving preserves its identity,
 title, completion, priority, and optional due date. The source page stays open
 with all selected filters and its applied due range unchanged. Both project
 summaries reflect their current tasks. Moving is disabled in archived projects
 or when no eligible destination exists; archived projects cannot receive tasks.
 Moves and task order persist across restarts, and existing databases retain their
-previous order during migration. The task PATCH endpoint accepts
+previous order during migration. Positions are remembered separately per project
+and survive project renaming, archive, restoration, and restarts. Returning uses
+the task's current fields, not older values. Databases from earlier versions
+seed remembered positions from current ownership and order; past visits were not
+stored and cannot be recovered. The task PATCH endpoint accepts
 `{ "destinationProjectId": 2 }` separately from other edits. Invalid destinations
 return HTTP 400, missing projects/tasks return HTTP 404, and archived sources or
 destinations return HTTP 409.
