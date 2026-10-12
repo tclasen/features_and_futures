@@ -268,6 +268,18 @@ const page = `<!doctype html>
         }
         filterLabel.append(filter);
         app.append(filterLabel);
+        const priorityFilterLabel = document.createElement('label');
+        priorityFilterLabel.textContent = 'Priority filter';
+        const priorityFilter = document.createElement('select');
+        priorityFilter.setAttribute('aria-label', 'Priority filter');
+        for (const value of ['All', 'Low', 'Normal', 'High']) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          priorityFilter.append(option);
+        }
+        priorityFilterLabel.append(priorityFilter);
+        app.append(priorityFilterLabel);
         const tasksResponse = await fetch('/api/projects/' + escId(id) + '/tasks');
         const tasks = await tasksResponse.json();
         const list = document.createElement('ul');
@@ -276,6 +288,7 @@ const page = `<!doctype html>
           for (const task of tasks) {
             if (filter.value === 'Open' && task.completed) continue;
             if (filter.value === 'Completed' && !task.completed) continue;
+            if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
             const row = document.createElement('li');
             row.dataset.testid = 'task-row';
             const checkbox = document.createElement('input');
@@ -308,7 +321,10 @@ const page = `<!doctype html>
               const updated = await fetch('/api/projects/' + escId(id) + '/tasks/' + escId(task.id), {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
               });
-              if (updated.ok) task.priority = priority.value;
+              if (updated.ok) {
+                task.priority = priority.value;
+                renderTasks();
+              }
             });
             const renameInput = document.createElement('input');
             renameInput.type = 'text';
@@ -341,6 +357,7 @@ const page = `<!doctype html>
           }
         }
         filter.addEventListener('change', renderTasks);
+        priorityFilter.addEventListener('change', renderTasks);
         renderTasks();
         app.append(list);
       }
