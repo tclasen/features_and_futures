@@ -11,7 +11,7 @@ let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
 function normalizeSearch(value) {
-  return value.replace(/[ \\t]+/g, ' ').toLowerCase();
+  return value.replace(/[ \t]+/g, ' ').toLowerCase();
 }
 
 async function loadProjects() {
