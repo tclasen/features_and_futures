@@ -38,6 +38,13 @@ real Gregorian calendar days in YYYY-MM-DD format (years 0001–9999), without
 timezone conversion. Saving blank text clears the date; invalid dates show an
 alert and preserve the saved value. Due dates persist independently, and archived
 projects disable their date controls until restoration.
+Project pages also provide Due from and Due through fields and Apply due range.
+Applied boundaries are inclusive and intersect the completion and priority filters.
+Either boundary can be blank; undated tasks match only when both are blank.
+Invalid dates or reversed boundaries show an alert and preserve the applied range.
+Task edits immediately update matching rows without resetting any filter. Range
+controls remain usable while archived, and opening a project starts with empty
+boundaries.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
 
