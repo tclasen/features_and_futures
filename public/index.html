@@ -19,6 +19,8 @@
     .back { margin-bottom: 20px; }
     .task-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; margin: 10px 0; background: white; border: 1px solid #e0e5ec; border-radius: 8px; }
     .task-row input { flex: none; }
+    .project-controls { margin: 20px 0; }
+    .project-row > div { display: flex; gap: 10px; align-items: center; }
   </style>
 </head>
 <body>
@@ -32,7 +34,9 @@
         <form id="create-form"><label for="project-name">Project name</label>
           <input id="project-name" name="name" type="text" autocomplete="off">
           <button type="submit">Create project</button>
-        </form><div id="message"></div><section id="projects" aria-label="Projects"></section>`;
+        </form><div id="message"></div><label for="project-filter">Project filter</label>
+        <select id="project-filter"><option>Active</option><option>Archived</option></select>
+        <section id="projects" aria-label="Projects"></section>`;
       const form = document.querySelector('#create-form');
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -44,21 +48,32 @@
         const response = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
         if (response.ok) renderList();
       });
-      const projects = await (await fetch('/api/projects')).json();
-      document.querySelector('#projects').innerHTML = projects.map(project =>
-        `<div class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><button type="button" data-project-id="${project.id}">Open project</button></div>`
-      ).join('');
-      document.querySelectorAll('[data-project-id]').forEach(button => button.addEventListener('click', () => {
-        location.href = `/projects/${button.dataset.projectId}`;
-      }));
+      const filter = document.querySelector('#project-filter');
+      const renderProjects = async () => {
+        const projects = await (await fetch('/api/projects')).json();
+        const archived = filter.value === 'Archived';
+        const shown = projects.filter(project => project.archived === archived);
+        document.querySelector('#projects').innerHTML = shown.map(project =>
+          `<div class="project-row" data-testid="project-row"><span>${escapeHtml(project.name)}</span><span data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span><div><button type="button" data-open-id="${project.id}">Open project</button><button type="button" data-archive-id="${project.id}" data-archived="${project.archived}">${archived ? 'Restore project' : 'Archive project'}</button></div></div>`
+        ).join('');
+        document.querySelectorAll('[data-open-id]').forEach(button => button.addEventListener('click', () => { location.href = `/projects/${button.dataset.openId}`; }));
+        document.querySelectorAll('[data-archive-id]').forEach(button => button.addEventListener('click', async () => {
+          await fetch(`/api/projects/${button.dataset.archiveId}/archive`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: button.dataset.archived !== 'true' }) });
+          await renderProjects();
+        }));
+      };
+      filter.addEventListener('change', renderProjects);
+      await renderProjects();
     }
 
     async function renderProject(id) {
       const response = await fetch(`/api/projects/${encodeURIComponent(id)}`);
       if (!response.ok) { location.replace('/'); return; }
       const project = await response.json();
+      window.currentProjectArchived = project.archived;
       app.innerHTML = `<button class="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>
-        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off"><button type="submit">Create task</button></form>
+        ${project.archived ? '<p>Archived project</p>' : ''}
+        <form id="task-form"><label for="task-title">Task title</label><input id="task-title" name="title" type="text" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Create task</button></form>
         <div id="message"></div><label for="task-filter">Task filter</label>
         <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
         <section id="tasks" aria-label="Tasks"></section>`;
@@ -85,7 +100,7 @@
       const filter = document.querySelector('#task-filter').value;
       const visible = tasks.filter(task => filter === 'All' || (filter === 'Open' && !task.completed) || (filter === 'Completed' && task.completed));
       document.querySelector('#tasks').innerHTML = visible.map(task =>
-        `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`
+        `<div class="task-row" data-testid="task-row"><input type="checkbox" aria-label="Complete ${escapeHtml(task.title)}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${window.currentProjectArchived ? 'disabled' : ''}><span>${escapeHtml(task.title)}</span></div>`
       ).join('');
       document.querySelectorAll('[data-task-id]').forEach(checkbox => checkbox.addEventListener('change', async () => {
         const result = await fetch(`/api/projects/${encodeURIComponent(projectId)}/tasks/${checkbox.dataset.taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });

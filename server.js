@@ -8,10 +8,18 @@ const dbPath = process.env.DB_PATH || './workboard.sqlite';
 const db = new DatabaseSync(path.resolve(dbPath));
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 )`);
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const getProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  GROUP BY p.id ORDER BY p.id`);
+const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +41,20 @@ const json = (res, status, value) => send(res, status, JSON.stringify(value));
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
-  if (url.pathname === '/api/projects' && req.method === 'GET') return json(res, 200, listProjects.all());
+  if (url.pathname === '/api/projects' && req.method === 'GET') return json(res, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (archiveMatch && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const data = JSON.parse(body);
+      if (typeof data.archived !== 'boolean') return json(res, 400, { error: 'Invalid archive state' });
+      const id = Number(archiveMatch[1]);
+      if (!getProject.get(id)) return json(res, 404, { error: 'Project not found' });
+      setArchived.run(data.archived ? 1 : 0, id);
+      return json(res, 200, { ...getProject.get(id), archived: data.archived });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let body = '';
     try {
@@ -61,7 +82,9 @@ const server = http.createServer(async (req, res) => {
       const title = typeof data.title === 'string' ? data.title.trim() : '';
       if (!title) return json(res, 400, { error: 'Task title is required' });
       const projectId = Number(tasksMatch[1]);
-      if (!getProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      const project = getProject.get(projectId);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived) return json(res, 409, { error: 'Archived projects cannot accept tasks' });
       const result = addTask.run(projectId, title);
       return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
     } catch {
@@ -78,6 +101,7 @@ const server = http.createServer(async (req, res) => {
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
       if (!getTask.get(taskId, projectId)) return json(res, 404, { error: 'Task not found' });
+      if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
       updateTask.run(data.completed ? 1 : 0, taskId, projectId);
       return json(res, 200, { ...getTask.get(taskId, projectId), completed: data.completed });
     } catch {
@@ -87,7 +111,7 @@ const server = http.createServer(async (req, res) => {
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (req.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
-    return project ? json(res, 200, project) : json(res, 404, { error: 'Project not found' });
+    return project ? json(res, 200, { ...project, archived: Boolean(project.archived) }) : json(res, 404, { error: 'Project not found' });
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
     try {
