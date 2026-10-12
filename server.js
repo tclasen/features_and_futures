@@ -14,7 +14,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
+const updateProjectDefault = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const addProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
@@ -28,12 +32,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -75,6 +79,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, 400, { error: 'Invalid request' });
     }
   }
+  const defaultMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultMatch && req.method === 'PATCH') {
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const data = JSON.parse(body);
+      if (!['Low', 'Normal', 'High'].includes(data.priority)) return json(res, 400, { error: 'Invalid priority' });
+      const id = Number(defaultMatch[1]);
+      const project = getProject.get(id);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (project.archived) return json(res, 409, { error: 'Archived projects cannot be changed' });
+      updateProjectDefault.run(data.priority, id);
+      return json(res, 200, getProject.get(id));
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasksMatch && req.method === 'GET') {
     const projectId = Number(tasksMatch[1]);
@@ -92,8 +111,8 @@ const server = http.createServer(async (req, res) => {
       const project = getProject.get(projectId);
       if (!project) return json(res, 404, { error: 'Project not found' });
       if (project.archived) return json(res, 409, { error: 'Archived projects cannot accept tasks' });
-      const result = addTask.run(projectId, title);
-      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
+      const result = addTask.run(projectId, title, project.defaultPriority);
+      return json(res, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false, priority: project.defaultPriority });
     } catch {
       return json(res, 400, { error: 'Invalid request' });
     }
