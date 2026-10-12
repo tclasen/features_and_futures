@@ -205,6 +205,10 @@ function sendPage(response) {
       return value.replace(/[A-Z]/g, character => character.toLowerCase());
     }
 
+    function normalizeSearchText(value) {
+      return asciiLower(value.replace(/[ \\t]+/g, ' '));
+    }
+
     async function loadProjects() {
       const response = await fetch('/api/projects');
       if (!response.ok) throw new Error('Unable to load projects');
@@ -220,7 +224,7 @@ function sendPage(response) {
       const selectedState = document.querySelector('#project-filter').value;
       for (const project of await loadProjects()) {
         if (Boolean(project.archived) !== (selectedState === 'Archived')) continue;
-        if (!asciiLower(project.name).includes(asciiLower(appliedProjectQuery))) continue;
+        if (!normalizeSearchText(project.name).includes(normalizeSearchText(appliedProjectQuery))) continue;
         const row = document.createElement('li');
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
@@ -287,12 +291,12 @@ function sendPage(response) {
       const eligibleProjects = (await projectResponse.json()).filter(project => !project.archived && String(project.id) !== String(currentProjectId));
       const filter = document.querySelector('#task-filter').value;
       const priorityFilter = document.querySelector('#priority-filter').value;
-      const taskQuery = asciiLower(appliedTaskQuery);
+      const taskQuery = normalizeSearchText(appliedTaskQuery);
       taskList.replaceChildren();
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
-        if (!asciiLower(task.title).includes(taskQuery)) continue;
+        if (!normalizeSearchText(task.title).includes(taskQuery)) continue;
         if ((appliedDueFrom || appliedDueThrough) && !task.due_date) continue;
         if (task.due_date && appliedDueFrom && task.due_date < appliedDueFrom) continue;
         if (task.due_date && appliedDueThrough && task.due_date > appliedDueThrough) continue;
