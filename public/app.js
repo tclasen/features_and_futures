@@ -5,6 +5,7 @@ const errorMessage = document.querySelector('#error-message');
 const taskContainer = document.querySelector('#tasks');
 let activeProjectId = null;
 let projectTasks = [];
+let allProjects = [];
 let appliedDueRange = { from: '', through: '' };
 
 async function loadProjects() {
@@ -103,9 +104,12 @@ document.querySelector('#create-form').addEventListener('submit', async event =>
 });
 
 async function loadTasks() {
-  const response = await fetch(`/api/projects/${activeProjectId}/tasks`);
-  if (!response.ok) return;
+  const [response, projectsResponse] = await Promise.all([
+    fetch(`/api/projects/${activeProjectId}/tasks`), fetch('/api/projects')
+  ]);
+  if (!response.ok || !projectsResponse.ok) return;
   projectTasks = await response.json();
+  allProjects = await projectsResponse.json();
   renderTasks();
 }
 
@@ -212,7 +216,28 @@ function renderTasks() {
       dueDate.value = task.dueDate || '';
       renderTasks();
     });
-    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate);
+    const destinations = document.createElement('select');
+    destinations.setAttribute('aria-label', 'Destination project');
+    const eligible = allProjects.filter(item => !item.archived && item.id !== Number(activeProjectId));
+    for (const destination of eligible) {
+      const option = document.createElement('option');
+      option.value = destination.id;
+      option.textContent = destination.name;
+      destinations.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.textContent = 'Move task';
+    destinations.disabled = archived || eligible.length === 0;
+    moveButton.disabled = archived || eligible.length === 0;
+    moveButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: Number(destinations.value) })
+      });
+      if (response.ok) await loadTasks();
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate, destinations, moveButton);
     taskContainer.append(row);
   }
 }

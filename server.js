@@ -29,8 +29,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch {}
+db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -83,7 +86,7 @@ const server = http.createServer(async (req, res) => {
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
         const project = getProject.get(projectId);
-        const result = createTask.run(projectId, title, project.defaultPriority || 'Normal');
+        const result = createTask.run(projectId, title, project.defaultPriority || 'Normal', projectId);
         return json(res, 201, getTask.get(Number(result.lastInsertRowid)));
       } catch {
         return json(res, 400, { error: 'Invalid request' });
@@ -125,7 +128,12 @@ const server = http.createServer(async (req, res) => {
       if (!project) return json(res, 404, { error: 'Project not found' });
       if (project.archived) return json(res, 403, { error: 'Archived project' });
       const taskId = Number(taskMatch[2]);
-      if (typeof data.dueDate === 'string') {
+      if (Number.isInteger(data.destinationProjectId)) {
+        const destination = getProject.get(data.destinationProjectId);
+        if (!destination || destination.archived || destination.id === projectId) return json(res, 400, { error: 'Invalid destination project' });
+        const result = moveTask.run(destination.id, destination.id, taskId, projectId);
+        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+      } else if (typeof data.dueDate === 'string') {
         const trimmed = data.dueDate.trim();
         let canonical = null;
         if (trimmed) {
