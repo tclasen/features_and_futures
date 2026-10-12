@@ -79,6 +79,14 @@ const server = createServer(async (req, res) => {
       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.deleted = 0) AS totalCount
       FROM projects p ORDER BY p.created_at, p.rowid`).all());
   }
+  if (req.method === 'GET' && url.pathname === '/api/directory') {
+    return send(res, 200, db.prepare(`SELECT p.id AS projectId, p.name AS projectName,
+      p.archived, t.id AS taskId, t.title, t.completed, t.priority,
+      COALESCE(t.due_date, '') AS dueDate, COALESCE(t.notes, '') AS notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = p.id
+      ORDER BY p.created_at, p.rowid, COALESCE(pos.position, t.created_at), t.created_at, t.rowid`).all());
+  }
   const projectArchive = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (req.method === 'PATCH' && projectArchive) {
     let projectId;
@@ -305,6 +313,9 @@ const server = createServer(async (req, res) => {
     catch { return send(res, 500, 'Application page unavailable', 'text/plain; charset=utf-8'); }
   }
   if (req.method === 'GET' && /^\/projects\/[^/]+$/.test(url.pathname)) {
+    return send(res, 200, await readFile(join(root, 'public', 'index.html'), 'utf8'), 'text/html; charset=utf-8');
+  }
+  if (req.method === 'GET' && url.pathname === '/directory') {
     return send(res, 200, await readFile(join(root, 'public', 'index.html'), 'utf8'), 'text/html; charset=utf-8');
   }
   return send(res, 404, { error: 'Not found' });
