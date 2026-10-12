@@ -68,8 +68,16 @@ const server = http.createServer(async (req, res) => {
     let body = ''; for await (const chunk of req) body += chunk;
     try {
       const data = JSON.parse(body);
+      const id = Number(project[1]);
+      if (typeof data.name === 'string') {
+        const name = data.name.trim();
+        if (!name) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Project name is required' }));
+        const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, name }));
+      }
       if (typeof data.archived !== 'boolean') return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
-      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(data.archived ? 1 : 0, Number(project[1]));
+      const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(data.archived ? 1 : 0, id);
       if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
       return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
