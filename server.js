@@ -35,6 +35,10 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Notes are plain text; upgrades leave all existing task fields untouched.
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // IDs retain identity; sort_order records creation and subsequent move order.
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'sort_order')) {
   db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET sort_order = id');
@@ -64,7 +68,7 @@ const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? 
 const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)');
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
 const rememberPosition = db.prepare('INSERT OR IGNORE INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)');
@@ -107,6 +111,7 @@ const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND proje
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function validDueDate(value) {
   if (value === '') return true;
@@ -137,7 +142,7 @@ function page(title, content) {
     main { max-width: 760px; margin: 60px auto; padding: 28px; background: white; border: 1px solid #dce2ed; border-radius: 12px; }
     h1 { margin-top: 0; overflow-wrap: anywhere; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
-    input { width: 100%; padding: 10px; border: 1px solid #8895aa; border-radius: 6px; font: inherit; }
+    input, textarea { width: 100%; padding: 10px; border: 1px solid #8895aa; border-radius: 6px; font: inherit; }
     button { padding: 10px 16px; border: 0; border-radius: 6px; background: #244bb5; color: white; font: inherit; cursor: pointer; }
     button:hover { background: #183987; }
     button:disabled { background: #8895aa; cursor: not-allowed; }
@@ -347,6 +352,13 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+          ${filterFields}
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
           ${filterFields}
           <label for="destination-project-${task.id}">Destination project</label>
@@ -366,16 +378,18 @@ function html(response, status, body) {
 }
 
 async function readForm(request) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 65536) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > 65536) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
     }
   }
-  return new URLSearchParams(body);
+  return new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
 }
 
 const server = http.createServer(async (request, response) => {
@@ -473,7 +487,7 @@ const server = http.createServer(async (request, response) => {
       renameProject.run(name, project.id);
       response.writeHead(303, { Location: projectLocation(project.id, filter, priority, appliedRange(form), searchQuery(form)) });
       response.end();
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*(?:\/(?:rename|priority|due-date|move))?)?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*(?:\/(?:rename|priority|due-date|move|notes))?)?$/.test(url.pathname)) {
       const [, , projectId, , taskId, action] = url.pathname.split('/');
       const project = getProject.get(projectId);
       if (!project) {
@@ -504,6 +518,8 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           result = renameTask.run(title, taskId, projectId);
+        } else if (action === 'notes') {
+          result = setTaskNotes.run(form.get('notes') || '', taskId, projectId);
         } else if (action === 'due-date') {
           const dueDate = (form.get('dueDate') || '').trim();
           if (!validDueDate(dueDate)) {
