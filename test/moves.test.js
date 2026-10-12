@@ -219,8 +219,8 @@ test('notes preserve exact text and task data through edits, moves, archive and 
     await api(`/${source.id}`, 'PATCH', { archived: false });
     const whitespace = await api(path, 'PATCH', { notes: ' \t\n ' });
     assert.deepEqual(whitespace, { ...changed, notes: ' \t\n ' });
-    const cleared = await api(path, 'PATCH', { notes: '' });
-    assert.deepEqual(cleared, { ...changed, notes: '' });
+    const cleared = await api(path, 'PATCH', { notes: '', deleted: false });
+    assert.deepEqual(cleared, { ...changed, notes: '', deleted: false });
     await restart();
     assert.deepEqual(await api(taskPath(source)), [cleared, second]);
   });
@@ -230,7 +230,7 @@ test('notes migration preserves prior task fields and remembered positions', asy
   await withServer(async ({ api, taskPath, move, restart }) => {
     const source = { id: 1 };
     const destination = { id: 2 };
-    const expected = { id: 9, title: 'Saved\t  title', completed: true, priority: 'Low', dueDate: '0001-01-01', notes: '' };
+    const expected = { id: 9, title: 'Saved\t  title', completed: true, priority: 'Low', dueDate: '0001-01-01', notes: '', deleted: false };
     assert.deepEqual(await api(taskPath(source)), [expected]);
     assert.equal((await api('/1')).defaultPriority, 'High');
     assert.equal((await api('/2')).archived, true);
@@ -256,5 +256,99 @@ test('notes migration preserves prior task fields and remembered positions', asy
           PRIMARY KEY (task_id, project_id));
         INSERT INTO task_positions VALUES (9, 1, 4), (9, 2, 2)`);
     } finally { db.close(); }
+  });
+});
+
+test('deletion preserves fields, summaries and reserved positions across restore, moves and restarts', async () => {
+  await withServer(async ({ api, taskPath, move, restart }) => {
+    const source = await api('', 'POST', { name: 'Source' }, 201);
+    const destination = await api('', 'POST', { name: 'Destination' }, 201);
+    const first = await api(taskPath(source), 'POST', { title: 'First' }, 201);
+    const second = await api(taskPath(source), 'POST', { title: 'Second' }, 201);
+    assert.equal(first.deleted, false);
+    const path = `${taskPath(source)}/${first.id}`;
+    const saved = await api(path, 'PATCH', {
+      completed: true, priority: 'High', dueDate: '0001-01-01', notes: '  Notes\n日本語 <b>literal</b>  ',
+    });
+    const deleted = await api(`${path}/delete`, 'POST');
+    assert.deepEqual(deleted, { ...saved, deleted: true });
+    const summary = async (project, counts) => {
+      const current = await api(`/${project.id}`);
+      assert.deepEqual([current.completedCount, current.totalCount], counts);
+      const listed = (await api('')).find(row => row.id === project.id);
+      assert.deepEqual([listed.completedCount, listed.totalCount], counts);
+    };
+    await summary(source, [0, 1]);
+    await api(`${taskPath(source)}/${second.id}/delete`, 'POST');
+    await summary(source, [0, 0]);
+    await api(`${taskPath(destination)}/${first.id}/restore`, 'POST', undefined, 404);
+    await api(`${taskPath(source)}/999999/delete`, 'POST', undefined, 404);
+    await api('/999999/tasks/1/restore', 'POST', undefined, 404);
+    for (const edit of [{ title: 'Blocked' }, { completed: false }, { priority: 'Low' },
+      { dueDate: '' }, { notes: '' }, { title: 'Blocked', deleted: false }]) {
+      await api(path, 'PATCH', edit, 409);
+    }
+    await move(source, first, destination, 409);
+    await api(`/${source.id}`, 'PATCH', { defaultPriority: 'Low', name: 'Renamed source', archived: true });
+    await api(`${path}/restore`, 'POST', undefined, 409);
+    await api(`${taskPath(source)}/${second.id}/delete`, 'POST', undefined, 409);
+    await restart();
+    assert.deepEqual(await api(taskPath(source)), [deleted, { ...second, deleted: true }]);
+    await summary(source, [0, 0]);
+    await api(`/${source.id}`, 'PATCH', { archived: false });
+    const later = await api(taskPath(source), 'POST', { title: 'Created after deletion' }, 201);
+    assert.equal(later.priority, 'Low');
+    await api(`${taskPath(source)}/${second.id}/restore`, 'POST');
+    assert.deepEqual(await api(`${path}/restore`, 'POST'), saved);
+    assert.deepEqual(await api(taskPath(source)), [saved, second, later]);
+    await summary(source, [1, 3]);
+    await move(source, first, destination);
+    const destinationPath = `${taskPath(destination)}/${first.id}`;
+    assert.deepEqual(await api(`${destinationPath}/delete`, 'POST'), deleted);
+    await summary(destination, [0, 0]);
+    const arriving = await api(taskPath(destination), 'POST', { title: 'Later destination task' }, 201);
+    await restart();
+    assert.deepEqual(await api(`${destinationPath}/restore`, 'POST'), saved);
+    assert.deepEqual(await api(taskPath(destination)), [saved, arriving]);
+    await summary(destination, [1, 2]);
+    await move(destination, first, source);
+    assert.deepEqual(await api(taskPath(source)), [saved, second, later]);
+    await restart();
+    assert.deepEqual(await api(taskPath(source)), [saved, second, later]);
+    await summary(source, [1, 3]);
+    await summary(destination, [0, 1]);
+  });
+});
+
+test('deletion upgrade preserves notes and independent remembered positions and initializes tasks live', async () => {
+  await withServer(async ({ api, taskPath, move, restart }) => {
+    const first = { id: 1 };
+    const second = { id: 2 };
+    const tasks = await api(taskPath(first));
+    assert.deepEqual(tasks, [{ id: 8, title: 'Saved title', completed: true, priority: 'High',
+      dueDate: '2024-02-29', notes: '  Existing\nnotes <b>🌱</b>  ', deleted: false }]);
+    const other = await api(taskPath(second));
+    const path = `${taskPath(first)}/8`;
+    await api(`${path}/delete`, 'POST');
+    const later = await api(taskPath(first), 'POST', { title: 'Later' }, 201);
+    await restart();
+    assert.deepEqual(await api(`${path}/restore`, 'POST'), tasks[0]);
+    assert.deepEqual(await api(taskPath(first)), [tasks[0], later]);
+    await move(first, tasks[0], second);
+    assert.deepEqual(await api(taskPath(second)), [tasks[0], ...other]);
+  }, databasePath => {
+    const db = new DatabaseSync(databasePath);
+    db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+      due_date TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+      CREATE TABLE task_positions (task_id INTEGER NOT NULL, project_id INTEGER NOT NULL,
+      position INTEGER NOT NULL, PRIMARY KEY (task_id, project_id));
+      INSERT INTO projects (id, name) VALUES (1, 'First'), (2, 'Second');
+      INSERT INTO tasks VALUES (8, 1, 'Saved title', 1, 'High', '2024-02-29', '  Existing
+notes <b>🌱</b>  ', 5), (9, 2, 'Other', 0, 'Low', '', '', 3);
+      INSERT INTO task_positions VALUES (8, 1, 5), (8, 2, 1), (9, 2, 3);`);
+    db.close();
   });
 });

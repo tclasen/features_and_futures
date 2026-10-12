@@ -14,7 +14,7 @@ Open `http://localhost:8080`. The server binds to `0.0.0.0` and exposes
 restarts, including archive state.
 
 The project list starts with Active projects. Use Project filter to view Archived
-projects and restore them. Each row shows completed and total task counts.
+projects and restore them. Each row shows completed and total live task counts.
 Project search matches names by substring and intersects Project filter. Task
 search matches titles and intersects completion, priority and due-range filters.
 Search ignores ASCII letter case, trims surrounding query whitespace and treats
@@ -29,7 +29,7 @@ pages allow task filtering but disable task creation, completion, renaming and
 priority changes. Restoring a project enables editing with saved values intact.
 Task filter and Priority filter work together, initially selecting All. Changes
 to completion or priority immediately update the matching rows while preserving
-both filter selections. Project summaries always count every task.
+both filter selections. Project summaries count all live tasks regardless of the selected filters.
 
 Tasks can also save or clear a calendar due date. Due from and Due through
 apply an inclusive date range together with Task filter and Priority filter.
@@ -42,6 +42,13 @@ Task notes saves optional multiline plain text exactly as entered, including
 spaces, line breaks, Unicode and literal markup. Empty text clears notes. Notes
 persist across restarts and moves, and do not participate in search. Archived
 projects display notes with their editing controls disabled.
+
+Delete task hides a live task from All, Open and Completed and excludes it from
+project summaries. Select Deleted to read deleted tasks under the same priority,
+due-range and title search filters. Restore task restores its saved fields and
+reserved position; newer tasks follow it. Deleted tasks cannot be edited or moved.
+Deletion persists across restarts, and archived projects disable both deletion
+and restoration while retaining all filters.
 
 Move task sends a task to another active project, preserving its title,
 completion, priority and due date. First arrivals append after all positions

@@ -381,7 +381,7 @@ test('migrates an existing database without changing project IDs or tasks', asyn
       id: 42, name: 'Existing project', archived: false, defaultPriority: 'Normal', totalCount: 1, completedCount: 1,
     });
     const tasks = await fetch(`http://127.0.0.1:${port}/api/projects/42/tasks`);
-    assert.deepEqual(await tasks.json(), [{ id: 51, title: 'Existing task', completed: true, priority: 'Normal', dueDate: '', notes: '' }]);
+    assert.deepEqual(await tasks.json(), [{ id: 51, title: 'Existing task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false }]);
   } finally {
     if (child.exitCode === null) {
       const exited = new Promise(resolve => child.once('exit', resolve));

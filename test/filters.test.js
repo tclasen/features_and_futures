@@ -57,16 +57,17 @@ async function projectPage(archived = false, destinations = [
   { id: 2, name: 'Second project', archived: false },
   { id: 3, name: 'Archived destination', archived: true },
   { id: 4, name: 'Fourth project', archived: false },
-], initialNotes = '') {
+], initialNotes = '', initialDeleted = false) {
   const app = new Element('main');
   const tasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
     for (const completed of [false, true]) {
-      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority, dueDate: '', notes: '' });
+      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority, dueDate: '', notes: '', deleted: false });
     }
   }
-  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High', dueDate: '0001-01-01', notes: '' });
+  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High', dueDate: '0001-01-01', notes: '', deleted: false });
   tasks[0].notes = initialNotes;
+  tasks[0].deleted = initialDeleted;
   const requests = [];
   let nextError;
   const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
@@ -82,12 +83,15 @@ async function projectPage(archived = false, destinations = [
         return { ok: false, json: async () => ({ error }) };
       }
       let data;
-      if (options?.method === 'POST' && path.endsWith('/move')) {
+      if (options?.method === 'POST' && /\/(delete|restore)$/.test(path)) {
+        data = tasks.find(task => task.id === Number(path.split('/').at(-2)));
+        data.deleted = path.endsWith('/delete');
+      } else if (options?.method === 'POST' && path.endsWith('/move')) {
         const taskId = Number(path.split('/').at(-2));
         data = tasks.splice(tasks.findIndex(task => task.id === taskId), 1)[0];
       } else if (options?.method === 'POST') {
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
-          completed: false, priority: project.defaultPriority, dueDate: '', notes: '' };
+          completed: false, priority: project.defaultPriority, dueDate: '', notes: '', deleted: false };
         tasks.push(data);
       } else if (options?.method === 'PATCH') {
         const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
@@ -720,4 +724,105 @@ test('archived notes remain visible and disabled; restoring enables editing', as
   assert.equal(restoredForm.querySelector('button').disabled, false);
   await saveNotes(restored, restored.rows()[0], 'Restored notes\n  ');
   assert.equal(restored.rows()[0].querySelector('textarea').value, 'Restored notes\n  ');
+});
+
+function deletionButton(row) {
+  return row.querySelectorAll('button').find(button => ['Delete task', 'Restore task'].includes(button.textContent));
+}
+
+test('delete and restore keep filters, range and search and expose deleted rows read-only', async () => {
+  const page = await projectPage();
+  assert.deepEqual(page.completion.children.map(option => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
+  const range = page.app.querySelector('#due-range');
+  page.app.querySelector('#due-from').value = '0001-01-01';
+  page.app.querySelector('#due-through').value = '0001-01-01';
+  await range.trigger('submit');
+  const search = page.app.querySelector('#task-search-form');
+  page.app.querySelector('#task-search').value = '  SECOND\t high  ';
+  await search.trigger('submit');
+  await page.select(page.priority, 'High');
+  await page.select(page.completion, 'Open');
+  const original = structuredClone(page.tasks[6]);
+  const assertSelections = () => {
+    assert.equal(page.priority.value, 'High');
+    assert.equal(page.app.querySelector('#due-from').value, '0001-01-01');
+    assert.equal(page.app.querySelector('#due-through').value, '0001-01-01');
+    assert.equal(page.app.querySelector('#task-search').value, '  SECOND\t high  ');
+  };
+  await deletionButton(page.rows()[0]).trigger('click');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.completion.value, 'Open');
+  assertSelections();
+  for (const filter of ['All', 'Open', 'Completed']) {
+    await page.select(page.completion, filter);
+    assert.deepEqual(page.titles(), []);
+  }
+  await page.select(page.completion, 'Deleted');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  assert.deepEqual(page.tasks[6], { ...original, deleted: true });
+  const row = page.rows()[0];
+  for (const tag of ['input', 'select', 'textarea']) {
+    assert.ok(row.querySelectorAll(tag).every(control => control.disabled));
+  }
+  assert.ok(row.querySelectorAll('form').every(form => form.querySelector('button').disabled));
+  assert.equal(deletionButton(row).textContent, 'Restore task');
+  assert.equal(deletionButton(row).disabled, false);
+  await page.select(page.priority, 'Low');
+  assert.deepEqual(page.titles(), []);
+  await page.select(page.priority, 'High');
+  page.app.querySelector('#due-from').value = '0001-01-02';
+  page.app.querySelector('#due-through').value = '';
+  await range.trigger('submit');
+  assert.deepEqual(page.titles(), []);
+  page.app.querySelector('#due-from').value = '0001-01-01';
+  page.app.querySelector('#due-through').value = '0001-01-01';
+  await range.trigger('submit');
+  page.app.querySelector('#task-search').value = 'not a match';
+  await search.trigger('submit');
+  assert.deepEqual(page.titles(), []);
+  page.app.querySelector('#task-search').value = '  SECOND\t high  ';
+  await search.trigger('submit');
+  await deletionButton(page.rows()[0]).trigger('click');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.completion.value, 'Deleted');
+  assertSelections();
+  await page.select(page.completion, 'Open');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  assert.deepEqual(page.tasks[6], original);
+  assert.ok(page.rows()[0].querySelectorAll('form').every(form => !form.querySelector('button').disabled));
+});
+
+test('deletion failures leave membership intact and archived projects disable both actions', async () => {
+  const page = await projectPage();
+  const originalTitles = page.titles();
+  page.rejectNext('Unable to delete');
+  await deletionButton(page.rows()[0]).trigger('click');
+  assert.deepEqual(page.titles(), originalTitles);
+  assert.equal(page.tasks[0].deleted, false);
+  assert.equal(deletionButton(page.rows()[0]).disabled, false);
+  assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Unable to delete');
+  await deletionButton(page.rows()[0]).trigger('click');
+  await deletionButton(page.rows()[0]).trigger('click');
+  await page.select(page.completion, 'Deleted');
+  assert.deepEqual(page.titles(), ['Low open', 'Low done']);
+  page.rejectNext('Unable to restore');
+  await deletionButton(page.rows()[0]).trigger('click');
+  assert.deepEqual(page.titles(), ['Low open', 'Low done']);
+  await deletionButton(page.rows()[1]).trigger('click');
+  await deletionButton(page.rows()[0]).trigger('click');
+  await page.select(page.completion, 'All');
+  assert.deepEqual(page.titles(), originalTitles);
+  const archived = await projectPage(true, undefined, '', true);
+  assert.equal(deletionButton(archived.rows()[0]).disabled, true);
+  await archived.select(archived.completion, 'Deleted');
+  assert.deepEqual(archived.titles(), ['Low open']);
+  assert.equal(deletionButton(archived.rows()[0]).textContent, 'Restore task');
+  assert.ok(archived.rows()[0].querySelectorAll('button').every(button => button.disabled));
+  const requests = archived.requests.length;
+  await deletionButton(archived.rows()[0]).trigger('click');
+  assert.equal(archived.requests.length, requests);
+  for (const id of ['task-filter', 'priority-filter', 'due-range', 'task-search-form']) {
+    const control = archived.app.querySelector(`#${id}`);
+    assert.equal(control.disabled, false);
+  }
 });
