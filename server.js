@@ -354,6 +354,19 @@ const page = `<!doctype html>
       app.append(searchForm);
       const list = document.createElement('ul');
       app.append(list);
+      const bulkActions = document.createElement('div');
+      const completeVisible = document.createElement('button');
+      completeVisible.type = 'button';
+      completeVisible.textContent = 'Complete visible tasks';
+      const reopenVisible = document.createElement('button');
+      reopenVisible.type = 'button';
+      reopenVisible.textContent = 'Reopen visible tasks';
+      const emptyResult = document.createElement('p');
+      emptyResult.textContent = 'No matching tasks';
+      emptyResult.hidden = true;
+      app.append(bulkActions, emptyResult);
+      bulkActions.append(completeVisible, reopenVisible);
+      let loading = false;
       let appliedFrom = '';
       let appliedThrough = '';
       let appliedQuery = '';
@@ -391,6 +404,7 @@ const page = `<!doctype html>
       const normalize = (value) => value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
       function render() {
         list.replaceChildren();
+        const visibleTasks = [];
         for (const task of tasks) {
           // SQLite returns 0/1 for this column; compare its boolean meaning.
           if (Boolean(task.archived) !== (projectScope.value === 'Archived')) continue;
@@ -402,8 +416,10 @@ const page = `<!doctype html>
           if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
           if (appliedFrom && task.dueDate < appliedFrom) continue;
           if (appliedThrough && task.dueDate > appliedThrough) continue;
+          visibleTasks.push(task);
           const row = document.createElement('li');
           row.dataset.testid = 'directory-task-row';
+          row.dataset.taskId = String(task.id);
           const title = document.createElement('span');
           title.dataset.testid = 'directory-task-title';
           title.textContent = task.title;
@@ -429,7 +445,29 @@ const page = `<!doctype html>
           row.append(title, owner, completion, priority, dueDate, notes, open);
           list.append(row);
         }
+        const eligibleScope = projectScope.value === 'Active' && taskFilter.value !== 'Deleted';
+        const liveVisible = visibleTasks.filter((task) => !task.deleted);
+        completeVisible.disabled = !eligibleScope || !liveVisible.some((task) => !task.completed);
+        reopenVisible.disabled = !eligibleScope || !liveVisible.some((task) => task.completed);
+        emptyResult.hidden = loading || visibleTasks.length !== 0;
       }
+      async function updateVisibleCompletion(completed) {
+        const visibleIds = [...list.querySelectorAll('[data-testid="directory-task-row"]')]
+          .map((row) => Number(row.dataset.taskId));
+        const response = await fetch('/api/directory/bulk-completion', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskIds: visibleIds, completed })
+        });
+        if (!response.ok) return;
+        loading = true;
+        emptyResult.hidden = true;
+        const refreshed = await fetch('/api/directory');
+        if (refreshed.ok) tasks.splice(0, tasks.length, ...await refreshed.json());
+        loading = false;
+        render();
+      }
+      completeVisible.addEventListener('click', () => updateVisibleCompletion(true));
+      reopenVisible.addEventListener('click', () => updateVisibleCompletion(false));
       projectScope.addEventListener('change', render);
       taskFilter.addEventListener('change', render);
       priorityFilter.addEventListener('change', render);
@@ -852,6 +890,24 @@ const server = createServer(async (request, response) => {
       FROM projects p JOIN tasks t ON t.project_id = p.id
       ORDER BY p.id, t.sort_order, t.id`).all();
     return sendJson(response, 200, rows);
+  }
+  if (request.method === 'POST' && url.pathname === '/api/directory/bulk-completion') {
+    const body = await readJson(request);
+    if (!Array.isArray(body?.taskIds) || typeof body.completed !== 'boolean' ||
+        body.taskIds.some((id) => !Number.isInteger(id) || id < 1)) {
+      return sendJson(response, 400, { error: 'Invalid task selection' });
+    }
+    const update = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+      AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    db.exec('BEGIN');
+    try {
+      for (const id of new Set(body.taskIds)) update.run(body.completed ? 1 : 0, id);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+    return sendJson(response, 200, { status: 'ok' });
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all(url.searchParams.get('archived') === '1' ? 1 : 0));
   if (request.method === 'POST' && url.pathname === '/api/projects') {
