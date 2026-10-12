@@ -23,5 +23,5 @@ The integration tests use temporary SQLite databases and verify project and task
 creation, blank-input validation, ordering, HTML escaping, project navigation,
 task ownership, completion changes, filtering, health, and persistence across
 process restarts, archive/restore, read-only archived projects, completion summaries,
-migration from the previous schema, and renaming with identity preservation and
-archived-project protection.
+migration from the previous schema, and project/task renaming with identity,
+order, ownership, and completion preservation and archived-project protection.
