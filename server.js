@@ -101,6 +101,13 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = JSON.parse(body);
       const id = Number(task[1]);
+      if (Object.hasOwn(data, 'projectId')) {
+        const destinationId = Number(data.projectId);
+        if (!Number.isSafeInteger(destinationId) || destinationId <= 0) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid destination' }));
+        const result = db.prepare(`UPDATE tasks SET project_id = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0) AND ? IN (SELECT id FROM projects WHERE archived = 0)`).run(destinationId, id, destinationId);
+        if (!result.changes) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid destination' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+      }
       if (Object.hasOwn(data, 'dueDate')) {
         const raw = typeof data.dueDate === 'string' ? data.dueDate.trim() : '';
         let dueDate = raw || null;
