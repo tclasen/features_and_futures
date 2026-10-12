@@ -9,12 +9,16 @@ const database = new DatabaseSync(process.env.DB_PATH || join(root, 'workboard.s
 database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+  default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))
 )`);
 // Upgrade databases created by earlier checkpoints without disturbing project IDs.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
 }
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +52,7 @@ const server = createServer(async (request, response) => {
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     return sendJson(response, 200, database.prepare(`
-      SELECT p.id, p.name, p.archived, COUNT(t.id) AS total_count,
+      SELECT p.id, p.name, p.archived, p.default_task_priority, COUNT(t.id) AS total_count,
         COALESCE(SUM(t.completed), 0) AS completed_count
       FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
       GROUP BY p.id ORDER BY p.id
@@ -79,6 +83,14 @@ const server = createServer(async (request, response) => {
       }
       return sendJson(response, 200, { id: projectId, name });
     }
+    if (['Low', 'Normal', 'High'].includes(body?.default_task_priority)) {
+      const result = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0').run(body.default_task_priority, projectId);
+      if (!result.changes) {
+        const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+        return sendJson(response, project ? 400 : 404, { error: project ? 'Archived projects cannot be changed' : 'Project not found' });
+      }
+      return sendJson(response, 200, { id: projectId, default_task_priority: body.default_task_priority });
+    }
     return sendJson(response, 400, { error: 'Project update is required' });
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
@@ -96,7 +108,7 @@ const server = createServer(async (request, response) => {
   const projectTasks = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasks) {
     const projectId = Number(projectTasks[1]);
-    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
       const tasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
@@ -112,8 +124,8 @@ const server = createServer(async (request, response) => {
       }
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
     }
   }
   const taskCompletion = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
