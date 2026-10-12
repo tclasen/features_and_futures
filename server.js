@@ -134,6 +134,26 @@ const server = createServer(async (req, res) => {
       } catch { return json(res, 400, { error: 'Invalid request' }); }
     }
   }
+  const moveMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (req.method === 'POST' && moveMatch) {
+    const sourceId = decodeURIComponent(moveMatch[1]);
+    const taskId = decodeURIComponent(moveMatch[2]);
+    const source = findProject.get(sourceId);
+    if (!source) return json(res, 404, { error: 'Project not found' });
+    if (source.archived) return json(res, 409, { error: 'Archived projects cannot move tasks' });
+    try {
+      const body = await readJson(req);
+      const destinationId = typeof body.destinationProjectId === 'string' ? body.destinationProjectId : '';
+      const destination = findProject.get(destinationId);
+      if (!destination || destination.archived || destinationId === sourceId) return json(res, 400, { error: 'Invalid destination project' });
+      const task = findTask.get(taskId, sourceId);
+      if (!task) return json(res, 404, { error: 'Task not found' });
+      const nextOrder = db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+      const result = db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+      if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });
+      return json(res, 200, { ...task, projectId: destinationId });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   const taskMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
   if (req.method === 'PATCH' && taskMatch) {
     const projectId = decodeURIComponent(taskMatch[1]);

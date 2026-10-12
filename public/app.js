@@ -20,6 +20,7 @@ const renameAlert = document.querySelector('#rename-alert');
 const defaultPriority = document.querySelector('#default-priority');
 let activeProjectId = null;
 let currentTasks = [];
+let activeProjects = [];
 let activeProjectArchived = false;
 let appliedDueFrom = '';
 let appliedDueThrough = '';
@@ -234,15 +235,51 @@ function drawTasks() {
       }
     });
     dueDateForm.append(dueDateInput, saveDueDate);
+    const destinationForm = document.createElement('form');
+    destinationForm.className = 'task-move-form';
+    const destination = document.createElement('select');
+    destination.setAttribute('aria-label', 'Destination project');
+    for (const project of activeProjects.filter(item => item.id !== activeProjectId)) {
+      const option = document.createElement('option');
+      option.value = project.id;
+      option.textContent = project.name;
+      destination.append(option);
+    }
+    const moveButton = document.createElement('button');
+    moveButton.type = 'submit';
+    moveButton.className = 'open-button';
+    moveButton.textContent = 'Move task';
+    destination.disabled = activeProjectArchived || destination.options.length === 0;
+    moveButton.disabled = activeProjectArchived || destination.options.length === 0;
+    destinationForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!destination.value) return;
+      try {
+        await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}/move`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: destination.value })
+        });
+        currentTasks = currentTasks.filter(item => item.id !== task.id);
+        drawTasks();
+      } catch (error) {
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
+    destinationForm.append(destination, moveButton);
     label.append(checkbox);
-    row.append(title, renameForm, priority, dueDateForm, label);
+    row.append(title, renameForm, priority, dueDateForm, destinationForm, label);
     tasksNode.append(row);
   }
 }
 
 async function loadTasks() {
   if (!activeProjectId) return;
-  currentTasks = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`);
+  const [tasks, projects] = await Promise.all([
+    request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks`), request('/api/projects')
+  ]);
+  currentTasks = tasks;
+  activeProjects = projects.filter(project => !project.archived);
   drawTasks();
 }
 
