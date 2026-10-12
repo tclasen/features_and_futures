@@ -40,6 +40,8 @@
   <script type="module">
     const app = document.querySelector('#app');
     const projectViewStates = new Map();
+    let projectListState = { filter: 'Active', query: '', appliedQuery: '' };
+    const foldAscii = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
     const requestProjects = async (options) => {
       const response = await fetch('/api/projects', options);
       const data = await response.json();
@@ -117,7 +119,8 @@
       return data;
     };
 
-    function renderList(projects, selectedFilter = 'Active') {
+    function renderList(projects, selectedFilter = projectListState.filter) {
+      projectListState.filter = selectedFilter;
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -167,9 +170,39 @@
       }
       filterField.append(filterLabel, filter);
       app.append(filterField);
-      const visibleProjects = projects.filter((project) => project.archived === (filter.value === 'Archived'));
-      filter.addEventListener('change', () => renderList(projects, filter.value));
-      for (const project of visibleProjects) {
+      const searchForm = document.createElement('form');
+      const searchField = document.createElement('div');
+      const searchLabel = document.createElement('label');
+      searchLabel.htmlFor = 'project-search';
+      searchLabel.textContent = 'Project search';
+      const searchInput = document.createElement('input');
+      searchInput.id = 'project-search';
+      searchInput.type = 'text';
+      searchInput.value = projectListState.query;
+      searchField.append(searchLabel, searchInput);
+      const searchButton = document.createElement('button');
+      searchButton.type = 'submit';
+      searchButton.textContent = 'Search projects';
+      searchForm.append(searchField, searchButton);
+      const renderProjects = () => {
+        for (const row of app.querySelectorAll('[data-testid="project-row"]')) row.remove();
+        const query = foldAscii(projectListState.appliedQuery);
+        for (const project of projects.filter((item) => item.archived === (filter.value === 'Archived')
+          && foldAscii(item.name).includes(query))) appendProjectRow(project);
+      };
+      searchInput.addEventListener('input', () => { projectListState.query = searchInput.value; });
+      searchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        projectListState.query = searchInput.value.trim();
+        projectListState.appliedQuery = projectListState.query;
+        renderProjects();
+      });
+      filter.addEventListener('change', () => {
+        projectListState.filter = filter.value;
+        renderList(projects, filter.value);
+      });
+      app.append(searchForm);
+      const appendProjectRow = (project) => {
         const row = document.createElement('section');
         row.dataset.testid = 'project-row';
         row.className = 'project-row';
@@ -200,7 +233,8 @@
         });
         row.append(name, summary, open, archive);
         app.append(row);
-      }
+      };
+      renderProjects();
     }
 
     async function render() {
@@ -214,6 +248,7 @@
       back.className = 'back';
       back.textContent = 'Projects';
       back.addEventListener('click', () => {
+        projectListState = { filter: 'Active', query: '', appliedQuery: '' };
         history.pushState({}, '', '/');
         render();
       });
@@ -225,6 +260,8 @@
       const viewState = projectViewStates.get(project.id) || {
         taskFilter: 'All',
         priorityFilter: 'All',
+        taskQuery: '',
+        appliedTaskQuery: '',
         dueFrom: '',
         dueThrough: '',
         appliedDueFrom: '',
@@ -367,6 +404,29 @@
       applyDueRange.textContent = 'Apply due range';
       dueRangeField.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
       app.append(dueRangeField);
+      const taskSearchForm = document.createElement('form');
+      const taskSearchField = document.createElement('div');
+      const taskSearchLabel = document.createElement('label');
+      taskSearchLabel.htmlFor = 'task-search';
+      taskSearchLabel.textContent = 'Task search';
+      const taskSearch = document.createElement('input');
+      taskSearch.id = 'task-search';
+      taskSearch.type = 'text';
+      taskSearch.value = viewState.taskQuery;
+      taskSearchField.append(taskSearchLabel, taskSearch);
+      const taskSearchButton = document.createElement('button');
+      taskSearchButton.type = 'submit';
+      taskSearchButton.textContent = 'Search tasks';
+      taskSearchForm.append(taskSearchField, taskSearchButton);
+      taskSearch.addEventListener('input', () => { viewState.taskQuery = taskSearch.value; });
+      taskSearchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        viewState.taskQuery = taskSearch.value.trim();
+        viewState.appliedTaskQuery = viewState.taskQuery;
+        alert.hidden = true;
+        renderTasks();
+      });
+      app.append(taskSearchForm);
       const list = document.createElement('div');
       app.append(list);
       let tasks = await requestTasks(project.id);
@@ -409,6 +469,7 @@
         const visible = tasks.filter((task) =>
           (filter.value === 'All' || (filter.value === 'Completed') === task.completed)
           && (priorityFilter.value === 'All' || priorityFilter.value === task.priority)
+          && foldAscii(task.title).includes(foldAscii(viewState.appliedTaskQuery))
           && (!appliedDueFrom && !appliedDueThrough || Boolean(task.due_date)
             && (!appliedDueFrom || task.due_date >= appliedDueFrom)
             && (!appliedDueThrough || task.due_date <= appliedDueThrough))
@@ -553,7 +614,10 @@
       });
     }
 
-    addEventListener('popstate', () => render());
+    addEventListener('popstate', () => {
+      if (location.pathname === '/') projectListState = { filter: 'Active', query: '', appliedQuery: '' };
+      render();
+    });
     render().catch((error) => { app.textContent = error.message; });
   </script>
 </body>
