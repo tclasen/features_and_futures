@@ -130,7 +130,9 @@ const page = `<!doctype html>
   <script>
     const app = document.querySelector('#app');
     const escId = (value) => encodeURIComponent(value);
-    const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+    const normalizeSearchText = (value) => value
+      .replace(/[ \t]+/g, ' ')
+      .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
     async function getProjects(archived = false) {
       const response = await fetch('/api/projects?archived=' + (archived ? '1' : '0'));
       if (!response.ok) throw new Error('Could not load projects');
@@ -190,8 +192,8 @@ const page = `<!doctype html>
         showList(selectedFilter, searchInput.value.trim());
       });
       app.append(searchForm);
-      const searchNeedle = asciiLower(appliedQuery.trim());
-      const matchingProjects = projects.filter((project) => asciiLower(project.name).includes(searchNeedle));
+      const searchNeedle = normalizeSearchText(appliedQuery.trim());
+      const matchingProjects = projects.filter((project) => normalizeSearchText(project.name).includes(searchNeedle));
       const filterLabel = document.createElement('label');
       filterLabel.textContent = 'Project filter';
       const filter = document.createElement('select');
@@ -453,7 +455,7 @@ const page = `<!doctype html>
             if (filter.value === 'Open' && task.completed) continue;
             if (filter.value === 'Completed' && !task.completed) continue;
             if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
-            if (!asciiLower(task.title).includes(asciiLower(appliedTaskQuery))) continue;
+            if (!normalizeSearchText(task.title).includes(normalizeSearchText(appliedTaskQuery))) continue;
             if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
             if (appliedFrom && task.dueDate < appliedFrom) continue;
             if (appliedThrough && task.dueDate > appliedThrough) continue;
