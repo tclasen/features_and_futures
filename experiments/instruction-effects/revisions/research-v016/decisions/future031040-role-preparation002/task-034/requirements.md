@@ -1,0 +1,5 @@
+# Task 034: Directory word search modes
+
+Add Directory search mode with Phrase, All words and Any words, default Phrase. Phrase retains the existing normalized literal title search. All words requires every query token and Any words requires at least one token in the normalized task title. Split only on ASCII spaces/tabs after existing trimming and normalization; fold ASCII case only. Empty query matches all in every mode. Matching uses titles only and intersects every existing scope, completion, priority and date filter. Preserve ordering, matching owner creation order, summaries, disabled protections, matching export and all bulk actions. Selecting a mode re-evaluates the current query without mutating records.
+
+Only the query is tokenized. Each token matches by literal substring containment in the normalized title; a separate word boundary is not required. Repeating a token does not change its meaning. For example, preRedpost matches the token Red under All words or Any words. These details finalize the preselected acceptance sketch before freezing or dispatch.

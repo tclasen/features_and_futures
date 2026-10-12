@@ -51,6 +51,13 @@ delta = checked(base / 'role-delta031-verification002/verified.json',
                 {'verified': True, 'checked_suites': 31, 'mathematical_and_stopping_fields_unchanged': True}, 'files')
 assert delta['role_guard_sha256'] == sha(Path('orchestrator/action_role_readiness.py'))
 assert file_hashes(base / 'task030-action-role-suite') == file_hashes(revision / 'decisions/frozen-prefix-drafts/task-030/suite')
+checked(base / 'future031040-role-phase-listing002/independently-verified.json',
+        {'verified': True, 'phase_listings': 40, 'exact_requirement_lineage': True,
+         'only_exact_generic_role_delta': True}, 'originals', base / 'future031040-role-phase-listing002')
+future_preparation = checked(revision / 'decisions/future031040-role-preparation002/prepared.json',
+                             {'prepared_unfrozen': True, 'native_model_calls': 0, 'no_native_dispatch': True})
+assert len(future_preparation['requirements']) == 10
+assert future_preparation['suite_files'] == file_hashes(base / 'task040-action-role-suite002')
 checked(base / 'export017-role-focused-combined001/verified.json',
         {'verified': True, 'positive_cases': 12, 'fault_variants': 36}, 'files')
 checked(base / 'directory-action-role-focused001-independent/verified.json',
@@ -103,7 +110,7 @@ shutil.copy2(__file__, output / 'executed-freeze-controller.py')
 write_json(output / 'plan-freeze.json', {
     'verified': True, 'utc': plan['frozen_at'], 'native_model_calls': 0,
     'mathematical_and_stopping_rules_unchanged': True, 'changed_plan_fields': sorted(changed),
-    'pm_checks': 196, 'phase_listings': 89, 'role_delta_suites': 31,
+    'pm_checks': 196, 'phase_listings': 89, 'future_phase_listings': 40, 'role_delta_suites': 31,
     'focused_cases': 132, 'synthetic_cumulative_cases': 2984,
     'process_local_probe_cases': 52, 'native_source_full_cases': 58,
     'actual_native_restart_verified': True, 'prior_run': 'eval-015',
