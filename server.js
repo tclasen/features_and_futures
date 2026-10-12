@@ -37,6 +37,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET sort_order = id');
@@ -75,7 +78,7 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, database.prepare(`
       SELECT p.id, p.name, p.archived, p.default_task_priority, COUNT(t.id) AS total_count,
         COALESCE(SUM(t.completed), 0) AS completed_count
-      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted = 0
       GROUP BY p.id ORDER BY p.id
     `).all().map((project) => ({
       ...project,
@@ -132,8 +135,8 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
-      return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
+      const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
+      return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) })));
     }
     if (request.method === 'POST') {
       if (project.archived) return sendJson(response, 400, { error: 'Archived projects cannot be changed' });
@@ -165,6 +168,9 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 400, { error: 'Invalid request body' });
     }
     if (body?.destination_project_id !== undefined) {
+      const task = database.prepare('SELECT deleted FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+      if (!task) return sendJson(response, 404, { error: 'Task not found' });
+      if (task.deleted) return sendJson(response, 400, { error: 'Deleted tasks cannot be changed' });
       const destinationId = Number(body.destination_project_id);
       const destination = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
       if (!destination || destination.archived || destinationId === projectId) {
@@ -178,6 +184,14 @@ const server = createServer(async (request, response) => {
       savePosition.run(taskId, destinationId, nextOrder);
       return sendJson(response, 200, { id: taskId, project_id: destinationId });
     }
+    if (typeof body?.deleted === 'boolean') {
+      const result = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?').run(Number(body.deleted), taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, deleted: body.deleted });
+    }
+    const existingTask = database.prepare('SELECT deleted FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+    if (!existingTask) return sendJson(response, 404, { error: 'Task not found' });
+    if (existingTask.deleted) return sendJson(response, 400, { error: 'Deleted tasks cannot be changed' });
     if (typeof body?.completed === 'boolean') {
       const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
       if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
