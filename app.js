@@ -65,6 +65,8 @@ async function render() {
         appliedFrom = from; appliedThrough = through; alert.textContent = ''; refreshTasks();
       });
       const list = element('section'); list.setAttribute('aria-label', 'Tasks');
+      const allProjects = await request('/api/projects');
+      const destinations = allProjects.filter(item => !item.archived && item.id !== project.id);
       app.append(form, alert, filter, priorityFilter, defaultPriority, dueFrom, dueThrough, applyRange, list);
       async function refreshTasks() {
         const tasks = await request(`/api/projects/${project.id}/tasks`);
@@ -105,7 +107,17 @@ async function render() {
               alert.textContent = ''; await refreshTasks();
             } catch (error) { alert.textContent = error.message; }
           });
-          row.append(renameInput, renameButton, priority, dueDate, saveDueDate); return row;
+          row.append(renameInput, renameButton, priority, dueDate, saveDueDate);
+          const destination = document.createElement('select'); destination.setAttribute('aria-label', 'Destination project');
+          for (const item of destinations) { const option = element('option', item.name); option.value = item.id; destination.append(option); }
+          const moveButton = element('button', 'Move task'); moveButton.type = 'button';
+          const moveDisabled = Boolean(project.archived) || destinations.length === 0;
+          destination.disabled = moveDisabled; moveButton.disabled = moveDisabled;
+          moveButton.addEventListener('click', async () => {
+            try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ destinationProjectId: Number(destination.value) })); await refreshTasks(); }
+            catch (error) { alert.textContent = error.message; }
+          });
+          row.append(destination, moveButton); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);
