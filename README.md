@@ -42,6 +42,9 @@ with completion and priority filters, invalid-range preservation, edit-driven me
 changes, restart persistence of task data, and usable archived filtering. Applied ranges
 are kept in the project URL; opening a project from the list starts with empty boundaries.
 Task-move tests cover ordered active destinations, disabled controls without destinations,
-source ownership and archived protection, append ordering (including repeat moves),
-unchanged task data and source filters, summaries, schema migration, and restart persistence.
+source ownership and archived protection, first-arrival append ordering and remembered
+return positions (including reverse-order returns), unchanged task data and source filters,
+summaries, schema migration, and restart persistence.
 Moves preserve task identity and all saved attributes, independently of destination defaults.
+Each project remembers task positions even while tasks are elsewhere; new tasks and first
+arrivals follow all previously established positions. Migration preserves current task order.
