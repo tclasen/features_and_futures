@@ -124,6 +124,24 @@ function isValidDueDate(value) {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
+function isValidPortableProject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || value.format !== 'workboard-project' || value.version !== 1
+    || !value.project || typeof value.project !== 'object' || Array.isArray(value.project)) return false;
+  const project = value.project;
+  if (typeof project.name !== 'string' || !project.name.trim()
+    || typeof project.archived !== 'boolean'
+    || !['Low', 'Normal', 'High'].includes(project.defaultPriority)
+    || !Array.isArray(project.tasks)) return false;
+  return project.tasks.every((task) => task && typeof task === 'object' && !Array.isArray(task)
+    && typeof task.title === 'string' && Boolean(task.title.trim())
+    && typeof task.completed === 'boolean'
+    && ['Low', 'Normal', 'High'].includes(task.priority)
+    && typeof task.dueDate === 'string' && (!task.dueDate || isValidDueDate(task.dueDate))
+    && typeof task.notes === 'string'
+    && typeof task.deleted === 'boolean');
+}
+
 function sendJson(response, status, value) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(value));
@@ -237,6 +255,40 @@ async function handleRequest(request, response) {
       return sendJson(response, 201, findProject.get(result.lastInsertRowid));
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
+    }
+  }
+  if (request.method === 'POST' && url.pathname === '/api/projects/import') {
+    let payload;
+    try {
+      payload = await readJson(request);
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid project JSON' });
+    }
+    const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    if (!isValidPortableProject(payload.document)) {
+      return sendJson(response, 400, { error: 'Invalid project JSON' });
+    }
+    const imported = payload.document.project;
+    database.exec('BEGIN');
+    try {
+      const projectResult = database.prepare(`INSERT INTO projects (name, archived, default_task_priority)
+        VALUES (?, ?, ?)`).run(name, imported.archived ? 1 : 0, imported.defaultPriority);
+      const projectId = Number(projectResult.lastInsertRowid);
+      const insertTask = database.prepare(`INSERT INTO tasks
+        (project_id, title, completed, priority, due_date, notes, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+      const insertPosition = database.prepare(`INSERT INTO task_project_positions (task_id, project_id, position)
+        VALUES (?, ?, ?)`);
+      imported.tasks.forEach((task, position) => {
+        const taskResult = insertTask.run(projectId, task.title, task.completed ? 1 : 0,
+          task.priority, task.dueDate || null, task.notes, task.deleted ? 1 : 0);
+        insertPosition.run(taskResult.lastInsertRowid, projectId, position);
+      });
+      database.exec('COMMIT');
+      return sendJson(response, 201, findProject.get(projectId));
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
     }
   }
   const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
