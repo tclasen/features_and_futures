@@ -101,21 +101,31 @@ async function renderTasks(project) {
       <option value="open">Open</option>
       <option value="completed">Completed</option>
     </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option value="all">All</option>
+      <option value="Low">Low</option>
+      <option value="Normal">Normal</option>
+      <option value="High">High</option>
+    </select>
     <p id="empty-tasks">No tasks to show.</p>
     <ul id="tasks" aria-label="Tasks"></ul>`;
   app.append(section);
   const form = section.querySelector('form');
   const input = section.querySelector('input');
   const submit = form.querySelector('button');
-  const filter = section.querySelector('select');
+  const filter = section.querySelector('#task-filter');
+  const priorityFilter = section.querySelector('#priority-filter');
   const list = section.querySelector('ul');
   const endpoint = `/api/projects/${projectId}/tasks`;
   let tasks = [];
 
   function drawTasks() {
     list.replaceChildren();
-    const visible = tasks.filter((task) => filter.value === 'all' ||
-      (filter.value === 'completed' ? task.completed : !task.completed));
+    const visible = tasks.filter((task) =>
+      (filter.value === 'all' ||
+        (filter.value === 'completed' ? task.completed : !task.completed)) &&
+      (priorityFilter.value === 'all' || task.priority === priorityFilter.value));
     section.querySelector('#empty-tasks').hidden = visible.length > 0;
     for (const task of visible) {
       const row = document.createElement('li');
@@ -204,6 +214,7 @@ async function renderTasks(project) {
             body: JSON.stringify({ priority: priority.value }),
           });
           Object.assign(task, saved);
+          drawTasks();
         } catch (error) { showError(error); }
         finally {
           priority.value = task.priority;
@@ -217,6 +228,7 @@ async function renderTasks(project) {
   }
 
   filter.addEventListener('change', drawTasks);
+  priorityFilter.addEventListener('change', drawTasks);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (submit.disabled) return;
