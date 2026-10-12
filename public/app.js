@@ -134,13 +134,16 @@ function renderTasks() {
     renameInput.disabled = archived;
     renameButton.disabled = archived;
     renameButton.addEventListener('click', async () => {
+      const error = document.querySelector('#task-rename-error');
+      error.hidden = true;
       const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: renameInput.value })
       });
       if (!response.ok) {
         const result = await response.json();
-        window.alert(result.error || 'Unable to rename task');
+        error.textContent = result.error || 'Unable to rename task';
+        error.hidden = false;
         return;
       }
       const updated = await response.json();
