@@ -162,6 +162,7 @@ function sendPage(response) {
     </section>
     <section id="detail" hidden>
       <button id="back" type="button">Projects</button>
+      <button id="download-project" type="button">Download project</button>
       <h1 id="project-title"></h1>
       <p id="archived-notice" hidden>Archived project</p>
       <form id="rename-form">
@@ -565,6 +566,9 @@ function sendPage(response) {
     });
 
     document.querySelector('#back').addEventListener('click', () => { appliedProjectQuery = ''; window.location.href = '/'; });
+    document.querySelector('#download-project').addEventListener('click', () => {
+      window.location.href = '/api/projects/' + encodeURIComponent(currentProjectId) + '/export';
+    });
     const match = window.location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) showProject(match[1]);
     else showList();
@@ -587,6 +591,36 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     sendJson(response, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
+    return;
+  }
+  const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (request.method === 'GET' && exportMatch) {
+    const projectId = Number(exportMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+    const tasks = listTasks.all(projectId).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.due_date || '',
+      notes: (task.notes || '').replace(/\r\n|\r/g, '\n'),
+      deleted: Boolean(task.deleted)
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.default_priority || 'Normal',
+        tasks
+      }
+    };
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="workboard-project.json"'
+    });
+    response.end(JSON.stringify(document));
     return;
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
