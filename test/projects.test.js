@@ -75,6 +75,81 @@ function priorityControls(html) {
   }));
 }
 
+test('notes migrate, preserve plain text and filters, travel with tasks, and respect archival', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects VALUES (1, 'Source'), (2, 'Destination');
+    INSERT INTO tasks VALUES (1, 1, 'Original', 1);
+  `);
+  legacy.close();
+  const readTask = () => {
+    const db = new DatabaseSync(databasePath);
+    try { return db.prepare('SELECT * FROM tasks WHERE id = 1').get(); }
+    finally { db.close(); }
+  };
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const original = readTask();
+    assert.equal(original.notes, '');
+    await post(server.baseUrl, '/projects/1/tasks', { title: 'Second' });
+    await post(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await post(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '2026-03-05' });
+    const before = readTask();
+    const notes = '\n  Unicode café 📝\n<em>literal</em> & </textarea><script>alert(1)</script>\n  ';
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-03-01', dueThrough: '2026-03-31', search: 'orig' };
+    const saved = await post(server.baseUrl, '/projects/1/tasks/1/notes', { ...filters, notes });
+    assert.equal(saved.status, 303);
+    const location = saved.headers.get('location');
+    assert.deepEqual(Object.fromEntries(new URL(location, server.baseUrl).searchParams), filters);
+    assert.deepEqual({ ...readTask() }, { ...before, notes });
+    let html = await get(location);
+    assert.deepEqual(taskRows(html).map((row) => row.title), ['Original']);
+    assert.match(html, /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(html, /<textarea id="task-notes-1" name="notes" rows="4">\n\n  Unicode café 📝/);
+    assert.match(html, /&lt;\/textarea&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(html, /<script>alert/);
+    assert.deepEqual(taskRows(await get('/projects/1?search=Unicode')), []);
+    assert.deepEqual(projectSummaries(await get('/')), ['1/2 completed', '0/0 completed']);
+    assert.equal((await post(server.baseUrl, '/projects/2/tasks/1/notes', { notes: 'Wrong owner' })).status, 404);
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/rename', { title: 'Renamed' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    assert.equal(readTask().notes, notes);
+    assert.deepEqual(taskRows(await get('/projects/1')).map((row) => row.title), ['Renamed', 'Second']);
+    await post(server.baseUrl, '/projects/1/archive', {});
+    html = await get('/projects/1');
+    assert.match(html, /<textarea id="task-notes-1" name="notes" rows="4" disabled>/);
+    assert.match(html, /<button type="submit" disabled>Save notes<\/button>/);
+    assert.equal((await post(server.baseUrl, '/projects/1/tasks/1/notes', { notes: 'Blocked' })).status, 409);
+    assert.equal(readTask().notes, notes);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(readTask().notes, notes);
+    assert.match(await get('/projects/1'), /Unicode café 📝/);
+    await post(server.baseUrl, '/projects/1/restore', {});
+    assert.doesNotMatch(await get('/projects/1'), / disabled/);
+    await post(server.baseUrl, '/projects/1/tasks/1/notes', { notes: '   \n\t ' });
+    assert.equal(readTask().notes, '   \n\t ');
+    await post(server.baseUrl, '/projects/1/tasks/1/notes', { notes: '' });
+    assert.equal(readTask().notes, '');
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(readTask().notes, '');
+    assert.equal(readTask().title, 'Renamed');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project search uses trimmed ASCII-insensitive substrings and intersects archive filtering', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-project-search-'));
   let server;

@@ -33,6 +33,9 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   database.exec(`
     BEGIN;
@@ -70,7 +73,7 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const listTasks = database.prepare(`
-  SELECT tasks.id, title, completed, priority, due_date FROM tasks
+  SELECT tasks.id, title, completed, priority, due_date, notes FROM tasks
   JOIN task_positions ON task_positions.task_id = tasks.id
     AND task_positions.project_id = tasks.project_id
   WHERE tasks.project_id = ? ORDER BY task_positions.position, tasks.id
@@ -115,6 +118,7 @@ const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 // Calendar arithmetic avoids timezone conversion and Date's special handling of years 0–99.
 function validDueDate(value) {
@@ -269,6 +273,8 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
     ((!range.from && !range.through) || (task.due_date &&
       (!range.from || task.due_date >= range.from) &&
       (!range.through || task.due_date <= range.through))));
+  // HTML discards the first literal newline after <textarea>; supply one before the notes.
+  // Encode carriage returns to avoid HTML source newline normalization.
   const rows = tasks.map((task) => `
     <li data-testid="task-row">
       <span>${escapeHtml(task.title)}</span>
@@ -291,6 +297,13 @@ function projectPage(project, filter = 'All', error = '', priority = 'All', rang
           <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </div>
+      </form>
+      <form action="${path}/tasks/${task.id}/notes" method="post">
+        ${taskFilterFields(filter, priority, range, search)}
+        <label for="task-notes-${task.id}">Task notes</label>
+        <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>
+${escapeHtml(task.notes).replace(/\r/g, '&#13;')}</textarea>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
       </form>
       <form action="${path}/tasks/${task.id}/move" method="post">
         ${taskFilterFields(filter, priority, range, search)}
@@ -401,6 +414,7 @@ const stylesheet = `
   h1 { margin-top: 0; }
   label { display: block; font-weight: 600; margin-bottom: 8px; }
   .input-group { display: flex; gap: 12px; flex-wrap: wrap; }
+  textarea { display: block; max-width: 100%; padding: 10px; border: 1px solid #748595; border-radius: 5px; font: inherit; margin-bottom: 8px; }
   input { flex: 1; min-width: 160px; padding: 10px; border: 1px solid #748595; border-radius: 5px; font: inherit; }
   button { padding: 10px 16px; border: 0; border-radius: 5px; background: #165fc1; color: white; font: inherit; cursor: pointer; }
   button:hover { background: #10478f; }
@@ -525,7 +539,7 @@ const server = http.createServer(async (request, response) => {
       } else {
         sendHtml(response, 404, page('Not found', '<h1>Project not found</h1><a href="/">Projects</a>'));
       }
-    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date|move))?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/[1-9]\d*\/tasks(?:\/[1-9]\d*\/(?:completion|rename|priority|due-date|move|notes))?$/.test(url.pathname)) {
       const [, , projectId, , taskId, action] = url.pathname.split('/');
       const id = Number(projectId);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -567,6 +581,8 @@ const server = http.createServer(async (request, response) => {
             result = updateTaskPriority.run(priority, taskNumber, id);
           } else if (action === 'due-date') {
             result = updateTaskDueDate.run(dueDate, taskNumber, id);
+          } else if (action === 'notes') {
+            result = updateTaskNotes.run(form.get('notes') || '', taskNumber, id);
           } else if (action === 'move') {
             const destinationId = Number(form.get('destination'));
             const destination = Number.isSafeInteger(destinationId) ? findProject.get(destinationId) : undefined;
