@@ -32,6 +32,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const addTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' });
@@ -98,13 +99,19 @@ const server = http.createServer(async (req, res) => {
       let body = '';
       for await (const chunk of req) body += chunk;
       const data = JSON.parse(body);
-      if (typeof data.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
       const projectId = Number(taskMatch[1]);
       const taskId = Number(taskMatch[2]);
-      if (!getTask.get(taskId, projectId)) return json(res, 404, { error: 'Task not found' });
+      const task = getTask.get(taskId, projectId);
+      if (!task) return json(res, 404, { error: 'Task not found' });
       if (getProject.get(projectId).archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
-      updateTask.run(data.completed ? 1 : 0, taskId, projectId);
-      return json(res, 200, { ...getTask.get(taskId, projectId), completed: data.completed });
+      if (Object.hasOwn(data, 'title')) {
+        const title = typeof data.title === 'string' ? data.title.trim() : '';
+        if (!title) return json(res, 400, { error: 'Task title is required' });
+        renameTask.run(title, taskId, projectId);
+      } else if (typeof data.completed === 'boolean') {
+        updateTask.run(data.completed ? 1 : 0, taskId, projectId);
+      } else return json(res, 400, { error: 'Invalid task update' });
+      return json(res, 200, { ...getTask.get(taskId, projectId), completed: Boolean(getTask.get(taskId, projectId).completed) });
     } catch {
       return json(res, 400, { error: 'Invalid request' });
     }
