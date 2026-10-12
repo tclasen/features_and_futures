@@ -137,11 +137,18 @@ function html(response, status, content) {
   response.end(content);
 }
 
-function projectPage(project, filter = 'All', error = '') {
+function taskFilterQuery(filter, priorityFilter) {
+  const query = new URLSearchParams({ filter });
+  if (priorityFilter !== 'All') query.set('priorityFilter', priorityFilter);
+  return query.toString();
+}
+
+function projectPage(project, filter = 'All', error = '', priorityFilter = 'All') {
   const tasks = listTasks.all(project.id).filter(task =>
-    filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
+    (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
+    (priorityFilter === 'All' || task.priority === priorityFilter));
   const action = `/projects/${project.id}`;
-  const query = new URLSearchParams({ filter }).toString();
+  const query = escapeHtml(taskFilterQuery(filter, priorityFilter));
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -166,6 +173,10 @@ function projectPage(project, filter = 'All', error = '') {
       <label for="task-filter">Task filter</label>
       <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed'].map(option => `<option${filter === option ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
+        ${['All', ...taskPriorities].map(option => `<option${priorityFilter === option ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
     ${tasks.length ? `<ul class="task-list">${tasks.map(task => `
@@ -244,34 +255,36 @@ const server = http.createServer(async (request, response) => {
       }
       const requestedFilter = url.searchParams.get('filter');
       const filter = ['Open', 'Completed'].includes(requestedFilter) ? requestedFilter : 'All';
+      const requestedPriorityFilter = url.searchParams.get('priorityFilter');
+      const priorityFilter = taskPriorities.includes(requestedPriorityFilter) ? requestedPriorityFilter : 'All';
       if (request.method === 'GET') {
-        html(response, 200, projectPage(project, filter));
+        html(response, 200, projectPage(project, filter, '', priorityFilter));
       } else {
         const body = await readForm(request);
         const currentProject = getProject.get(project.id);
         if (currentProject.archived) {
-          html(response, 403, projectPage(currentProject, filter, 'Archived project'));
+          html(response, 403, projectPage(currentProject, filter, 'Archived project', priorityFilter));
           return;
         }
         const taskId = url.pathname.split('/')[4];
         if (url.pathname.endsWith('/rename') && taskId === undefined) {
           const name = (body.get('name') ?? '').trim();
           if (!name) {
-            html(response, 400, projectPage(currentProject, filter, 'Project name is required'));
+            html(response, 400, projectPage(currentProject, filter, 'Project name is required', priorityFilter));
             return;
           }
           renameProject.run(name, project.id);
         } else if (taskId === undefined) {
           const title = (body.get('title') ?? '').trim();
           if (!title) {
-            html(response, 400, projectPage(project, filter, 'Task title is required'));
+            html(response, 400, projectPage(project, filter, 'Task title is required', priorityFilter));
             return;
           }
           createTask.run(project.id, title);
         } else if (url.pathname.endsWith('/rename')) {
           const title = (body.get('title') ?? '').trim();
           if (!title) {
-            html(response, 400, projectPage(currentProject, filter, 'Task title is required'));
+            html(response, 400, projectPage(currentProject, filter, 'Task title is required', priorityFilter));
             return;
           }
           const id = Number(taskId);
@@ -282,7 +295,7 @@ const server = http.createServer(async (request, response) => {
         } else if (url.pathname.endsWith('/priority')) {
           const priority = body.get('priority');
           if (!taskPriorities.includes(priority)) {
-            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority'));
+            html(response, 400, projectPage(currentProject, filter, 'Invalid task priority', priorityFilter));
             return;
           }
           const id = Number(taskId);
@@ -297,7 +310,7 @@ const server = http.createServer(async (request, response) => {
             return;
           }
         }
-        redirect(response, `/projects/${project.id}?${new URLSearchParams({ filter })}`);
+        redirect(response, `/projects/${project.id}?${taskFilterQuery(filter, priorityFilter)}`);
       }
     } else {
       html(response, 404, page('Not found', '<h1>Not found</h1>'));
