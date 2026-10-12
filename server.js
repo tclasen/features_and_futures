@@ -198,8 +198,9 @@ function page(title, content) {
 }
 
 function matchesSearch(value, query) {
-  const foldAscii = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
-  return foldAscii(value).includes(foldAscii(query));
+  const normalize = text => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function projectListQuery(filter, search) {

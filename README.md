@@ -53,8 +53,10 @@ when no active destination exists. Saved ownership and ordering survive restarts
 Project search and Search projects match project names by substring within the
 selected Active/Archived filter. Task search and Search tasks intersect the
 completion, priority and applied due-range filters. Both searches ignore ASCII
-letter case and trim surrounding query whitespace while preserving internal
-whitespace. Blank queries match everything allowed by the other filters.
+letter case and trim surrounding query whitespace. For matching only, runs of
+ASCII spaces and horizontal tabs become one space in queries and names/titles;
+saved names and titles retain their original whitespace and case. Blank queries
+match everything allowed by the other filters.
 Task edits preserve the applied search and filters and immediately update
 matching rows; summaries still count all tasks. Search remains available in
 archived projects. Opening a project from the list or returning via Projects

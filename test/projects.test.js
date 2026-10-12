@@ -1224,6 +1224,69 @@ test('remembered positions migrate and restore order across projects, edits, arc
   }
 });
 
+test('search collapses only ASCII spaces and tabs without changing saved names or titles', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async path => (await fetch(server.address + path)).text();
+    const names = html => [...html.matchAll(/class="project-name">([^<]*)/g)].map(match => match[1]);
+    const titles = html => [...html.matchAll(/class="task-title">([^<]*)<\/span>/g)].map(match => match[1]);
+    const originals = ['MiXeD  \t\t  Case', 'MiXeD\tCase', 'MiXeD Case', 'MiXeD\nCase', 'MiXeD\u00a0Case'];
+    for (const name of originals) await post('/projects', { name });
+    for (const title of originals) await post('/projects/1/tasks', { title });
+    const projectPath = query => '/?' + new URLSearchParams({ search: query });
+    const taskPath = query => '/projects/1?' + new URLSearchParams({ search: query });
+    for (const query of ['mixed case', ' \tmIXed \t \t cASe\n', 'xed\t\t ca']) {
+      assert.deepEqual(names(await view(projectPath(query))), originals.slice(0, 3));
+      assert.deepEqual(titles(await view(taskPath(query))), originals.slice(0, 3));
+    }
+    // Other internal whitespace is significant, and an empty query shows all rows.
+    for (const query of ['mixed\ncase', 'mixed\u00a0case']) {
+      const expected = query.includes('\n') ? originals[3] : originals[4];
+      assert.deepEqual(names(await view(projectPath(query))), [expected]);
+      assert.deepEqual(titles(await view(taskPath(query))), [expected]);
+    }
+    assert.deepEqual(names(await view(projectPath(' \t\n '))), originals);
+    assert.deepEqual(titles(await view(taskPath(' \t\n '))), originals);
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    const query = '?' + new URLSearchParams({
+      filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29',
+      dueThrough: '2024-02-29', search: 'mixed \t case',
+    });
+    const filtered = await view('/projects/1' + query);
+    assert.deepEqual(titles(filtered), [originals[0]]);
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await view(projectPath('mixed\t case') + '&filter=Archived')), [originals[0]]);
+    assert.deepEqual(titles(await view('/projects/1' + query)), [originals[0]]);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(titles(await view('/projects/1' + query)), [originals[0]]);
+    await post('/projects/1/restore');
+    assert.equal(await view('/projects/1' + query), filtered);
+    assert.deepEqual(names(await view('/')), originals);
+    assert.deepEqual(titles(await view('/projects/1')), originals);
+    // Verify persistence directly so rendering cannot conceal a rewritten value.
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.deepEqual(database.prepare('SELECT name FROM projects ORDER BY id').all().map(row => row.name), originals);
+      assert.deepEqual(database.prepare('SELECT title FROM tasks ORDER BY id').all().map(row => row.title), originals);
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project search matches ASCII substrings, intersects archives, and resets on navigation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-project-search-'));
   let server;
@@ -1254,7 +1317,7 @@ test('project search matches ASCII substrings, intersects archives, and resets o
     assert.deepEqual(names(await view(searchPath('alpha', 'Archived'))), ['Archived alpha']);
     assert.deepEqual(names(await view(searchPath('alpha  '))), ['Alpha One', 'ALPHA  Two']);
     assert.deepEqual(names(await view(searchPath('alpha  t'))), ['ALPHA  Two']);
-    assert.deepEqual(names(await view(searchPath('alpha t'))), []);
+    assert.deepEqual(names(await view(searchPath('alpha t'))), ['ALPHA  Two']);
     assert.deepEqual(names(await view(searchPath('älpha'))), []);
     assert.deepEqual(names(await view(searchPath('ÄLPHA'))), ['Älpha']);
     assert.deepEqual(names(await view(searchPath(' \t\n'))), ['Alpha One', 'ALPHA  Two', 'Other', 'Älpha', 'Markup &lt;&amp;&quot;']);
@@ -1304,7 +1367,7 @@ test('task search intersects all filters and retains queries through edits, move
     assert.deepEqual(titles(await view(searchPath(' \tAlPhA\n'))),
       ['Alpha first', 'ALPHA  second', 'Alpha open', 'Alpha low', 'Alpha undated']);
     assert.deepEqual(titles(await view(searchPath('alpha  s'))), ['ALPHA  second']);
-    assert.deepEqual(titles(await view(searchPath('alpha s'))), []);
+    assert.deepEqual(titles(await view(searchPath('alpha s'))), ['ALPHA  second']);
     assert.deepEqual(titles(await view(searchPath('älpha'))), []);
     assert.deepEqual(titles(await view(searchPath('ÄLPHA'))), ['Älpha']);
     const query = '?filter=Completed&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-02-29&search=alpha';
