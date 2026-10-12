@@ -60,8 +60,15 @@ and priority filters. Blank boundaries are unbounded; undated tasks match only
 when both boundaries are blank. Invalid ranges preserve the applied filters.
 
 Each task row offers Destination project and Move task controls. Destinations
-are other active projects in project creation order. Moving appends the task to
-its destination while preserving its title, completion, priority and due date,
+are other active projects in project creation order. Moving to a new destination
+appends the task after all positions established there. Returning to a previous
+project restores the task's remembered position, including when multiple tasks
+return in a different order. Moves preserve title, completion, priority and due date,
 and keeps the source page open with its filters unchanged. Task order and
 ownership persist across restarts. Archived projects cannot send or receive
 tasks; moving is also disabled when there are no eligible destinations.
+
+Remembered positions persist separately for each project across restarts,
+project renames, archival and restoration. Existing databases retain their
+current task order on upgrade. Newly created tasks follow all established
+positions, including positions belonging to tasks currently in another project.
