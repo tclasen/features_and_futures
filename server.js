@@ -30,12 +30,16 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
-    priority TEXT NOT NULL DEFAULT 'Normal'
+    priority TEXT NOT NULL DEFAULT 'Normal',
+    due_date TEXT
   )
 `);
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
+if (!taskColumns.some(column => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
@@ -47,12 +51,25 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const setProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function isValidDueDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= daysInMonth[month - 1];
+}
 
 function sendJson(response, statusCode, value) {
   response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -88,6 +105,7 @@ function sendPage(response) {
     [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d6dde7; border-radius: 6px; background: white; }
     [data-testid="task-row"] input { width: auto; }
     [data-testid="task-row"] select { max-width: 120px; }
+    [data-testid="task-row"] .due-date { width: 145px; }
     .task-title { flex: 1; }
     #detail { margin-bottom: 20px; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } input { width: 100%; } button { align-self: start; } }
@@ -276,7 +294,34 @@ function sendPage(response) {
           if (!updated.ok) throw new Error('Unable to update task priority');
           await renderTasks();
         });
-        row.append(checkbox, title, renameInput, renameButton, priority);
+        const dueDate = document.createElement('input');
+        dueDate.type = 'text';
+        dueDate.className = 'due-date';
+        dueDate.setAttribute('aria-label', 'Task due date');
+        dueDate.placeholder = 'YYYY-MM-DD';
+        dueDate.value = task.due_date || '';
+        dueDate.disabled = currentProjectArchived;
+        const saveDueDate = document.createElement('button');
+        saveDueDate.type = 'button';
+        saveDueDate.textContent = 'Save due date';
+        saveDueDate.disabled = currentProjectArchived;
+        saveDueDate.addEventListener('click', async () => {
+          const value = dueDate.value.trim();
+          const updated = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks/' + task.id + '/due-date', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: value })
+          });
+          if (updated.status === 400) {
+            error.textContent = 'Due date must be a valid YYYY-MM-DD date';
+            error.hidden = false;
+            return;
+          }
+          if (!updated.ok) throw new Error('Unable to save due date');
+          error.hidden = true;
+          const saved = await updated.json();
+          dueDate.value = saved.due_date || '';
+        });
+        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate);
         taskList.append(row);
       }
     }
@@ -461,6 +506,24 @@ const server = createServer(async (request, response) => {
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
   const taskRenameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/title$/);
   const taskPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority$/);
+  const taskDueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  if (taskDueDateMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(taskDueDateMatch[1]);
+      const taskId = Number(taskDueDateMatch[2]);
+      const project = getProject.get(projectId);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot change task due dates' }); return; }
+      const body = await readRequestBody(request);
+      const dueDate = typeof body.due_date === 'string' ? body.due_date.trim() : '';
+      if (dueDate && !isValidDueDate(dueDate)) { sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' }); return; }
+      const task = getTask.get(taskId, projectId);
+      if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      updateTaskDueDate.run(dueDate || null, taskId, projectId);
+      sendJson(response, 200, { ...task, due_date: dueDate || null });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
   if (taskPriorityMatch && request.method === 'PATCH') {
     try {
       const projectId = Number(taskPriorityMatch[1]);
