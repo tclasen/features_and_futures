@@ -8,7 +8,7 @@ Requires Node.js 22.22.1; no external dependencies.
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The server binds to `0.0.0.0`. Keep the SQLite file to preserve projects, tasks, and completion state across restarts.
+Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `data/workboard.sqlite`. The server binds to `0.0.0.0`. Keep the SQLite file to preserve projects, archive state, tasks, and completion state across restarts. Existing databases are migrated automatically.
 
 Health: `GET /health` returns `{"status":"ok"}`.
 
@@ -18,4 +18,4 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-Tests exercise project and task validation, ordering, escaped rendering, project detail navigation, task filtering and ownership, completion updates, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
+Tests exercise project and task validation, ordering, escaped rendering, navigation, filtering and ownership, completion updates, archive/restore, read-only archived tasks, summaries, schema migration, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
