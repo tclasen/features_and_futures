@@ -60,15 +60,16 @@ class Element {
   }
 }
 
-async function projectPage(archived = false, dates = [], destinations = [], initialTitles = []) {
+async function projectPage(archived = false, dates = [], destinations = [], initialTitles = [], initialNotes = []) {
   const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
-    { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '' },
-    { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority, due_date: '' },
+    { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '', notes: '' },
+    { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority, due_date: '', notes: '' },
   ]);
   tasks.forEach((task, index) => {
     task.due_date = dates[index] ?? '';
     task.title = initialTitles[index] ?? task.title;
+    task.notes = initialNotes[index] ?? '';
   });
   const app = new Element('main');
   const document = { querySelector: () => app, createElement: (tag) => new Element(tag) };
@@ -79,7 +80,7 @@ async function projectPage(archived = false, dates = [], destinations = [], init
       const change = JSON.parse(options.body);
       if (options.method === 'POST') {
         const task = { id: tasks.length + 1, title: change.title.trim(), completed: false,
-          priority: project.default_priority, due_date: '' };
+          priority: project.default_priority, due_date: '', notes: '' };
         tasks.push(task);
         writes.push(change);
         return { ok: true, json: async () => structuredClone(task) };
@@ -197,7 +198,7 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(app.querySelector('#empty-tasks').hidden, false);
   assert.equal(completion.value, 'open');
   assert.equal(priority.value, 'Low');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High', due_date: '' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High', due_date: '', notes: '' });
   await select(priority, 'High');
   assert.deepEqual(titles(), ['Low open', 'High open']);
   const checkbox = rows()[0].querySelector('input');
@@ -215,7 +216,7 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(rows()[0].querySelector('input').attributes['aria-label'], 'Complete Renamed task');
   assert.equal(completion.value, 'completed');
   assert.equal(priority.value, 'High');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High', due_date: '' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High', due_date: '', notes: '' });
   assert.deepEqual(page.writes, [{ priority: 'High' }, { completed: true }, { title: 'Renamed task' }]);
 });
 
@@ -683,4 +684,70 @@ test('normalized task search preserves titles and intersects every filter while 
     const reopened = await projectPage(archived, [], [], original);
     assert.deepEqual(reopened.titles(), original);
   }
+});
+
+test('multiline notes save exact plain text, preserve filters, and never add search matches', async () => {
+  const page = await projectPage(false, ['2024-03-01']);
+  const { app, rows, tasks, titles, select, completion, priority } = page;
+  assert.ok(rows().every((row) => row.querySelector('textarea').value === ''));
+  await select(completion, 'open');
+  await select(priority, 'Low');
+  await applyRange(page, '2024-03-01', '2024-03-01');
+  await searchTasks(page, ' LOW\topen ');
+  const before = structuredClone(tasks);
+  const notes = '  Notes-only keyword\n\tΩ 日本語 📝\n<script>alert("text")</script> & <b>literal</b>  \n';
+  let textarea = rows()[0].querySelector('textarea');
+  assert.equal(rows()[0].querySelectorAll('label').find((label) => label.htmlFor === textarea.id).textContent, 'Task notes');
+  assert.equal(textarea.parent.querySelector('button').textContent, 'Save notes');
+  textarea.value = notes;
+  await textarea.parent.fire('submit');
+  assert.deepEqual(tasks, before.map((task, index) => index === 0 ? { ...task, notes } : task));
+  assert.deepEqual(titles(), ['Low open']);
+  assert.equal(rows()[0].querySelector('textarea').value, notes);
+  assert.equal(rows()[0].querySelector('script'), null);
+  assert.equal(completion.value, 'open');
+  assert.equal(priority.value, 'Low');
+  assert.equal(app.querySelector('#due-from').value, '2024-03-01');
+  assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  assert.equal(app.querySelector('#task-search').value, 'LOW\topen');
+  assert.equal(page.project.total, 6);
+  assert.equal(page.project.completed, 3);
+  await searchTasks(page, 'Notes-only keyword');
+  assert.deepEqual(titles(), []);
+  await searchTasks(page, 'Low open');
+  const rename = rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'LOW  open renamed';
+  await rename.fire('submit');
+  assert.equal(rows()[0].querySelector('textarea').value, notes);
+  for (const text of [' \t\n  ', '']) {
+    textarea = rows()[0].querySelector('textarea');
+    textarea.value = text;
+    await textarea.parent.fire('submit');
+    assert.equal(rows()[0].querySelector('textarea').value, text);
+    assert.equal(tasks[0].notes, text);
+  }
+});
+
+test('archived notes remain readable and disabled; restored notes are editable', async () => {
+  const notes = '  Saved\n<b>plain text</b> Ω  ';
+  const archived = await projectPage(true, [], [], [], [notes]);
+  const textarea = archived.rows()[0].querySelector('textarea');
+  assert.equal(textarea.value, notes);
+  for (const row of archived.rows()) {
+    const input = row.querySelector('textarea');
+    assert.equal(input.disabled, true);
+    assert.equal(input.parent.querySelector('button').disabled, true);
+    await input.parent.fire('submit');
+  }
+  assert.deepEqual(archived.writes, []);
+  await searchTasks(archived, 'plain text');
+  assert.deepEqual(archived.titles(), []);
+  const restored = await projectPage(false, [], [], [], [notes]);
+  const editable = restored.rows()[0].querySelector('textarea');
+  assert.equal(editable.value, notes);
+  assert.equal(editable.disabled, false);
+  assert.equal(editable.parent.querySelector('button').disabled, false);
+  editable.value = 'Changed after restoration';
+  await editable.parent.fire('submit');
+  assert.equal(restored.tasks[0].notes, 'Changed after restoration');
 });

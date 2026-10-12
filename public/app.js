@@ -370,7 +370,37 @@ async function renderTasks(project) {
         }
       });
       moveForm.append(destinationLabel, destinationSelect, moveButton);
-      row.append(title, checkbox, priorityControls, renameForm, dueForm, moveForm);
+      const notesForm = document.createElement('form');
+      const notesLabel = document.createElement('label');
+      notesLabel.htmlFor = `task-notes-${task.id}`;
+      notesLabel.textContent = 'Task notes';
+      const notesInput = document.createElement('textarea');
+      notesInput.id = notesLabel.htmlFor;
+      notesInput.name = 'notes';
+      notesInput.rows = 4;
+      notesInput.value = task.notes;
+      notesInput.disabled = project.archived;
+      const notesButton = document.createElement('button');
+      notesButton.type = 'submit';
+      notesButton.textContent = 'Save notes';
+      notesButton.disabled = project.archived;
+      notesForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (notesButton.disabled) return;
+        app.querySelector('[role="alert"]')?.remove();
+        notesButton.disabled = true;
+        try {
+          const saved = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesInput.value }),
+          });
+          Object.assign(task, saved);
+          drawTasks();
+        } catch (error) { showError(error); }
+        finally { notesButton.disabled = project.archived; }
+      });
+      notesForm.append(notesLabel, notesInput, notesButton);
+      row.append(title, checkbox, priorityControls, renameForm, dueForm, moveForm, notesForm);
       list.append(row);
     }
   }

@@ -70,6 +70,17 @@ test('migrated order and independent return positions survive edits, archives, a
   try {
     await start();
     await order(1, [2, 1, 3]); // Migration preserves position order, not ID order.
+    assert.ok((await tasks(1)).every((task) => task.notes === ''));
+    const originalTask = (await tasks(1))[0];
+    const notes = '  First line\n\t第二行 📝\n<script>alert("literal")</script> & <b>text</b>  \n';
+    const withNotes = await write('1/tasks/2', { notes });
+    assert.deepEqual(withNotes, { ...originalTask, notes });
+    assert.ok((await tasks(1)).slice(1).every((task) => task.notes === ''));
+    await write('1/tasks/2', { notes: '' });
+    assert.deepEqual((await tasks(1))[0], originalTask);
+    await write('1/tasks/2', { notes });
+    await write('1/tasks/2', { notes: null }, 400);
+    assert.deepEqual((await tasks(1))[0], withNotes);
     await move(1, 2, 2);
     await move(1, 3, 2);
     await order(2, [4, 2, 3]);
@@ -109,6 +120,8 @@ test('migrated order and independent return positions survive edits, archives, a
     await order(3, [2, 3, thirdNew.id]);
     assert.deepEqual((await tasks(3))[0], currentA);
     await write('3', { archived: true });
+    await write('3/tasks/2', { notes: 'blocked' }, 409);
+    assert.deepEqual((await tasks(3))[0], currentA);
     await move(3, 2, 1, 409);
     const projects = await (await fetch(`${base}/api/projects`)).json();
     assert.deepEqual(projects.map(({ total, completed }) => ({ total, completed })), [
@@ -117,9 +130,15 @@ test('migrated order and independent return positions survive edits, archives, a
     await stop();
     await start();
     await write('3', { archived: false });
+    const updatedNotes = '  Updated\nnotes Ω  ';
+    await write('3/tasks/2', { notes: updatedNotes });
     await move(3, 2, 1);
     await move(3, 3, 1);
     await order(1, [2, 1, 3, created.id, arrival.id]);
+    assert.deepEqual((await tasks(1))[0], { ...currentA, notes: updatedNotes });
+    await stop();
+    await start();
+    assert.deepEqual((await tasks(1))[0], { ...currentA, notes: updatedNotes });
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

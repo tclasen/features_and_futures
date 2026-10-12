@@ -68,3 +68,10 @@ usable while archived and starts empty when opening either page or returning thr
 Projects.
 
 Run the integration checks with `npm test`.
+
+Each task row provides a multiline Task notes field and Save notes button. Notes
+are saved as plain text exactly as entered, including whitespace, Unicode and
+literal markup; empty text clears them. Notes persist and travel with moved tasks
+without changing any other data or filters. Searches still match only names and
+titles. Archived projects display notes with editing disabled until restoration.
+Existing databases initialize notes to empty while preserving all prior data.

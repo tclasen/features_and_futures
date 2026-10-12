@@ -41,8 +41,8 @@ test('existing tasks migrate to Normal and empty due dates without changing thei
     const [code] = await once(child, 'exit');
     assert.equal(code, 0, diagnostics);
     assert.deepEqual(JSON.parse(output), [
-      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal', due_date: '', position: 12 },
-      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal', due_date: '', position: 13 },
+      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal', due_date: '', notes: '', position: 12 },
+      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal', due_date: '', notes: '', position: 13 },
     ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
