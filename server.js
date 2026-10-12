@@ -8,6 +8,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 // Ensure acknowledged edits are durable even when the server is stopped abruptly.
+db.exec('PRAGMA journal_mode = DELETE');
 db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
