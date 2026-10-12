@@ -217,7 +217,7 @@ const server = http.createServer(async (req, res) => {
       completed: Boolean(task.completed),
       priority: task.priority || 'Normal',
       dueDate: task.dueDate || '',
-      notes: (task.notes || '').replace(/\\r\\n?/g, '\\n'),
+      notes: (task.notes || '').replace(/\r\n?/g, '\n'),
       deleted: Boolean(task.deleted)
     }));
     const document = { format: 'workboard-project', version: 1, project: {
