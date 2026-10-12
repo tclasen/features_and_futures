@@ -130,3 +130,13 @@ show disabled editing and move controls; archived projects also disable deletion
 and restoration while retaining reading filters. Earlier tasks migrate as live.
 The task PATCH endpoint accepts `{ "deleted": true }` or `{ "deleted": false }`
 separately from other edits. Deleted task edits return HTTP 409 until restored.
+
+Download project is available on every project page, including archived projects.
+It downloads UTF-8 `workboard-project.json` with format `workboard-project`, version
+1, and the current project name, archive state, default priority, and all owned
+tasks (live and deleted) in saved order. Each task includes its title, completion,
+priority, due date, notes, and deletion state. Notes use LF line endings in the
+export; stored text remains unchanged. Filters and searches do not limit the
+download or change on export. `GET /api/projects/<id>/export` returns the JSON as
+an attachment; a missing project returns HTTP 404. Database IDs and remembered
+return positions are internal and are excluded from this portable document.

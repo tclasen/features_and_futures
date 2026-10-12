@@ -144,6 +144,11 @@ async function showProject(id) {
     const project = await request(`/api/projects/${id}`);
     const heading = element('h1', project.name);
     app.append(heading);
+    const download = element('button', 'Download project', { type: 'button' });
+    download.addEventListener('click', () => {
+      window.location.href = `/api/projects/${project.id}/export`;
+    });
+    app.append(download);
     document.title = `${project.name} · Workboard`;
     if (project.archived) app.append(element('p', 'Archived project'));
     showProjectRename(project, heading);

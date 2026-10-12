@@ -46,6 +46,115 @@ async function startServer(databasePath) {
   };
 }
 
+test('project downloads include all owned task state in remembered order without writing data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.ok(response.ok);
+      return response.json();
+    };
+    const project = await api('/api/projects', 'POST', { name: '日本語  <em>Project</em>' });
+    const other = await api('/api/projects', 'POST', { name: 'Other' });
+    const path = `/api/projects/${project.id}`;
+    const otherPath = `/api/projects/${other.id}`;
+    const first = await api(`${path}/tasks`, 'POST', { title: 'First\t Task' });
+    const second = await api(`${path}/tasks`, 'POST', { title: 'Second' });
+    const notes = '  😀\r\n<script>literal</script>\rEnd  ';
+    for (const body of [{ completed: true }, { priority: 'High' }, { dueDate: '2024-02-29' }, { notes }]) {
+      await api(`${path}/tasks/${first.id}`, 'PATCH', body);
+    }
+    await api(`${otherPath}/tasks`, 'POST', { title: 'Other project only' });
+    await api(`${path}/tasks/${first.id}`, 'PATCH', { destinationProjectId: other.id });
+    await api(`${otherPath}/tasks/${first.id}`, 'PATCH', { destinationProjectId: project.id });
+    await api(`${path}/tasks/${first.id}`, 'PATCH', { deleted: true });
+    await api(path, 'PATCH', { defaultPriority: 'Low' });
+    await api(path, 'PATCH', { archived: true });
+    const beforeTasks = await api(`${path}/tasks`);
+    const beforeProject = await api(path);
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: project.name, archived: true, defaultPriority: 'Low',
+        tasks: [
+          { title: first.title, completed: true, priority: 'High', dueDate: '2024-02-29', notes: '  😀\n<script>literal</script>\nEnd  ', deleted: true },
+          { title: second.title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetch(`${server.url}${path}/export?completion=Open&search=missing`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      assert.deepEqual(JSON.parse(await response.text()), expected);
+      assert.deepEqual(await api(`${path}/tasks`), beforeTasks);
+      assert.deepEqual(await api(path), beforeProject);
+      if (attempt === 0) {
+        await server.stop();
+        server = await startServer(databasePath);
+      }
+    }
+    await api(path, 'PATCH', { archived: false });
+    await api(`${path}/tasks/${second.id}`, 'PATCH', { deleted: true });
+    assert.equal((await api(`${path}/export`)).project.tasks.length, 2);
+    assert.deepEqual((await api(path)).totalCount, 0);
+    const empty = await api('/api/projects', 'POST', { name: 'Empty' });
+    assert.deepEqual((await api(`/api/projects/${empty.id}/export`)).project.tasks, []);
+    const missing = await fetch(`${server.url}/api/projects/999999/export`);
+    assert.equal(missing.status, 404);
+    assert.equal(missing.headers.get('content-disposition'), null);
+    // The export has not disturbed remembered return positions.
+    await api(`${path}/tasks/${first.id}`, 'PATCH', { deleted: false });
+    await api(`${path}/tasks/${first.id}`, 'PATCH', { destinationProjectId: other.id });
+    await api(`${otherPath}/tasks/${first.id}`, 'PATCH', { destinationProjectId: project.id });
+    assert.deepEqual((await api(`${path}/tasks`)).map((task) => task.id), [first.id, second.id]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('exporting an upgraded early database uses public defaults and preserves original data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-upgrade-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  let server;
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects VALUES (1, 'Legacy  Project');
+      INSERT INTO tasks VALUES (8, 1, 'Original Task', 1);
+    `);
+    legacy.close();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      server = await startServer(databasePath);
+      const response = await fetch(`${server.url}/api/projects/1/export`);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        format: 'workboard-project', version: 1,
+        project: {
+          name: 'Legacy  Project', archived: false, defaultPriority: 'Normal',
+          tasks: [{ title: 'Original Task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false }],
+        },
+      });
+      await server.stop();
+    }
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task rename preserves ownership, order, completion, and counts through restarts and restore', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-test-'));
   const databasePath = join(directory, 'workboard.sqlite');

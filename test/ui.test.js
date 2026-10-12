@@ -303,6 +303,37 @@ async function page(pathname, respond, destinations = [{ id: 999, name: 'Other',
   };
 }
 
+test('Download project remains enabled and preserves page controls and rows', async () => {
+  for (const archived of [false, true]) {
+    const project = { id: 1, name: 'Export', archived, defaultPriority: 'Normal' };
+    const tasks = [{ id: 1, title: 'Match', completed: true, priority: 'High', dueDate: '2024-02-29', notes: 'Saved', deleted: true }];
+    const ui = await page('/projects/1', (path, options) => {
+      assert.equal(options, undefined);
+      return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    });
+    ui.byId('task-filter').value = 'Deleted';
+    await ui.byId('task-filter').fire('change');
+    ui.byId('priority-filter').value = 'High';
+    await ui.byId('priority-filter').fire('change');
+    await applyDueRange(ui, '2024-02-29', '2024-03-01');
+    await applySearch(ui, 'task', 'match');
+    const rows = ui.rows('task');
+    const calls = ui.calls.length;
+    assert.equal(ui.button('Download project').disabled, false);
+    await ui.button('Download project').fire('click');
+    assert.equal(ui.window.location.href, '/api/projects/1/export');
+    assert.deepEqual(ui.rows('task'), rows);
+    assert.equal(ui.calls.length, calls);
+    assert.equal(ui.byId('task-filter').value, 'Deleted');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2024-02-29');
+    assert.equal(ui.byId('due-through').value, '2024-03-01');
+    assert.equal(ui.byId('task-search').value, 'match');
+    const empty = await page('/projects/1', (path) => path.endsWith('/tasks') ? [] : project);
+    assert.equal(empty.button('Download project').disabled, false);
+  }
+});
+
 test('project UI defaults to active and moves rows on archive and restore', async () => {
   const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal', completedCount: 1, totalCount: 2 };
   const archived = { id: 2, name: 'Beta', archived: true, defaultPriority: 'Normal', completedCount: 0, totalCount: 0 };

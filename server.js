@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { normalizeDueDate } from './due-date.js';
+import { projectExport } from './project-export.js';
 
 const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -195,6 +196,13 @@ const server = createServer(async (request, response) => {
       if (!name) return json(response, 400, { error: 'Project name is required' });
       const result = insertProject.run(name);
       return json(response, 201, projectData(findProject.get(result.lastInsertRowid)));
+    }
+    const exportRoute = pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+    if (request.method === 'GET' && exportRoute) {
+      const project = findProject.get(exportRoute[1]);
+      if (!project) return json(response, 404, { error: 'Project not found' });
+      response.setHeader('Content-Disposition', 'attachment; filename="workboard-project.json"');
+      return json(response, 200, projectExport(project, listTasks.all(project.id)));
     }
     const projectRoute = pathname.match(/^\/api\/projects\/(\d+)$/);
     if (request.method === 'GET' && projectRoute) {
