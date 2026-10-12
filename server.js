@@ -63,6 +63,7 @@ const server = http.createServer(async (req, res) => {
       return send(201, 'application/json; charset=utf-8', JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
+  const project = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (project && req.method === 'PATCH') {
     let body = ''; for await (const chunk of req) body += chunk;
     try {
@@ -85,7 +86,6 @@ const server = http.createServer(async (req, res) => {
       return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
     } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
-  const project = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (project && req.method === 'GET') {
     const item = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?').get(Number(project[1]));
     return item ? send(200, 'application/json; charset=utf-8', JSON.stringify({ ...item, archived: Boolean(item.archived) })) : send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
