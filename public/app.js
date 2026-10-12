@@ -369,6 +369,16 @@ async function renderProject(id) {
   await renderTasks();
 }
 
+function compareUnicodeCodePoints(left, right) {
+  const a = Array.from(left, character => character.codePointAt(0));
+  const b = Array.from(right, character => character.codePointAt(0));
+  const length = Math.min(a.length, b.length);
+  for (let index = 0; index < length; index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return a.length - b.length;
+}
+
 function searchMatches(value, query) {
   const normalize = text => text
     .replace(/[ \t]+/g, ' ')
@@ -440,7 +450,7 @@ async function renderDirectory() {
       visible.sort((a, b) => {
         const left = a.title.replace(/[A-Z]/g, character => character.toLowerCase());
         const right = b.title.replace(/[A-Z]/g, character => character.toLowerCase());
-        return left < right ? -1 : left > right ? 1 : 0;
+        return compareUnicodeCodePoints(left, right);
       });
     }
     for (const task of visible) {
