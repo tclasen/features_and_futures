@@ -18,4 +18,4 @@ Health: `GET /health` returns `{"status":"ok"}`.
 npm test
 ```
 
-Tests exercise project and task validation, ordering, escaped rendering, navigation, filtering and ownership, completion updates, archive/restore, project and task renaming with identity preservation, read-only archived projects, summaries, independent task priorities, schema migration, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
+Tests exercise project and task validation, ordering, escaped rendering, navigation, filtering and ownership, completion updates, archive/restore, project and task renaming with identity preservation, read-only archived projects, summaries, independent task priorities, combined priority/completion filters with selection preservation through edits, schema migration, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
