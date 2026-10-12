@@ -111,7 +111,9 @@ function renderDirectory() {
   const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
   for (const task of directoryRows) {
     if (Boolean(task.projectArchived) !== (scope === 'Archived')) continue;
-    if ((filter === 'Deleted') !== Boolean(task.deleted) || (filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
+    if (filter === 'Deleted' ? !task.deleted : task.deleted) continue;
+    if (filter === 'Open' && task.completed) continue;
+    if (filter === 'Completed' && !task.completed) continue;
     if (priority !== 'All' && task.priority !== priority) continue;
     if (!normalizeSearch(task.title).includes(directoryQuery)) continue;
     if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
@@ -408,7 +410,7 @@ for (const id of ['directory-scope', 'directory-task-filter', 'directory-priorit
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
 document.querySelector('#directory-apply-range').addEventListener('click', () => {
   const from = document.querySelector('#directory-due-from').value.trim(), through = document.querySelector('#directory-due-through').value.trim();
-  const valid = value => { if (!value) return true; const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value); if (!m) return false; const y=+m[1], mo=+m[2], d=+m[3], leap=y%4===0&&(y%100!==0||y%400===0); return y>=1&&mo>=1&&mo<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };
+  const valid = value => { if (!value) return true; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value); if (!m) return false; const y=+m[1], mo=+m[2], d=+m[3], leap=y%4===0&&(y%100!==0||y%400===0); return y>=1&&mo>=1&&mo<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };
   const error = document.querySelector('#directory-error');
   if (!valid(from) || !valid(through)) { error.textContent = 'Due range must use valid YYYY-MM-DD dates'; error.hidden = false; return; }
   if (from && through && from > through) { error.textContent = 'Due from must not be after Due through'; error.hidden = false; return; }
