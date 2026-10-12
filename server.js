@@ -19,12 +19,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+  due_date TEXT
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const indexPath = join(dirname(fileURLToPath(import.meta.url)), 'index.html');
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -50,7 +52,7 @@ const server = http.createServer(async (req, res) => {
   if (tasks && req.method === 'GET') {
     const projectId = Number(tasks[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
   if (tasks && req.method === 'POST') {
     let body = '';
@@ -99,6 +101,22 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = JSON.parse(body);
       const id = Number(task[1]);
+      if (Object.hasOwn(data, 'dueDate')) {
+        const raw = typeof data.dueDate === 'string' ? data.dueDate.trim() : '';
+        let dueDate = raw || null;
+        if (dueDate !== null) {
+          const match = dueDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+          if (!match) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+          const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+          const date = new Date(0);
+          date.setUTCHours(0, 0, 0, 0);
+          date.setUTCFullYear(year, month - 1, day);
+          if (year < 1 || date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        }
+        const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(dueDate, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, dueDate }));
+      }
       if (typeof data.title === 'string') {
         const title = data.title.trim();
         if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
