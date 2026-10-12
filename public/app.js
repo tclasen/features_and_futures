@@ -384,6 +384,30 @@ function taskMoveForm(task, path, archived, destinations, onMove) {
   return form;
 }
 
+function taskDeletionControl(task, path, archived, onChange) {
+  const button = element('button', task.deleted ? 'Restore task' : 'Delete task', { type: 'button' });
+  button.disabled = archived;
+  button.addEventListener('click', async () => {
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const saved = await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleted: !task.deleted }),
+      });
+      task.deleted = saved.deleted;
+      app.querySelector('[role="alert"]')?.remove();
+      onChange();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      button.disabled = archived;
+    }
+  });
+  return button;
+}
+
 async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -394,7 +418,7 @@ async function showTasks(projectId, archived) {
   create.disabled = true;
   form.append(element('label', 'Task title', { for: 'task-title' }), input, create);
   const filter = element('select', '', { id: 'task-filter' });
-  for (const option of ['All', 'Open', 'Completed']) {
+  for (const option of ['All', 'Open', 'Completed', 'Deleted']) {
     filter.append(element('option', option, { value: option }));
   }
   const priorityFilter = element('select', '', { id: 'priority-filter' });
@@ -431,17 +455,19 @@ async function showTasks(projectId, archived) {
 
   function renderTasks() {
     const visible = tasks.filter((task) =>
-      (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed))
+      (filter.value === 'Deleted' ? task.deleted : !task.deleted
+        && (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)))
       && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
       && matchesDueRange(task.dueDate, dueRange)
       && matchesSearch(task.title, searchQuery));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'task-row' });
+      const readOnly = archived || Boolean(task.deleted);
       const checkbox = element('input', '', {
         type: 'checkbox', 'aria-label': `Complete ${task.title}`,
       });
       checkbox.checked = task.completed;
-      checkbox.disabled = archived;
+      checkbox.disabled = readOnly;
       checkbox.addEventListener('change', async () => {
         checkbox.disabled = true;
         try {
@@ -457,17 +483,18 @@ async function showTasks(projectId, archived) {
           checkbox.checked = task.completed;
           showError(error.message);
         } finally {
-          checkbox.disabled = archived;
+          checkbox.disabled = readOnly;
         }
       });
       const details = element('div', '', { class: 'task-details' });
-      details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
-        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived, renderTasks),
-        taskNotesForm(task, path, archived, renderTasks),
-        taskMoveForm(task, path, archived, destinations, () => {
+      details.append(element('span', task.title), taskRenameForm(task, path, readOnly, renderTasks),
+        taskPriorityControl(task, path, readOnly, renderTasks), taskDueDateForm(task, path, readOnly, renderTasks),
+        taskNotesForm(task, path, readOnly, renderTasks),
+        taskMoveForm(task, path, readOnly, destinations, () => {
           tasks = tasks.filter((remaining) => remaining.id !== task.id);
           renderTasks();
         }));
+      details.append(taskDeletionControl(task, path, archived, renderTasks));
       row.append(checkbox, details);
       return row;
     }));

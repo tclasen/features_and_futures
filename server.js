@@ -23,6 +23,7 @@ database.exec(`
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
     position INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id);
@@ -46,6 +47,10 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 // Notes are plain text; upgrades initialize only this new field.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+// Deletion reserves all fields and positions; earlier tasks remain live.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
 }
 // Preserve legacy creation order while allowing moved tasks to append independently of IDs.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
@@ -74,7 +79,7 @@ database.exec(`
 const projectSelection = `
   SELECT projects.id, projects.name, projects.archived, projects.default_priority AS defaultPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
-  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+  FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.deleted = 0
 `;
 const listProjects = database.prepare(`${projectSelection} GROUP BY projects.id ORDER BY projects.id`);
 const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? GROUP BY projects.id`);
@@ -82,8 +87,8 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
-const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
   SELECT id, ?, default_priority,
@@ -94,6 +99,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE projec
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const updateTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE project_id = ? AND id = ?');
 const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE project_id = ? AND id = ?');
 const rememberCurrentPosition = database.prepare(`
   INSERT INTO task_project_positions (task_id, project_id, position)
@@ -142,7 +148,7 @@ function projectData(project) {
 }
 
 function taskData(task) {
-  return { ...task, completed: Boolean(task.completed) };
+  return { ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) };
 }
 
 const assets = new Map([
@@ -268,6 +274,19 @@ const server = createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const createdId = createTask(title, projectId);
           return json(response, 201, taskData(findTask.get(projectId, createdId)));
+        }
+        if (body && Object.hasOwn(body, 'deleted')) {
+          if (['notes', 'destinationProjectId', 'dueDate', 'priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {
+            return json(response, 400, { error: 'Deletion state and other task edits must be separate requests' });
+          }
+          if (typeof body.deleted !== 'boolean') {
+            return json(response, 400, { error: 'Task deletion state must be a boolean' });
+          }
+          updateTaskDeleted.run(Number(body.deleted), projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
+        }
+        if (findTask.get(projectId, taskId).deleted) {
+          return json(response, 409, { error: 'Deleted task must be restored before editing' });
         }
         if (body && Object.hasOwn(body, 'notes')) {
           if (['destinationProjectId', 'dueDate', 'priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {

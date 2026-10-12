@@ -357,7 +357,7 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
   assert.equal(find(ui.app, (node) => node.attributes.for === 'task-title')[0].textContent, 'Task title');
   const filter = ui.byId('task-filter');
   assert.equal(filter.value, 'All');
-  assert.deepEqual(filter.children.map((option) => option.textContent), ['All', 'Open', 'Completed']);
+  assert.deepEqual(filter.children.map((option) => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
   for (const [value, titles] of [['All', ['Done task', 'Open task']], ['Open', ['Open task']], ['Completed', ['Done task']]]) {
     filter.value = value;
     await filter.fire('change');
@@ -1154,4 +1154,77 @@ test('failed notes save preserves the saved task and allows retry', async () => 
   assert.equal(ui.byId('task-notes-1').value, 'Draft');
   assert.equal(task.notes, 'Saved');
   assert.equal(ui.button('Save notes').disabled, false);
+});
+
+test('Deleted filter intersects other filters and deletion/restoration retain controls and row order', async () => {
+  const project = { id: 1, name: 'Source', archived: false, defaultPriority: 'Normal' };
+  const tasks = [
+    { id: 1, title: 'Match first', completed: true, priority: 'High', dueDate: '2024-02-29', notes: 'Saved\n<em>text</em>', deleted: false },
+    { id: 2, title: 'Match second', completed: false, priority: 'High', dueDate: '2024-02-29', notes: '', deleted: false },
+    { id: 3, title: 'Match undated', completed: true, priority: 'High', dueDate: '', notes: '', deleted: true },
+    { id: 4, title: 'Other title', completed: true, priority: 'High', dueDate: '2024-02-29', notes: 'Match', deleted: true },
+    { id: 5, title: 'Match low', completed: true, priority: 'Low', dueDate: '2024-02-29', notes: '', deleted: true },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    const task = tasks.find((task) => path.endsWith(`/${task.id}`));
+    Object.assign(task, JSON.parse(options.body));
+    return { ...task };
+  };
+  const ui = await page('/projects/1', respond);
+  assert.deepEqual(ui.byId('task-filter').children.map((option) => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Match first', 'Match second']);
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  ui.byId('task-search').value = 'match';
+  await find(ui.app, (node) => node.attributes.class === 'search-form')[0].fire('submit');
+  const assertFilters = (completion) => {
+    assert.equal(ui.byId('task-filter').value, completion);
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2024-02-29');
+    assert.equal(ui.byId('due-through').value, '2024-03-01');
+    assert.equal(ui.byId('task-search').value, 'match');
+  };
+  const original = { ...tasks[0] };
+  await ui.button('Delete task').fire('click');
+  assert.deepEqual(tasks[0], { ...original, deleted: true });
+  assert.equal(ui.rows('task').length, 0);
+  assertFilters('Completed');
+  ui.byId('task-filter').value = 'Deleted';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Match first']);
+  assert.equal(ui.byId('task-notes-1').value, original.notes);
+  const row = ui.rows('task')[0];
+  for (const control of find(row, (node) => ['input', 'textarea', 'select', 'button'].includes(node.tag))) {
+    assert.equal(control.disabled, control.textContent !== 'Restore task');
+  }
+  await ui.button('Restore task').fire('click');
+  assert.deepEqual(tasks[0], original);
+  assert.equal(ui.rows('task').length, 0);
+  assertFilters('Deleted');
+  ui.byId('task-filter').value = 'All';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Match first', 'Match second']);
+  assertFilters('All');
+  project.archived = true;
+  tasks[0].deleted = true;
+  const archived = await page('/projects/1', respond);
+  assert.equal(archived.button('Delete task').disabled, true);
+  archived.byId('task-filter').value = 'Deleted';
+  await archived.byId('task-filter').fire('change');
+  assert.deepEqual(archived.rows('task').map(taskTitle), ['Match first', 'Match undated', 'Other title', 'Match low']);
+  for (const control of find(archived.rows('task')[0], (node) => ['input', 'textarea', 'select', 'button'].includes(node.tag))) {
+    assert.equal(control.disabled, true);
+  }
+  assert.equal(archived.button('Search tasks').disabled, false);
+  assert.equal(archived.button('Apply due range').disabled, false);
+  project.archived = false;
+  const restored = await page('/projects/1', respond);
+  restored.byId('task-filter').value = 'Deleted';
+  await restored.byId('task-filter').fire('change');
+  assert.equal(restored.button('Restore task').disabled, false);
+  assert.equal(restored.byId('task-notes-1').disabled, true);
 });

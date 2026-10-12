@@ -287,8 +287,8 @@ test('archive and restore preserve tasks, summaries, and IDs through migration a
     const path = '/api/projects/1';
     const project = { id: 1, name: 'Existing project', archived: false, defaultPriority: 'Normal', totalCount: 2, completedCount: 1 };
     const tasks = [
-      { id: 1, title: 'Done task', completed: true, priority: 'Normal', dueDate: '', notes: '' },
-      { id: 2, title: 'Open task', completed: false, priority: 'Normal', dueDate: '', notes: '' },
+      { id: 1, title: 'Done task', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+      { id: 2, title: 'Open task', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
     ];
     assert.deepEqual((await api(path)).body, project);
     assert.deepEqual((await api(`${path}/tasks`)).body, tasks);
@@ -426,10 +426,10 @@ test('priorities migrate and persist independently through rename, completion, a
     };
     const path = '/api/projects/1/tasks';
     const tasks = [
-      { id: 1, title: 'Done', completed: true, priority: 'Normal', dueDate: '', notes: '' },
-      { id: 2, title: 'Open', completed: false, priority: 'Normal', dueDate: '', notes: '' },
+      { id: 1, title: 'Done', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+      { id: 2, title: 'Open', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
     ];
-    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal', dueDate: '', notes: '' }];
+    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false }];
     const summaries = (await api('/api/projects')).body;
     assert.deepEqual((await api(path)).body, tasks);
     for (const priority of ['', 'normal', 'Urgent', ' High ', null, 1, true, {}]) {
@@ -883,8 +883,8 @@ test('notes migration and saves preserve task data, remembered order, and summar
     const path = '/api/projects/1/tasks';
     const taskPath = `${path}/2`;
     const original = [
-      { id: 2, title: 'First', completed: true, priority: 'High', dueDate: '2024-02-29', notes: '' },
-      { id: 1, title: 'Later', completed: false, priority: 'Low', dueDate: '', notes: '' },
+      { id: 2, title: 'First', completed: true, priority: 'High', dueDate: '2024-02-29', notes: '', deleted: false },
+      { id: 1, title: 'Later', completed: false, priority: 'Low', dueDate: '', notes: '', deleted: false },
     ];
     assert.deepEqual((await api(path)).body, original);
     const created = (await api(path, 'POST', { title: 'New' })).body;
@@ -932,6 +932,80 @@ test('notes migration and saves preserve task data, remembered order, and summar
     await server.stop();
     server = await startServer(databasePath);
     assert.deepEqual((await api(path)).body, [saved, original[1], created]);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('deletion preserves fields and reserved positions, rejects edits, and persists across archive and restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    await api('/api/projects', 'POST', { name: 'Source' });
+    await api('/api/projects', 'POST', { name: 'Destination' });
+    const project = '/api/projects/1';
+    const path = `${project}/tasks`;
+    const first = (await api(path, 'POST', { title: 'First' })).body;
+    const second = (await api(path, 'POST', { title: 'Second' })).body;
+    assert.equal(first.deleted, false);
+    const taskPath = `${path}/${first.id}`;
+    for (const edit of [{ completed: true }, { priority: 'High' }, { dueDate: '0001-01-01' }, { notes: '  Unicode 日本語\n<script>literal</script>  ' }]) {
+      await api(taskPath, 'PATCH', edit);
+    }
+    const original = (await api(path)).body[0];
+    // Remember a destination position before deletion; neither visit is lost.
+    await api(taskPath, 'PATCH', { destinationProjectId: 2 });
+    await api(`/api/projects/2/tasks/${first.id}`, 'PATCH', { destinationProjectId: 1 });
+    for (const deleted of [null, 1, 'true']) {
+      assert.equal((await api(taskPath, 'PATCH', { deleted })).status, 400);
+    }
+    assert.equal((await api(taskPath, 'PATCH', { deleted: true, notes: 'Overwrite' })).status, 400);
+    assert.equal((await api(`/api/projects/2/tasks/${first.id}`, 'PATCH', { deleted: true })).status, 404);
+    const deletedFirst = { ...original, deleted: true };
+    assert.deepEqual((await api(taskPath, 'PATCH', { deleted: true })).body, deletedFirst);
+    for (const edit of [{ title: 'Changed' }, { completed: false }, { priority: 'Low' }, { dueDate: '' }, { notes: '' }, { destinationProjectId: 2 }]) {
+      assert.equal((await api(taskPath, 'PATCH', edit)).status, 409);
+    }
+    assert.deepEqual((await api(path)).body, [deletedFirst, second]);
+    assert.equal((await api(project)).body.totalCount, 1);
+    assert.equal((await api(project)).body.completedCount, 0);
+    await api(`${path}/${second.id}`, 'PATCH', { deleted: true });
+    assert.equal((await api(project)).body.totalCount, 0);
+    assert.equal((await api(project)).body.completedCount, 0);
+    await api(project, 'PATCH', { defaultPriority: 'Low' });
+    const third = (await api(path, 'POST', { title: 'Third' })).body;
+    await api(project, 'PATCH', { archived: true });
+    for (const deleted of [true, false]) {
+      assert.equal((await api(taskPath, 'PATCH', { deleted })).status, 409);
+    }
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [deletedFirst, { ...second, deleted: true }, third]);
+    await api(project, 'PATCH', { archived: false });
+    // Restore in reverse order without changing fields or reserved slots.
+    await api(`${path}/${second.id}`, 'PATCH', { deleted: false });
+    assert.deepEqual((await api(taskPath, 'PATCH', { deleted: false })).body, original);
+    assert.deepEqual((await api(path)).body, [original, second, third]);
+    assert.equal((await api(project)).body.totalCount, 3);
+    assert.equal((await api(project)).body.completedCount, 1);
+    await api(taskPath, 'PATCH', { destinationProjectId: 2 });
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api('/api/projects/2/tasks')).body, [original]);
+    await api(`/api/projects/2/tasks/${first.id}`, 'PATCH', { destinationProjectId: 1 });
+    assert.deepEqual((await api(path)).body, [original, second, third]);
   } finally {
     await server?.stop();
     await rm(directory, { recursive: true, force: true });

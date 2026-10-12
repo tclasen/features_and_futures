@@ -120,3 +120,13 @@ Search continues to match only names and titles. Archived projects show saved
 notes with editing disabled until restored. The task PATCH endpoint accepts
 `{ "notes": "Text\nMore text" }` separately from other edits; non-string notes
 return HTTP 400, and archived task writes return HTTP 409.
+
+Task filter offers All, Open, Completed, and Deleted. The first three show only
+live tasks; Deleted shows only deleted tasks and intersects priority, date range,
+and title search. Delete task reserves all saved fields and per-project positions
+while removing the task from live lists and completion summaries. Restore task
+returns it to its reserved position with its current saved fields. Deleted tasks
+show disabled editing and move controls; archived projects also disable deletion
+and restoration while retaining reading filters. Earlier tasks migrate as live.
+The task PATCH endpoint accepts `{ "deleted": true }` or `{ "deleted": false }`
+separately from other edits. Deleted task edits return HTTP 409 until restored.
