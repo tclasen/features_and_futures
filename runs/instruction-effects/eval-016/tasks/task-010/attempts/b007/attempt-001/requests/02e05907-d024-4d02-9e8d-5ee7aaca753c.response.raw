@@ -1,0 +1,1076 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"safety_buffering":false,"response":{"id":"resp_0cc578770d4a788d016acd1fb5e32487d18b6fdbcaebf76c3a","object":"response","created_at":1791827894,"completed_at":null,"status":"in_progress","background":false,"frequency_penalty":0.0,"presence_penalty":0.0,"moderation":null,"model":"gpt-6.1-sol","access_programs":{"cyber":"standard"},"previous_response_id":null,"instructions":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"namespace","name":"functions","description":"","tools":[{"type":"function","strict":false,"name":"wait","description":"Waits on a yielded `exec` cell and returns new output or completion.\n- Use `wait` only after `exec` returns `Script running with cell ID ...`.\n- `cell_id` identifies the running `exec` cell to resume.\n- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.\n- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.\n- `terminate: true` stops the running cell; false or omitted waits for output.\n- `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.\n- If the cell is still running, `wait` may yield again with the same `cell_id`.\n- If the cell has already finished, `wait` returns the completed result and closes the cell.","output_schema":null,"parameters":{"type":"object","properties":{"cell_id":{"type":"string","description":"Identifier of the running exec cell."},"max_tokens":{"type":"number","description":"Output token budget for this wait call. Defaults to 10000 tokens."},"terminate":{"type":"boolean","description":"True stops the running exec cell; false or omitted waits for output."},"yield_time_ms":{"type":"number","description":"Wait before yielding more output. Defaults to 10000 ms."}},"required":["cell_id"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input","description":"Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"Questions to show the user. Prefer 1 and do not exceed 3","items":{"type":"object","properties":{"header":{"type":"string","description":"Short header label shown in the UI (12 or fewer chars)."},"id":{"type":"string","description":"Stable identifier for mapping answers (snake_case)."},"options":{"type":"array","description":"Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.","items":{"type":"object","properties":{"description":{"type":"string","description":"One short sentence explaining impact/tradeoff if selected."},"label":{"type":"string","description":"User-facing label (1-5 words)."}},"required":["label","description"],"additionalProperties":false}},"question":{"type":"string","description":"Single-sentence prompt shown to the user."}},"required":["id","header","question","options"],"additionalProperties":false}}},"required":["questions"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input_async","description":"Ask the user one or more questions during ongoing work. Use this tool only to request missing information, preferences, constraints, clarification, or approval. The tool returns immediately without ending the turn or waiting for a reply; any reply arrives asynchronously as a new user message. Keep questions concise, self-contained, and easy to understand, using a level of detail appropriate to the user and task. The UI always allows a free-text answer, including when suggested options are provided. A preselected option is not submitted automatically.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"One or more self-contained questions to present together, in display order.","items":{"type":"object","properties":{"options":{"type":"array","description":"Suggested answers, in display order. Put the recommended answer first; the first option is preselected by default. The user can select one option or enter a free-text answer. Do not include an Other option or a free-text placeholder; the UI provides free-text input automatically. Omit options for a free-text-only question.","items":{"type":"string"},"minItems":1},"title":{"type":"string","description":"The complete question shown to the user, including any context needed to answer it."}},"required":["title"],"additionalProperties":false},"minItems":1}},"required":["questions"],"additionalProperties":false}},{"type":"custom","name":"exec","description":"Run JavaScript code to orchestrate/compose tool calls\n- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`. Tool names are exposed as normalized JavaScript identifiers, for example `await tools.mcp__ologs__get_profile(...)`.\n- Nested tool methods take either a string or an object as their input argument.\n- Nested tools return either an object or a string, based on the description.\n- Runs raw JavaScript -- no Node, no file system, no network access, no console.\n- Accepts raw JavaScript source text, not JSON, quoted strings, or markdown code fences.\n- You may optionally start the tool input with a first-line pragma like `// @exec: {\"yield_time_ms\": 10000, \"max_output_tokens\": 1000}`.\n- `yield_time_ms` asks `exec` to yield early if the script is still running. Defaults to 30000 ms.\n- `max_output_tokens` sets the token budget for direct `exec` results. Defaults to 10000 tokens.\n- When the JS code is fully evaluated, the isolate's lifetime ends and unawaited promises are silently discarded.\n\n- Global helpers:\n- `exit()`: Immediately ends the current script successfully (like an early return from the top level).\n- `text(value: string | number | boolean | undefined | null)`: Appends a text item. Non-string values are stringified with `JSON.stringify(...)` when possible.\n- `image(imageUrlOrItem: string | { image_url: string; detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null } | ImageContent, detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null)`: Appends an image item. `image_url` should be a base64-encoded `data:` URL. To forward an MCP tool image, pass an individual `ImageContent` block from `result.content`, for example `image(result.content[0])`. MCP image blocks may request detail with `_meta: { \"codex/imageDetail\": \"original\" }`. When provided, the second `detail` argument overrides any detail embedded in the first argument.\n- `audio(audioUrlOrItem: string | { audio_url: string } | AudioContent)`: Appends an audio item. `audio_url` should be a base64-encoded `data:` URL. To forward an MCP tool audio block, pass an individual `AudioContent` block from `result.content`, for example `audio(result.content[0])`.\n- `generatedImage(result: { image_url: string; output_hint?: string })`: Appends an image-generation result and its optional output hint. HTTP(S) URLs are not supported.\n- `store(key: string, value: any)`: stores a serializable value under a string key for later `exec` calls in the same session.\n- `load(key: string)`: returns the stored value for a string key, or `undefined` if it is missing.\n- `notify(value: string | number | boolean | undefined | null)`: immediately injects an extra `custom_tool_call_output` for the current `exec` call. Values are stringified like `text(...)`.\n- `setTimeout(callback: () => void, delayMs?: number)`: schedules a callback to run later and returns a timeout id. Pending timeouts do not keep `exec` alive by themselves; await an explicit promise if you need to wait for one.\n- `clearTimeout(timeoutId?: number)`: cancels a timeout created by `setTimeout`.\n- `ALL_TOOLS`: metadata for the enabled nested tools as `{ name, description }` entries.\n- `yield_control()`: yields the accumulated output to the model immediately while the script keeps running.\n\nSome deferred nested tools may be omitted from this description. They are still available on the global `tools` object and listed in `ALL_TOOLS`.\nTo find one, filter `ALL_TOOLS` by `name` and `description`.\n\nTool availability can change between calls.\n\nShared MCP Types:\n```ts\ntype Role = \"user\" | \"assistant\";\ntype MetaObject = Record<string, unknown>;\ntype Annotations = {\n  audience?: Role[];\n  priority?: number;\n  lastModified?: string;\n};\ntype Icon = {\n  src: string;\n  mimeType?: string;\n  sizes?: string[];\n  theme?: \"light\" | \"dark\";\n};\ntype TextResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  text: string;\n};\ntype BlobResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  blob: string;\n};\ntype TextContent = {\n  type: \"text\";\n  text: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ImageContent = {\n  type: \"image\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype AudioContent = {\n  type: \"audio\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ResourceLink = {\n  icons?: Icon[];\n  name: string;\n  title?: string;\n  uri: string;\n  description?: string;\n  mimeType?: string;\n  annotations?: Annotations;\n  size?: number;\n  _meta?: MetaObject;\n  type: \"resource_link\";\n};\ntype EmbeddedResource = {\n  type: \"resource\";\n  resource: TextResourceContents | BlobResourceContents;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ContentBlock =\n  | TextContent\n  | ImageContent\n  | AudioContent\n  | ResourceLink\n  | EmbeddedResource;\ntype CallToolResult<TStructured = { [key: string]: unknown }> = {\n  _meta?: MetaObject;\n  content: ContentBlock[];\n  isError?: boolean;\n  structuredContent?: TStructured;\n  [key: string]: unknown;\n};\n```\n\n### `apply_patch`\nThe `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```\n\n### `create_goal`\nCreate a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.\nSet token_budget only when an explicit token budget is requested. Fails if an unfinished goal exists; use update_goal only for status.\n\nexec tool declaration:\n```ts\ndeclare const tools: { create_goal(args: {\n  // Required. The concrete objective to start pursuing. This starts a new active goal when no goal exists or replaces the current goal when it is complete.\n  objective: string;\n  // Positive token budget for the new goal. Omit unless explicitly requested.\n  token_budget?: number;\n}): Promise<unknown>; };\n```\n\n### `exec_command`\nRuns a command in a PTY, returning output or a session ID for ongoing interaction.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: {\n  // Shell command to execute.\n  cmd: string;\n  // User-facing approval question for `require_escalated`; omit otherwise.\n  justification?: string;\n  // True runs the shell with -l/-i semantics; false disables them. Defaults to true.\n  login?: boolean;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].\n  prefix_rule?: Array<string>;\n  // Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.\n  sandbox_permissions?: \"use_default\" | \"require_escalated\";\n  // Shell binary to launch. Defaults to the user's default shell.\n  shell?: string;\n  // True allocates a PTY for the command; false or omitted uses plain pipes.\n  tty?: boolean;\n  // Working directory for the command. Defaults to the turn cwd.\n  workdir?: string;\n  // Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n### `get_goal`\nGet the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.\n\nexec tool declaration:\n```ts\ndeclare const tools: { get_goal(args: {}): Promise<unknown>; };\n```\n\n### `list_mcp_resource_templates`\nLists resource templates provided by MCP servers. Parameterized resource templates allow servers to share data that takes parameters and provides context to language models, such as files, database schemas, or application-specific information. Prefer resource templates over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resource_templates(args: {\n  // Opaque cursor from a previous list_mcp_resource_templates call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resource templates from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `list_mcp_resources`\nLists resources provided by MCP servers. Resources allow servers to share data that provides context to language models, such as files, database schemas, or application-specific information. Prefer resources over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resources(args: {\n  // Opaque cursor from a previous list_mcp_resources call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resources from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `read_mcp_resource`\nRead a specific resource from an MCP server given the server name and resource URI.\n\nexec tool declaration:\n```ts\ndeclare const tools: { read_mcp_resource(args: {\n  // MCP server name exactly as configured. Must match the 'server' field returned by list_mcp_resources.\n  server: string;\n  // Resource URI to read. Must be one of the URIs returned by list_mcp_resources.\n  uri: string;\n}): Promise<unknown>; };\n```\n\n### `update_goal`\nUpdate the existing goal.\nSet status to `paused` only at the user's explicit request to pause this goal, never on your own initiative. Ask if unclear; a later resume revokes that request. Report the returned status and stop goal work. Budget limits take precedence over pausing.\nSet status to `complete` only when the objective has actually been achieved and no required work remains.\nSet status to `blocked` only when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic continuations, and the agent cannot make meaningful progress without user input or an external-state change.\nIf the user resumes a goal that was previously marked `blocked`, treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, set status to `blocked` again.\nOnce the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; set status to `blocked`.\nDo not use `blocked` merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.\nDo not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work.\nYou cannot use this tool to resume, budget-limit, or usage-limit a goal; those status changes are controlled by the user or system.\nWhen marking a budgeted goal achieved with status `complete`, report the final token usage from the tool result to the user.\n\nexec tool declaration:\n```ts\ndeclare const tools: { update_goal(args: {\n  // Required. `paused` requires an explicit user request. Set to `complete` only when the objective is achieved and no required work remains. Set to `blocked` only after the same blocking condition has recurred for at least three consecutive goal turns and the agent is at an impasse. After a previously blocked goal is resumed, the resumed run starts a fresh blocked audit.\n  status: \"complete\" | \"blocked\" | \"paused\";\n}): Promise<unknown>; };\n```\n\n### `view_image`\nView a local image file from the filesystem when visual inspection is needed. Use this for images already available on disk.\n\nexec tool declaration:\n```ts\ndeclare const tools: { view_image(args: {\n  // Image detail level. Defaults to `high`; use `original` to preserve exact resolution.\n  detail?: \"high\" | \"original\";\n  // Local filesystem path to an image file.\n  path: string;\n}): Promise<{\n  // Image detail hint returned by view_image. Returns `high` for default resized behavior or `original` when original resolution is preserved.\n  detail: \"high\" | \"original\";\n  // Data URL for the loaded image.\n  image_url: string;\n}>; };\n```\n\n### `write_stdin`\nWrites characters to an existing unified exec session and returns recent output.\n\nexec tool declaration:\n```ts\ndeclare const tools: { write_stdin(args: {\n  // Bytes to write to stdin. Defaults to empty, which polls without writing.\n  chars?: string;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Identifier of the running unified exec session.\n  session_id: number;\n  // Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n## clock\nTools for reading and waiting on time.\n\n### `clock__curr_time`\nReturn the current time in UTC.\n\nexec tool declaration:\n```ts\ndeclare const tools: { clock__curr_time(args: {}): Promise<{\n  // Current UTC time formatted as YYYY-MM-DD HH:MM:SS UTC.\n  current_time: string;\n}>; };\n```","format":{"type":"grammar","syntax":"lark","definition":"\nstart: pragma_source | plain_source\npragma_source: PRAGMA_LINE NEWLINE SOURCE\nplain_source: SOURCE\n\nPRAGMA_LINE: /[ \\t]*\\/\\/ @exec:[^\\r\\n]*/\nNEWLINE: /\\r?\\n/\nSOURCE: /[\\s\\S]+/\n"}}]},{"type":"namespace","name":"clock","description":"Tools for reading and waiting on time.","tools":[{"type":"function","strict":false,"name":"sleep","description":"Pause execution for a specified duration. The sleep ends early when new input arrives for the active turn. Returns the elapsed wall-clock time.","output_schema":null,"parameters":{"type":"object","properties":{"duration_ms":{"type":"number","description":"How long to sleep in milliseconds. Must be between 1 and 43200000."}},"required":["duration_ms"],"additionalProperties":false}}]},{"type":"namespace","name":"collaboration","description":"Tools for spawning and managing sub-agents.","tools":[{"type":"function","strict":false,"name":"followup_task","description":"Send a follow-up task to an existing non-root target agent and trigger a turn if it is idle. If the target is already running, deliver the task promptly at message boundaries while sampling, or after the pending tool call completes.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to send to the target agent.","encrypted":true},"target":{"type":"string","description":"Agent id or canonical task name to send a follow-up task to (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"interrupt_agent","description":"Interrupt an agent's current turn, if any, and return its previous status. The agent remains available for messages and follow-up tasks.","output_schema":null,"parameters":{"type":"object","properties":{"target":{"type":"string","description":"Agent id or canonical task name to interrupt (from spawn_agent)."}},"required":["target"],"additionalProperties":false}},{"type":"function","strict":false,"name":"list_agents","description":"List live agents in the current root thread tree. Optionally filter by task-path prefix.","output_schema":null,"parameters":{"type":"object","properties":{"path_prefix":{"type":"string","description":"Task-path prefix filter without a trailing slash. Omit to list all live agents."}},"additionalProperties":false}},{"type":"function","strict":false,"name":"send_message","description":"Send a message to an existing agent. The message will be delivered promptly. Does not trigger a new turn.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to queue on the target agent.","encrypted":true},"target":{"type":"string","description":"Relative or canonical task name to message (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"spawn_agent","description":"\n        Available model overrides (optional; inherited parent model is preferred):\n- `gpt-6.1-sol`: Latest workhorse model for coding and everyday work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-astra`: Frontier intelligence for the most demanding work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-sol`: Previous generation workhorse model. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-luna`: Fast and affordable model for easier tasks. Reasoning efforts: low, medium (default), high, xhigh, max. Service tiers: priority.\n- `gpt-5.6-sol`: Older generation workhorse model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.","output_schema":null,"parameters":{"type":"object","properties":{"fork_turns":{"type":"string","description":"Parent history to inherit. Defaults to `all`; use `none` to start without parent history. Only `all` and `none` are supported."},"message":{"type":"string","description":"Initial plain-text task for the new agent.","encrypted":true},"model":{"type":"string","description":"Model override for the new agent. Omit unless an explicit override is needed."},"reasoning_effort":{"type":"string","description":"Reasoning effort override for the new agent. Omit to inherit the parent effort."},"task_name":{"type":"string","description":"Task name for the new agent. Use lowercase letters, digits, and underscores."}},"required":["task_name","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"wait_agent","description":"Wait for a mailbox update from any live agent, including queued messages and final-status notifications. The wait also ends early when new user input is steered into the active turn. Does not return the content; returns either a summary of which agents have updates (if any), an interruption summary for steered input, or a timeout summary if no activity arrives before the deadline.","output_schema":null,"parameters":{"type":"object","properties":{"timeout_ms":{"type":"number","description":"Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000."}},"additionalProperties":false}}]}],"tool_choice":"auto","parallel_tool_calls":false,"prompt_cache_key":"4a3f32e1-ec7d-41c9-8647-5fa333d61ee4","prompt_cache_retention":"24h","text":{"format":{"type":"text"},"verbosity":"low"},"top_p":0.98,"top_logprobs":0,"temperature":1.0,"reasoning":{"effort":"medium","context":"all_turns","summary":null,"mode":"standard"},"user":null,"usage":null,"tool_usage":{"image_gen":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"text_tokens":0,"image_tokens":0},"output_tokens_details":{"image_tokens":0,"text_tokens":0}},"web_search":{"num_requests":0}},"safety_identifier":"user-ZglLa0AK1sUTDt85g9NsGTX5","store":false,"metadata":{},"max_output_tokens":null,"max_tool_calls":null,"service_tier":"auto","truncation":"disabled"}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"safety_buffering":false,"response":{"id":"resp_0cc578770d4a788d016acd1fb5e32487d18b6fdbcaebf76c3a","object":"response","created_at":1791827894,"completed_at":null,"status":"in_progress","background":false,"frequency_penalty":0.0,"presence_penalty":0.0,"moderation":null,"model":"gpt-6.1-sol","access_programs":{"cyber":"standard"},"previous_response_id":null,"instructions":null,"output":[],"error":null,"incomplete_details":null,"tools":[{"type":"namespace","name":"functions","description":"","tools":[{"type":"function","strict":false,"name":"wait","description":"Waits on a yielded `exec` cell and returns new output or completion.\n- Use `wait` only after `exec` returns `Script running with cell ID ...`.\n- `cell_id` identifies the running `exec` cell to resume.\n- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.\n- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.\n- `terminate: true` stops the running cell; false or omitted waits for output.\n- `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.\n- If the cell is still running, `wait` may yield again with the same `cell_id`.\n- If the cell has already finished, `wait` returns the completed result and closes the cell.","output_schema":null,"parameters":{"type":"object","properties":{"cell_id":{"type":"string","description":"Identifier of the running exec cell."},"max_tokens":{"type":"number","description":"Output token budget for this wait call. Defaults to 10000 tokens."},"terminate":{"type":"boolean","description":"True stops the running exec cell; false or omitted waits for output."},"yield_time_ms":{"type":"number","description":"Wait before yielding more output. Defaults to 10000 ms."}},"required":["cell_id"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input","description":"Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"Questions to show the user. Prefer 1 and do not exceed 3","items":{"type":"object","properties":{"header":{"type":"string","description":"Short header label shown in the UI (12 or fewer chars)."},"id":{"type":"string","description":"Stable identifier for mapping answers (snake_case)."},"options":{"type":"array","description":"Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.","items":{"type":"object","properties":{"description":{"type":"string","description":"One short sentence explaining impact/tradeoff if selected."},"label":{"type":"string","description":"User-facing label (1-5 words)."}},"required":["label","description"],"additionalProperties":false}},"question":{"type":"string","description":"Single-sentence prompt shown to the user."}},"required":["id","header","question","options"],"additionalProperties":false}}},"required":["questions"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input_async","description":"Ask the user one or more questions during ongoing work. Use this tool only to request missing information, preferences, constraints, clarification, or approval. The tool returns immediately without ending the turn or waiting for a reply; any reply arrives asynchronously as a new user message. Keep questions concise, self-contained, and easy to understand, using a level of detail appropriate to the user and task. The UI always allows a free-text answer, including when suggested options are provided. A preselected option is not submitted automatically.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"One or more self-contained questions to present together, in display order.","items":{"type":"object","properties":{"options":{"type":"array","description":"Suggested answers, in display order. Put the recommended answer first; the first option is preselected by default. The user can select one option or enter a free-text answer. Do not include an Other option or a free-text placeholder; the UI provides free-text input automatically. Omit options for a free-text-only question.","items":{"type":"string"},"minItems":1},"title":{"type":"string","description":"The complete question shown to the user, including any context needed to answer it."}},"required":["title"],"additionalProperties":false},"minItems":1}},"required":["questions"],"additionalProperties":false}},{"type":"custom","name":"exec","description":"Run JavaScript code to orchestrate/compose tool calls\n- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`. Tool names are exposed as normalized JavaScript identifiers, for example `await tools.mcp__ologs__get_profile(...)`.\n- Nested tool methods take either a string or an object as their input argument.\n- Nested tools return either an object or a string, based on the description.\n- Runs raw JavaScript -- no Node, no file system, no network access, no console.\n- Accepts raw JavaScript source text, not JSON, quoted strings, or markdown code fences.\n- You may optionally start the tool input with a first-line pragma like `// @exec: {\"yield_time_ms\": 10000, \"max_output_tokens\": 1000}`.\n- `yield_time_ms` asks `exec` to yield early if the script is still running. Defaults to 30000 ms.\n- `max_output_tokens` sets the token budget for direct `exec` results. Defaults to 10000 tokens.\n- When the JS code is fully evaluated, the isolate's lifetime ends and unawaited promises are silently discarded.\n\n- Global helpers:\n- `exit()`: Immediately ends the current script successfully (like an early return from the top level).\n- `text(value: string | number | boolean | undefined | null)`: Appends a text item. Non-string values are stringified with `JSON.stringify(...)` when possible.\n- `image(imageUrlOrItem: string | { image_url: string; detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null } | ImageContent, detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null)`: Appends an image item. `image_url` should be a base64-encoded `data:` URL. To forward an MCP tool image, pass an individual `ImageContent` block from `result.content`, for example `image(result.content[0])`. MCP image blocks may request detail with `_meta: { \"codex/imageDetail\": \"original\" }`. When provided, the second `detail` argument overrides any detail embedded in the first argument.\n- `audio(audioUrlOrItem: string | { audio_url: string } | AudioContent)`: Appends an audio item. `audio_url` should be a base64-encoded `data:` URL. To forward an MCP tool audio block, pass an individual `AudioContent` block from `result.content`, for example `audio(result.content[0])`.\n- `generatedImage(result: { image_url: string; output_hint?: string })`: Appends an image-generation result and its optional output hint. HTTP(S) URLs are not supported.\n- `store(key: string, value: any)`: stores a serializable value under a string key for later `exec` calls in the same session.\n- `load(key: string)`: returns the stored value for a string key, or `undefined` if it is missing.\n- `notify(value: string | number | boolean | undefined | null)`: immediately injects an extra `custom_tool_call_output` for the current `exec` call. Values are stringified like `text(...)`.\n- `setTimeout(callback: () => void, delayMs?: number)`: schedules a callback to run later and returns a timeout id. Pending timeouts do not keep `exec` alive by themselves; await an explicit promise if you need to wait for one.\n- `clearTimeout(timeoutId?: number)`: cancels a timeout created by `setTimeout`.\n- `ALL_TOOLS`: metadata for the enabled nested tools as `{ name, description }` entries.\n- `yield_control()`: yields the accumulated output to the model immediately while the script keeps running.\n\nSome deferred nested tools may be omitted from this description. They are still available on the global `tools` object and listed in `ALL_TOOLS`.\nTo find one, filter `ALL_TOOLS` by `name` and `description`.\n\nTool availability can change between calls.\n\nShared MCP Types:\n```ts\ntype Role = \"user\" | \"assistant\";\ntype MetaObject = Record<string, unknown>;\ntype Annotations = {\n  audience?: Role[];\n  priority?: number;\n  lastModified?: string;\n};\ntype Icon = {\n  src: string;\n  mimeType?: string;\n  sizes?: string[];\n  theme?: \"light\" | \"dark\";\n};\ntype TextResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  text: string;\n};\ntype BlobResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  blob: string;\n};\ntype TextContent = {\n  type: \"text\";\n  text: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ImageContent = {\n  type: \"image\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype AudioContent = {\n  type: \"audio\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ResourceLink = {\n  icons?: Icon[];\n  name: string;\n  title?: string;\n  uri: string;\n  description?: string;\n  mimeType?: string;\n  annotations?: Annotations;\n  size?: number;\n  _meta?: MetaObject;\n  type: \"resource_link\";\n};\ntype EmbeddedResource = {\n  type: \"resource\";\n  resource: TextResourceContents | BlobResourceContents;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ContentBlock =\n  | TextContent\n  | ImageContent\n  | AudioContent\n  | ResourceLink\n  | EmbeddedResource;\ntype CallToolResult<TStructured = { [key: string]: unknown }> = {\n  _meta?: MetaObject;\n  content: ContentBlock[];\n  isError?: boolean;\n  structuredContent?: TStructured;\n  [key: string]: unknown;\n};\n```\n\n### `apply_patch`\nThe `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```\n\n### `create_goal`\nCreate a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.\nSet token_budget only when an explicit token budget is requested. Fails if an unfinished goal exists; use update_goal only for status.\n\nexec tool declaration:\n```ts\ndeclare const tools: { create_goal(args: {\n  // Required. The concrete objective to start pursuing. This starts a new active goal when no goal exists or replaces the current goal when it is complete.\n  objective: string;\n  // Positive token budget for the new goal. Omit unless explicitly requested.\n  token_budget?: number;\n}): Promise<unknown>; };\n```\n\n### `exec_command`\nRuns a command in a PTY, returning output or a session ID for ongoing interaction.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: {\n  // Shell command to execute.\n  cmd: string;\n  // User-facing approval question for `require_escalated`; omit otherwise.\n  justification?: string;\n  // True runs the shell with -l/-i semantics; false disables them. Defaults to true.\n  login?: boolean;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].\n  prefix_rule?: Array<string>;\n  // Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.\n  sandbox_permissions?: \"use_default\" | \"require_escalated\";\n  // Shell binary to launch. Defaults to the user's default shell.\n  shell?: string;\n  // True allocates a PTY for the command; false or omitted uses plain pipes.\n  tty?: boolean;\n  // Working directory for the command. Defaults to the turn cwd.\n  workdir?: string;\n  // Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n### `get_goal`\nGet the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.\n\nexec tool declaration:\n```ts\ndeclare const tools: { get_goal(args: {}): Promise<unknown>; };\n```\n\n### `list_mcp_resource_templates`\nLists resource templates provided by MCP servers. Parameterized resource templates allow servers to share data that takes parameters and provides context to language models, such as files, database schemas, or application-specific information. Prefer resource templates over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resource_templates(args: {\n  // Opaque cursor from a previous list_mcp_resource_templates call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resource templates from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `list_mcp_resources`\nLists resources provided by MCP servers. Resources allow servers to share data that provides context to language models, such as files, database schemas, or application-specific information. Prefer resources over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resources(args: {\n  // Opaque cursor from a previous list_mcp_resources call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resources from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `read_mcp_resource`\nRead a specific resource from an MCP server given the server name and resource URI.\n\nexec tool declaration:\n```ts\ndeclare const tools: { read_mcp_resource(args: {\n  // MCP server name exactly as configured. Must match the 'server' field returned by list_mcp_resources.\n  server: string;\n  // Resource URI to read. Must be one of the URIs returned by list_mcp_resources.\n  uri: string;\n}): Promise<unknown>; };\n```\n\n### `update_goal`\nUpdate the existing goal.\nSet status to `paused` only at the user's explicit request to pause this goal, never on your own initiative. Ask if unclear; a later resume revokes that request. Report the returned status and stop goal work. Budget limits take precedence over pausing.\nSet status to `complete` only when the objective has actually been achieved and no required work remains.\nSet status to `blocked` only when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic continuations, and the agent cannot make meaningful progress without user input or an external-state change.\nIf the user resumes a goal that was previously marked `blocked`, treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, set status to `blocked` again.\nOnce the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; set status to `blocked`.\nDo not use `blocked` merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.\nDo not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work.\nYou cannot use this tool to resume, budget-limit, or usage-limit a goal; those status changes are controlled by the user or system.\nWhen marking a budgeted goal achieved with status `complete`, report the final token usage from the tool result to the user.\n\nexec tool declaration:\n```ts\ndeclare const tools: { update_goal(args: {\n  // Required. `paused` requires an explicit user request. Set to `complete` only when the objective is achieved and no required work remains. Set to `blocked` only after the same blocking condition has recurred for at least three consecutive goal turns and the agent is at an impasse. After a previously blocked goal is resumed, the resumed run starts a fresh blocked audit.\n  status: \"complete\" | \"blocked\" | \"paused\";\n}): Promise<unknown>; };\n```\n\n### `view_image`\nView a local image file from the filesystem when visual inspection is needed. Use this for images already available on disk.\n\nexec tool declaration:\n```ts\ndeclare const tools: { view_image(args: {\n  // Image detail level. Defaults to `high`; use `original` to preserve exact resolution.\n  detail?: \"high\" | \"original\";\n  // Local filesystem path to an image file.\n  path: string;\n}): Promise<{\n  // Image detail hint returned by view_image. Returns `high` for default resized behavior or `original` when original resolution is preserved.\n  detail: \"high\" | \"original\";\n  // Data URL for the loaded image.\n  image_url: string;\n}>; };\n```\n\n### `write_stdin`\nWrites characters to an existing unified exec session and returns recent output.\n\nexec tool declaration:\n```ts\ndeclare const tools: { write_stdin(args: {\n  // Bytes to write to stdin. Defaults to empty, which polls without writing.\n  chars?: string;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Identifier of the running unified exec session.\n  session_id: number;\n  // Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n## clock\nTools for reading and waiting on time.\n\n### `clock__curr_time`\nReturn the current time in UTC.\n\nexec tool declaration:\n```ts\ndeclare const tools: { clock__curr_time(args: {}): Promise<{\n  // Current UTC time formatted as YYYY-MM-DD HH:MM:SS UTC.\n  current_time: string;\n}>; };\n```","format":{"type":"grammar","syntax":"lark","definition":"\nstart: pragma_source | plain_source\npragma_source: PRAGMA_LINE NEWLINE SOURCE\nplain_source: SOURCE\n\nPRAGMA_LINE: /[ \\t]*\\/\\/ @exec:[^\\r\\n]*/\nNEWLINE: /\\r?\\n/\nSOURCE: /[\\s\\S]+/\n"}}]},{"type":"namespace","name":"clock","description":"Tools for reading and waiting on time.","tools":[{"type":"function","strict":false,"name":"sleep","description":"Pause execution for a specified duration. The sleep ends early when new input arrives for the active turn. Returns the elapsed wall-clock time.","output_schema":null,"parameters":{"type":"object","properties":{"duration_ms":{"type":"number","description":"How long to sleep in milliseconds. Must be between 1 and 43200000."}},"required":["duration_ms"],"additionalProperties":false}}]},{"type":"namespace","name":"collaboration","description":"Tools for spawning and managing sub-agents.","tools":[{"type":"function","strict":false,"name":"followup_task","description":"Send a follow-up task to an existing non-root target agent and trigger a turn if it is idle. If the target is already running, deliver the task promptly at message boundaries while sampling, or after the pending tool call completes.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to send to the target agent.","encrypted":true},"target":{"type":"string","description":"Agent id or canonical task name to send a follow-up task to (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"interrupt_agent","description":"Interrupt an agent's current turn, if any, and return its previous status. The agent remains available for messages and follow-up tasks.","output_schema":null,"parameters":{"type":"object","properties":{"target":{"type":"string","description":"Agent id or canonical task name to interrupt (from spawn_agent)."}},"required":["target"],"additionalProperties":false}},{"type":"function","strict":false,"name":"list_agents","description":"List live agents in the current root thread tree. Optionally filter by task-path prefix.","output_schema":null,"parameters":{"type":"object","properties":{"path_prefix":{"type":"string","description":"Task-path prefix filter without a trailing slash. Omit to list all live agents."}},"additionalProperties":false}},{"type":"function","strict":false,"name":"send_message","description":"Send a message to an existing agent. The message will be delivered promptly. Does not trigger a new turn.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to queue on the target agent.","encrypted":true},"target":{"type":"string","description":"Relative or canonical task name to message (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"spawn_agent","description":"\n        Available model overrides (optional; inherited parent model is preferred):\n- `gpt-6.1-sol`: Latest workhorse model for coding and everyday work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-astra`: Frontier intelligence for the most demanding work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-sol`: Previous generation workhorse model. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-luna`: Fast and affordable model for easier tasks. Reasoning efforts: low, medium (default), high, xhigh, max. Service tiers: priority.\n- `gpt-5.6-sol`: Older generation workhorse model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.","output_schema":null,"parameters":{"type":"object","properties":{"fork_turns":{"type":"string","description":"Parent history to inherit. Defaults to `all`; use `none` to start without parent history. Only `all` and `none` are supported."},"message":{"type":"string","description":"Initial plain-text task for the new agent.","encrypted":true},"model":{"type":"string","description":"Model override for the new agent. Omit unless an explicit override is needed."},"reasoning_effort":{"type":"string","description":"Reasoning effort override for the new agent. Omit to inherit the parent effort."},"task_name":{"type":"string","description":"Task name for the new agent. Use lowercase letters, digits, and underscores."}},"required":["task_name","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"wait_agent","description":"Wait for a mailbox update from any live agent, including queued messages and final-status notifications. The wait also ends early when new user input is steered into the active turn. Does not return the content; returns either a summary of which agents have updates (if any), an interruption summary for steered input, or a timeout summary if no activity arrives before the deadline.","output_schema":null,"parameters":{"type":"object","properties":{"timeout_ms":{"type":"number","description":"Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000."}},"additionalProperties":false}}]}],"tool_choice":"auto","parallel_tool_calls":false,"prompt_cache_key":"4a3f32e1-ec7d-41c9-8647-5fa333d61ee4","prompt_cache_retention":"24h","text":{"format":{"type":"text"},"verbosity":"low"},"top_p":0.98,"top_logprobs":0,"temperature":1.0,"reasoning":{"effort":"medium","context":"all_turns","summary":null,"mode":"standard"},"user":null,"usage":null,"tool_usage":{"image_gen":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"text_tokens":0,"image_tokens":0},"output_tokens_details":{"image_tokens":0,"text_tokens":0}},"web_search":{"num_requests":0}},"safety_identifier":"user-ZglLa0AK1sUTDt85g9NsGTX5","store":false,"metadata":{},"max_output_tokens":null,"max_tool_calls":null,"service_tier":"auto","truncation":"disabled"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"type":"reasoning","id":"rs_0cc578770d4a788d016acd1fbaf25087d1850f4ecbd28e6403","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"summary":[],"content":[],"encrypted_content":"gAAAAABqzR-6dhY81j9Brc_s-9ecygEazdOsU01x6FKX5MXENgh_gyccAiJyiDTyIJCJrttvY0KWt1fLmKxENWTX8vqJBDEPRd4I8SUEYFuln-R8wJf0MS6ax3B7_g_eSDCfCcdGyOAFMzJr6iTfYeTX2F2X1BbD0NZttdZrrWl3CUCtDBR03_DLkUWsse1-MeZNPsleMb7cN-GLFJ6nh323iLrnTEyNhbRtFWNeLohpwa1rtgybCC_K_KjBv09hzfWjg8--oWPlc-kEnJ8Co5_j-5JaXv-DEyUW9kw9PrpG37HNRlFQ3r_SqMNvwMazEAI12LxfDSuMPsHGGBz6D4qvSYYyn-eJfmaOS3kAxuFu2lL6ViuYYEUKXjl4nR3_HDw7JyBCfpDgJ6Zi4kFtdHkUzpuKPjDjDach8x2sKn47za-KDoQ2e6lfz2nIRlfmGbQMd2BiIGY-r3_TKPstG8k1amu7Ax9_hPUqQTjMEtbf-hZyKCHq2s6ietpVYHyu0ikN2z5DsSXLDx0EnGryPdSRsVDpGy3jxuHCo6g3jahmu-AIrRu-ExBzmLuU-XVjXEPW2jevXQcI8wwdJfzy4Dk3FdQNl4a0KN6VJUOAHKSI9YxSJ-pPT491yruLFozIR1B2RMLl3xp6IAniI1OWQXvLBLRW1Y5m1rx2XHdimw1uB9sOOniM1M1fmOT3lM4rxtIbOcqEgXF_skRw3B2cQm05vlCSpFyJmRVQtPjqyAcwv5G39j7Kni66hioe37DeEWznCdhT_TZH6rr1agyvzOo2XlVLaOYG2PZGfpqhqdt2s0UAJ37J01sCblMcTsQsCOOktruLCMbaQZoom8z2BkPtfw79vbKLNdRU1htOPE4Vv0ry-cwnG07QCmQVm77hnqYV0_MGiMokGk-kwmOh0r-9DGIOcC6hsdiy98kkc5bxC8aWnYyoxLfxhZTCKmIdJ8JzqAQtNrZm2af5gM5RU60OlEqGPOHYoXMPiGRvYzd9OuMNv91Y_PK5yXTYKWrj0fgxarQCg9V38i9aZg0z9gXazrnrRKGPQElppcMjtbmBDsjV4fW9zk5e1iuyqCCLcEYegNbbwszlFI6IZNCjxqRXMvNvCGggNek7DAiIBHF50fyFng0voTP-u80VH3PmAbVQphcmryByFqNH3I-rfpzU72WejpdQw8L2WlSa0m5llYMRRB4Zw98NV953IZypK9d88wQZgcmsrZx9n4ubr6DWmZhLNW5VXRO-ErEYTvZfhHhgEEFF78bFNbENSng6rckRRt0nUFDV4RdRqL9c94oTnlNK2YZoEqKxvJmpz_zzny0pfTeC6YpDv7Lae97mSuJqJTVlYUDmD-Pkdj9YtX4oZs6Pf-Md9wPfT4Ky_K0Fpv49_HA-iVZ5DhZYmJvvAzAh3ZF94YJRYISiMq-5IrC6LBXpzpsBWAu92VOYwqsD8k9zM1LCUER4NK_nT-5vjIbvv2vLddCs71MwNQJkWD6vEfEAbTevhfwj_kl2QdlHZBl-LW26wi5SXXlksfvq_2Gt86OMyYh9qqf9bTIAvAqzDSQRaZnARUNsn2Jayw9aUApdOFSVnYz9r3tsIiK4Ic7U4yuqqQgbRO56HMQ1WLDWfWNDweQ363yVzPQBUekxS9WtDReb53hzDj3rEMUTkpGE9DKH4aXN5RvOs-X_m-fjQ6wYr8WLqnXrEhiGg2_ElhPnvSL_Rhv3C7lU8a7YTo_ZZMixkM7A015jDRCo8Wh3z7b4JkqLiCWUQs7UiaH2hoHdcShN6bhPQkcyU-TSpGbl5iAnCQiqf_VgiUNLSxovKB3MQ9mjlRTIREL2bHnSOvmLDf4ZC6G0BbOzkwosvnT-oPM8UMg7_LvzXZqSUt1B0Tt3ivfots2UCgS9Ambxt-G7SyqvwC71cplhqEG07u6e6isN1r4O7CkEdH5bhFb_0s7GxUFw2NorexbJjhgwHJxX4Y-NneAwIrxs1GVZXQu3ei7R7oqbjYrh7LEGuzHmAggAdL54oPOI7S_9xsDwLhgnCiHMJIUQGovgKHH2iTopyR9hKYkKyXX2zHMNEmQlnETIAsfSOhrIrwnRFTZtWYjES-0U0mhoub6dHWicnwnGkMSoX6Hp0Dqm5WrGyRPSGzMZj_R_4UhXEuGteJK81IoyWLoSw1Ei8mgV-qacHk4Qe4n2cuNGt9L9E4Rxvi6HHMJvguGhFQmBUqveGowvVDtC0oVKsOsi3OjR0EYkcuDml9LF2S9pnKI0-WQDFmQIcvwtQ6KI4_T6SQ9wtyVlYSQzl2FwDA6r3Cshqz01freThJRygHb5sH6QgqsCEaAcv3nbfrvdNLJ68qqnCE1ZPIuBfSCnsN6mhQ6LT6jUaOpsyzK-lBXb2XAC6mkuNkl_JBkBn4HTC3J3LfN4sTezumQBC8C8Lfj4Lf6VYl7X74VtdVeVP_xctyD_dnnyRqvXO-1RJaE7RH2Jgr5W4eEPRvqc0visrJDJC-RKr2THyp0BRs-wTebrB0Xd5g9V8EKRoTAxw575nB7Yd4cG_J73xBgJvyQN32h9q4tNxqURkAoh3viccFtKjC6eRYefsRZtkMM9jeRUUnNCJX8BBwy2FmGl62b0F4xUSa1_F0AjziXgX-uCs0NJs9nGlyqInSIrzBH6Age0qclS93IyT_DbeqzAna_BeBNCyNIjBcaBkvE5m6Haw_8gycWAuBOU89JTRe1qDzPL2EQCfWPFPv4tBUUee1IL6hD8faU4n04ppa-mNuV2pW4lxQLw2PzGrQ0JUECNJACoGg=="}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":3,"output_index":0,"item":{"type":"reasoning","id":"rs_0cc578770d4a788d016acd1fbaf25087d1850f4ecbd28e6403","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"summary":[],"content":[],"encrypted_content":"gAAAAABqzR-6dhY81j9Brc_s-9ecygEazdOsU01x6FKX5MXENgh_gyccAiJyiDTyIJCJrttvY0KWt1fLmKxENWTX8vqJBDEPRd4I8SUEYFuln-R8wJf0MS6ax3B7_g_eSDCfCcdGyOAFMzJr6iTfYeTX2F2X1BbD0NZttdZrrWl3CUCtDBR03_DLkUWsse1-MeZNPsleMb7cN-GLFJ6nh323iLrnTEyNhbRtFWNeLohpwa1rtgybCC_K_KjBv09hzfWjg8--oWPlc-kEnJ8Co5_j-5JaXv-DEyUW9kw9PrpG37HNRlFQ3r_SqMNvwMazEAI12LxfDSuMPsHGGBz6D4qvSYYyn-eJfmaOS3kAxuFu2lL6ViuYYEUKXjl4nR3_HDw7JyBCfpDgJ6Zi4kFtdHkUzpuKPjDjDach8x2sKn47za-KDoQ2e6lfz2nIRlfmGbQMd2BiIGY-r3_TKPstG8k1amu7Ax9_hPUqQTjMEtbf-hZyKCHq2s6ietpVYHyu0ikN2z5DsSXLDx0EnGryPdSRsVDpGy3jxuHCo6g3jahmu-AIrRu-ExBzmLuU-XVjXEPW2jevXQcI8wwdJfzy4Dk3FdQNl4a0KN6VJUOAHKSI9YxSJ-pPT491yruLFozIR1B2RMLl3xp6IAniI1OWQXvLBLRW1Y5m1rx2XHdimw1uB9sOOniM1M1fmOT3lM4rxtIbOcqEgXF_skRw3B2cQm05vlCSpFyJmRVQtPjqyAcwv5G39j7Kni66hioe37DeEWznCdhT_TZH6rr1agyvzOo2XlVLaOYG2PZGfpqhqdt2s0UAJ37J01sCblMcTsQsCOOktruLCMbaQZoom8z2BkPtfw79vbKLNdRU1htOPE4Vv0ry-cwnG07QCmQVm77hnqYV0_MGiMokGk-kwmOh0r-9DGIOcC6hsdiy98kkc5bxC8aWnYyoxLfxhZTCKmIdJ8JzqAQtNrZm2af5gM5RU60OlEqGPOHYoXMPiGRvYzd9OuMNv91Y_PK5yXTYKWrj0fgxarQCg9V38i9aZg0z9gXazrnrRKGPQElppcMjtbmBDsjV4fW9zk5e1iuyqCCLcEYegNbbwszlFI6IZNCjxqRXMvNvCGggNek7DAiIBHF50fyFng0voTP-u80VH3PmAbVQphcmryByFqNH3I-rfpzU72WejpdQw8L2WlSa0m5llYMRRB4Zw98NV953IZypK9d88wQZgcmsrZx9n4ubr6DWmZhLNW5VXRO-ErEYTvZfhHhgEEFF78bFNbENSng6rckRRt0nUFDV4RdRqL9c94oTnlNK2YZoEqKxvJmpz_zzny0pfTeC6YpDv7Lae97mSuJqJTVlYUDmD-Pkdj9YtX4oZs6Pf-Md9wPfT4Ky_K0Fpv49_HA-iVZ5DhZYmJvvAzAh3ZF94YJRYISiMq-5IrC6LBXpzpsBWAu92VOYwqsD8k9zM1LCUER4NK_nT-5vjIbvv2vLddCs71MwNQJkWD6vEfEAbTevhfwj_kl2QdlHZBl-LW26wi5SXXlksfvq_2Gt86OMyYh9qqf9bTIAvAqzDSQRaZnARUNsn2Jayw9aUApdOFSVnYz9r3tsIiK4Ic7U4yuqqQgbRO56HMQ1WLDWfWNDweQ363yVzPQBUekxS9WtDReb53hzDj3rEMUTkpGE9DKH4aXN5RvOs-X_m-fjQ6wYr8WLqnXrEhiGg2_ElhPnvSL_Rhv3C7lU8a7YTo_ZZMixkM7A015jDRCo8Wh3z7b4JkqLiCWUQs7UiaH2hoHdcShN6bhPQkcyU-TSpGbl5iAnCQiqf_VgiUNLSxovKB3MQ9mjlRTIREL2bHnSOvmLDf4ZC6G0BbOzkwosvnT-oPM8UMg7_LvzXZqSUt1B0Tt3ivfots2UCgS9Ambxt-G7SyqvwC71cplhqEG07u6e6isN1r4O7CkEdH5bhFb_0s7GxUFw2NorexbJjhgwHJxX4Y-NneAwIrxs1GVZXQu3ei7R7oqbjYrh7LEGuzHmAggAdL54oPOI7S_9xsDwLhgnCiHMJIUQGovgKHH2iTopyR9hKYkKyXX2zHMNEmQlnETIAsfSOhrIrwnRFTZtWYjES-0U0mhoub6dHWicnwnGkMSoX6Hp0Dqm5WrGyRPSGzMZj_R_4UhXEuGteJK81IoyWLoSw1Ei8mgV-qacHk4Qe4n2cuNGt9L9E4Rxvi6HHMJvguGhFQmBUqveGowvVDtC0oVKsOsi3OjR0EYkcuDml9LF2S9pnKI0-WQDFmQIcvwtQ6KI4_T6SQ9wtyVlYSQzl2FwDA6r3Cshqz01freThJRygHb5sH6QgqsCEaAcv3nbfrvdNLJ68qqnCE1ZPIuBfSCnsN6mhQ6LT6jUaOpsyzK-lBXb2XAC6mkuNkl_JBkBn4HTC3J3LfN4sTezumQBC8C8Lfj4Lf6VYl7X74VtdVeVP_xctyD_dnnyRqvXO-1RJaE7RH2Jgr5W4eEPRvqc0visrJDJC-RKr2THyp0BRs-wTebrB0Xd5g9V8EKRoTAxw575nB7Yd4cG_J73xBgJvyQN32h9q4tNxqURkAoh3viccFtKjC6eRYefsRZtkMM9jeRUUnNCJX8BBwy2FmGl62b0F4xUSa1_F0AjziXgX-uCs0NJs9nGlyqInSIrzBH6Age0qclS93IyT_DbeqzAna_BeBNCyNIjBcaBkvE5m6Haw_8gycWAuBOU89JTRe1qDzPL2EQCfWPFPv4tBUUee1IL6hD8faU4n04ppa-mNuV2pW4lxQLw2PzGrQ0JUECNJACoGg=="}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":4,"output_index":1,"item":{"type":"custom_tool_call","id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"call_id":"call_944740b715c4452ab964971060cea7ee","name":"exec","input":"","status":"in_progress"}}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":5,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"text","obfuscation":"BG5qL3QozrQG"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":6,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(await","obfuscation":"99F2JC9Jc5"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":7,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" tools","obfuscation":"iMRlBOfZdo"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":8,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".apply","obfuscation":"8ONdxqSFpV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":9,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_patch","obfuscation":"bEtj7QCWtH"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":10,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(\"***","obfuscation":"oyKejBEv9gh"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":11,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" Begin","obfuscation":"QFrbjjRal4"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":12,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" Patch","obfuscation":"kZqX6ZtUSC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":13,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\n","obfuscation":"7Y1DL65jC7aSTW"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":14,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"***","obfuscation":"SkNPwvViCX0j9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":15,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" Update","obfuscation":"VtanmlOlk"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":16,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" File","obfuscation":"xGjIz2gNe2v"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":17,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":":","obfuscation":"RGfsbPq0J1js1Uf"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":18,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" /","obfuscation":"GQeqO76SRbetnL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":19,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"home","obfuscation":"A7kHFYr8nkG2"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":20,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"/","obfuscation":"r1RJo9PR91NWSeM"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":21,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"agent","obfuscation":"aFQnIU5Uv4J"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":22,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"/work","obfuscation":"pTffUbf5NVI"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":23,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"/test","obfuscation":"xG9QYRf7zd5"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":24,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"/ui","obfuscation":"WfcY6ye2zNJNp"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":25,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".test","obfuscation":"ZSozP4EjzTU"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":26,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".js","obfuscation":"QLOybk8NGGytU"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":27,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\n","obfuscation":"raR2GMrZQnKIWj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":28,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"@@","obfuscation":"rLU1hJSEnbGM8V"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":29,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"IMxpDL1HObuZ9fD"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":30,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"dMjyIRsTbJkYxvY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":31,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-test","obfuscation":"5jqoE1uGuTf"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":32,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"xj5OQD4tqPTEYI"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":33,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"due","obfuscation":"cmtB0DzaPd7LH"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":34,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" date","obfuscation":"ZcIQv8TMjt4"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":35,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" controls","obfuscation":"cT25UOg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":36,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" save","obfuscation":"8LOthBWUvuT"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":37,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" and","obfuscation":"YW9suYobkMs1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":38,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" clear","obfuscation":"eoGofhwOVR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":39,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" without","obfuscation":"HYpnSVr9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":40,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" changing","obfuscation":"CYPokic"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":41,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" filters","obfuscation":"9lqM5Zts"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":42,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"hmJudXbfGLENG4c"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":43,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" rows","obfuscation":"oIs5Bd3zyQK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":44,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"u45gAQBSl7JFd20"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":45,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" or","obfuscation":"uwbLytdUN3mMP"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":46,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" other","obfuscation":"7z7aFBD64F"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":47,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" data","obfuscation":"391lQhqrk3j"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":48,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"',","obfuscation":"0d0aNSSuebWCPc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":49,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" async","obfuscation":"bZwN0cUKD9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":50,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ()","obfuscation":"jtKbh9Ta77GLC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":51,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =>","obfuscation":"0tKDbeATv0FGg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":52,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" {\\","obfuscation":"jmoKKz6Hddpci"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":53,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"bNR1VkpdmBDMtXL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":54,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"BG0PlR1lZeuEf9i"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":55,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"test","obfuscation":"1xMooKlVcqfR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":56,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"sXm6JpRQJn0clY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":57,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"due","obfuscation":"HmNjJh4WBn449"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":58,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" date","obfuscation":"v7qx2d0cVr6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":59,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" controls","obfuscation":"gorQUZt"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":60,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" save","obfuscation":"35a3ZJ8FnUM"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":61,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" and","obfuscation":"jRtVGS9BFhCj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":62,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" clear","obfuscation":"3brMFNwicR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":63,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" without","obfuscation":"KJOzWpED"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":64,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" changing","obfuscation":"qm7gAYt"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":65,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" filters","obfuscation":"hG83stp6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":66,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"5Q4cmN8ymdiabtA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":67,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" membership","obfuscation":"UeRtr"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":68,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"uuFzlTUriLOgATu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":69,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" or","obfuscation":"8ZQQodVdZ7t4N"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":70,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" other","obfuscation":"dXFL5ZKUpc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":71,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" data","obfuscation":"HHA69lmqOEP"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":72,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"',","obfuscation":"p8tXrX3g5vv8lb"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":73,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" async","obfuscation":"s8xrzOOy3J"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":74,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ()","obfuscation":"pPQL0ha0h84D1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":75,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =>","obfuscation":"uH9LFTDu9Si9r"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":76,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" {\\","obfuscation":"v8Kpwn7v9hFwR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":77,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"yMteoiCHHit74X1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":78,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"@@","obfuscation":"psgRGHav4tKx8L"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":79,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"cASzUVNtOYzdznX"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":80,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"vOKQADElL62rxAH"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":81,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"fZr0otzgJHQbzSR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":82,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"eaAjyDBO759JGtP"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":83,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" const","obfuscation":"VIFoe6a1j4"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":84,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" input","obfuscation":"FgWiXFLpi3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":85,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"JfsTqhnuojliqS"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":86,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ui","obfuscation":"zSF0MwTTAI36Y"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":87,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".by","obfuscation":"AUKyLq31ehLdu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":88,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Id","obfuscation":"kzwwFVzcAtVDcN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":89,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"vXcMspMOdmKOz0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":90,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"cw6UlUFjmeop"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":91,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"U9hx9Bm24uLUTw"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":92,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"5lOCSl6QHdxEv1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":93,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"LohiPTYgW0M"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":94,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"Vu5JINfwBd84gUh"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":95,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"1","obfuscation":"4SkfsStYDT4MaD4"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":96,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"');","obfuscation":"xDYCEl4mpRaTw"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":97,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"v4OEcGoKjKcuHyr"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":98,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"8c5JexCVIqJzUIQ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":99,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"7ZKfeerMaZ3cDG2"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":100,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"flBXs3213En4l2R"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":101,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" const","obfuscation":"zrKouTshko"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":102,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" form","obfuscation":"tWT35PLHJV0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":103,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"tzv5JmINk6jBl4"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":104,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" find","obfuscation":"IxWXxuVRIMU"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":105,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(rows","obfuscation":"DqsJE6ZvRpm"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":106,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"[","obfuscation":"qCwwAenxd5Qiuqg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":107,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"tdem02q4cGfCoTF"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":108,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"],","obfuscation":"GoNf7Vf1Db2JNI"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":109,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" (","obfuscation":"5D6gvhYGvSJwaN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":110,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"node","obfuscation":"9glsrepploIV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":111,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":")","obfuscation":"T9dqx7p1l8j58wu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":112,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =>","obfuscation":"ySC53I0lMrTDL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":113,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" node","obfuscation":"CCuLfXvfQ0A"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":114,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".attributes","obfuscation":"LRM41"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":115,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".class","obfuscation":"XnhhuQedcC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":116,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ===","obfuscation":"vRUEOG52GQg5"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":117,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" '","obfuscation":"MU4bV6873Q6drA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":118,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"fLRJGFEDaME9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":119,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"RmpcFAMZYwOKjY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":120,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"wExSlc6LdeIJ1z"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":121,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"f56J08l3LfT"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":122,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"')[","obfuscation":"Attx2UAG6U8a9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":123,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"1XQnxWp5Nt2HkpA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":124,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"];","obfuscation":"BhzF1H5Q8djVyR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":125,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"CbpJSKQ5EdCgqWx"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":126,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"HhIrtaD87e6AVSt"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":127,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"RxSA3CgeHLo0d1G"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":128,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"aUMageEhSbClftK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":129,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" const","obfuscation":"d9UNjc1d4g"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":130,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" input","obfuscation":"O46joMcNVF"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":131,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"IbArW32zWjUAmu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":132,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ui","obfuscation":"NdDZUL9eBKHh6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":133,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".by","obfuscation":"rStlFEnKORaI8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":134,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Id","obfuscation":"ZmvSY0HilmpinV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":135,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"NcifVgklPF8kQL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":136,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"JwalDRpXihYk"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":137,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"oEbatAgZtn5Vp1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":138,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"hGrmgBiIf5shPl"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":139,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"lj9R33yApLj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":140,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"zkBpmUrGjEaW56x"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":141,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"1","obfuscation":"55FzokC8dNILQaK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":142,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"');","obfuscation":"XdaRxCpFTFTrR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":143,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"WixvNHoPXPZj5p1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":144,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"ntvmVoxUNVQqLxl"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":145,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"@@","obfuscation":"tpRhPgw0WTZFqn"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":146,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"XA9SJaKSMsiSqx7"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":147,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"wwQ6BAdttbTuB0j"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":148,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"  ","obfuscation":"6Jhu8eZjyBJfnj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":149,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" for","obfuscation":"1QNxmFKEJpBj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":150,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" (","obfuscation":"yBxVPFJAXnUZJl"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":151,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"const","obfuscation":"AUXhUmeKAz0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":152,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" [","obfuscation":"tP0yR10AWZzwv2"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":153,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"value","obfuscation":"zFGqkHlwIp8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":154,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"F23xZ508YRAuqmT"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":155,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" expected","obfuscation":"ETZuI7k"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":156,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"]","obfuscation":"waT05PDlQTr80jp"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":157,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" of","obfuscation":"1k0zNY9OnzvWO"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":158,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" [['","obfuscation":"iyKjwFVLOuce"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":159,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"tzYevbmPHQzMofp"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":160,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"7Q1oDcyvC1xmKE3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":161,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"202","obfuscation":"FhR49nj6uoqXh"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":162,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"4","obfuscation":"sZvkyhUYAVfNvgX"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":163,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"iGoB0t9yyVLrRad"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":164,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"02","obfuscation":"F4BoKpowdp1LcU"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":165,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"HuwX0kCdBudW4ue"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":166,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"29","obfuscation":"nrbUQMOUnH2sUa"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":167,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ","obfuscation":"teoPksNcg1t9KYB"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":168,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ',","obfuscation":"t6ti7H4ZhM8ZE"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":169,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" '","obfuscation":"nMuDymHxEoTczK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":170,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"202","obfuscation":"bO7NIZnftZA9I"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":171,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"4","obfuscation":"asNogtF0QFwyuwY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":172,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"PgcdbrM3yosGuow"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":173,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"02","obfuscation":"EaowMk2ZGrhd0H"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":174,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"vUMsr47VDPfpYts"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":175,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"29","obfuscation":"NRWj3BuT1XeA0Q"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":176,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"'],","obfuscation":"BeetkANa9X4tA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":177,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ['","obfuscation":"OM0w4bJN7jLDc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":178,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"202","obfuscation":"9DoiNveyoeiT1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":179,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"5","obfuscation":"8wS0EvjECV6Pmsa"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":180,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"GUE9gqaOAOW3Jye"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":181,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"02","obfuscation":"cSNtIpvNMOLlC1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":182,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"9UN5iiQ40yH1QY2"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":183,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"29","obfuscation":"Kp4Ri0olqHQaz6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":184,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"',","obfuscation":"Kinq0WWfkQTeoD"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":185,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" '","obfuscation":"nqxYiF0prsvvlN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":186,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"202","obfuscation":"kmESk2QJOIxP8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":187,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"4","obfuscation":"DDwIHPvv2B3mEzk"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":188,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"uEKY4WAah7kiuMv"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":189,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"02","obfuscation":"3QQPvgmQRlejl5"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":190,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"6WHCCs4FiZuAVSU"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":191,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"29","obfuscation":"Fw28qah1BYfsdO"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":192,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"'],","obfuscation":"vKUUONQTsS6Z6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":193,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ['","obfuscation":"gLPL8jPw6lMJ0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":194,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" \\\\","obfuscation":"xNwIjrR1YJuVr"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":195,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"t","obfuscation":"ACnPxBoSav3laYw"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":196,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ',","obfuscation":"8Dibrv1KDyTtV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":197,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" '","obfuscation":"Tj5PMghCNPVhN9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":198,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"']","obfuscation":"FrFHp86mOQzgjJ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":199,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"])","obfuscation":"5dhTUKBnDXPwqY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":200,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" {\\","obfuscation":"bT9L3eRu1pfRV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":201,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"qSYihhfqn26rfhr"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":202,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"pyGoDCUv8sc1xEy"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":203,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"   ","obfuscation":"Y6bzAdXm1yHGX"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":204,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" input","obfuscation":"mHc34CcH5M"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":205,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".value","obfuscation":"jIqws6AuxV"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":206,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"Wg1OjfcA6q7uq5"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":207,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" value","obfuscation":"lnueocEdLK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":208,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":";\\","obfuscation":"zHe0I6Pcepn2gg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":209,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"cehkDngXw2XPqGE"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":210,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"24wnewGNyL4vV0a"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":211,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"   ","obfuscation":"15zLGQ3A5TGLq"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":212,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ui","obfuscation":"0fEX0u8735sS0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":213,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".by","obfuscation":"cYKgmN13JrSZS"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":214,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Id","obfuscation":"y2jhHDePFi1suY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":215,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"kOsuhRaWqFi8IQ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":216,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"Inc3XdJ2pJfz"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":217,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"SzSJ79mztGIeJc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":218,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"jAyuavFEyI3tob"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":219,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"9g6wL6363vc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":220,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"c2Adz4OzqCLcspf"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":221,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"1","obfuscation":"YYvcm1J8qDLQYs3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":222,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"').","obfuscation":"2yDjoLIyByWSD"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":223,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"value","obfuscation":"8iy6pok9VJc"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":224,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"D4skTCDQWYHcfm"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":225,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" value","obfuscation":"48OD45hxVL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":226,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":";\\","obfuscation":"TTx5zaevuNdaOZ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":227,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"DcQlaBvMXL1ZSuo"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":228,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"OKvAqRbuKe6WemE"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":229,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"   ","obfuscation":"vB4ATPVgzDyVn"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":230,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" const","obfuscation":"3Na7wyCkjv"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":231,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" form","obfuscation":"TlklgNY0Z13"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":232,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =","obfuscation":"GCjpqJheK9EL0W"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":233,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" find","obfuscation":"0Oi8MOofGSu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":234,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(ui","obfuscation":"wOlM5XOX6Z7IN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":235,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".rows","obfuscation":"FmRRbGQ2mpA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":236,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"oDavtRR1Z6FhNJ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":237,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"HRbSLe9ioRQM"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":238,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"')[","obfuscation":"STcLQfXnAyc4l"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":239,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"eL0BZ1hXkLPB2Bo"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":240,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"],","obfuscation":"PuGJxngnJQrrJ1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":241,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" (","obfuscation":"LimKjSuY4qEMRG"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":242,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"node","obfuscation":"4EnqLGb5UWsz"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":243,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":")","obfuscation":"O7kbi0vCjtCzigJ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":244,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" =>","obfuscation":"D1MMeNxLgEywE"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":245,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" node","obfuscation":"ciJDGqJ1jrq"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":246,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".attributes","obfuscation":"MGiZx"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":247,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".class","obfuscation":"vvF84uuPTj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":248,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ===","obfuscation":"FnwuYowIqdL7"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":249,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" '","obfuscation":"UXInk2wROIB600"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":250,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"5wt5SBewk0Gi"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":251,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"pZYs3vO1kdApUu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":252,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"7GOto0B2CnORP0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":253,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"3U2GBS8ke4j"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":254,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"')[","obfuscation":"qvmif57M6CZmi"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":255,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"iOTOixpmBRlOVjR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":256,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"];","obfuscation":"AgtIx60Zu0Ampm"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":257,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"Y11xqKLUvztQDcK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":258,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"YlxzZJ66oNTIWT7"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":259,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"@@","obfuscation":"ypRgXwk14Pz1i6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":260,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"gGnu7e7vz0uxvkR"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":261,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"om6cfjJGkXlKK0A"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":262,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"vjNO1k1WlwKIBkb"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":263,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"     ","obfuscation":"Bib7QUALB3I"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":264,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" assert","obfuscation":"efniahkqL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":265,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".equal","obfuscation":"S4YWF21olt"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":266,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(input","obfuscation":"DwzzSq4nYX"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":267,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".value","obfuscation":"Rv8wcsLscr"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":268,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"5P9k8LqsqtNk1SQ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":269,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" expected","obfuscation":"YEmq8aS"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":270,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":");\\","obfuscation":"Iwi62MBfy0BR8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":271,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"Dxvb4mNVpzLMQCy"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":272,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"w8NE00cDS0Tb77u"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":273,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"     ","obfuscation":"YPtsEwrKwGq"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":274,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" assert","obfuscation":"LeC5D8yhF"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":275,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".equal","obfuscation":"wUdyPxYCvO"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":276,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(ui","obfuscation":"nMBXOlZ5ljWRt"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":277,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".by","obfuscation":"vSEJbdShnLlH6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":278,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Id","obfuscation":"ji0CJhtyufZBwK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":279,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"IRBGKGDxF4HznC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":280,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"7QkAQpAUlPPJ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":281,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-d","obfuscation":"10m3PrZFbAHyw3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":282,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"ue","obfuscation":"WxjS3YlLEgM0VC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":283,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-date","obfuscation":"ktzhWBHe7Wq"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":284,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"sf9SJR11ffICHXY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":285,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"1","obfuscation":"elexYv0yKZN5351"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":286,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"').","obfuscation":"6tgnKms2Na0ks"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":287,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"value","obfuscation":"BENCqAWWWLG"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":288,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",","obfuscation":"wetUvuhUQdkXj1n"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":289,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" expected","obfuscation":"jJq3yN6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":290,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":");\\","obfuscation":"rTw9OtwqnwQ4H"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":291,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"xebEqSiD3b3E1dB"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":292,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"@@","obfuscation":"CanAcDxz8axPMj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":293,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"Syg6B3cw18KV4G3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":294,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"iFEZVszMKoxVWl7"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":295,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"-","obfuscation":"1vQkW8NOmViUnZh"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":296,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"   ","obfuscation":"ReQyuFEgtW3j3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":297,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" assert","obfuscation":"2a8nOntiL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":298,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".deep","obfuscation":"FzJ93a0G15Y"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":299,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Equal","obfuscation":"25rbQesQaaa"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":300,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(ui","obfuscation":"nvRVZNZTsRQp3"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":301,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".rows","obfuscation":"LbaJL0tmXmT"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":302,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"lp3l87d40YwCcZ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":303,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"KGdFx9vtDwx1"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":304,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"'),","obfuscation":"WAGHg89R8dtZu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":305,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" rows","obfuscation":"zm175xOl07n"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":306,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":");\\","obfuscation":"fRCfaXPuWzeQj"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":307,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"XgmN5VTuYYVLCuG"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":308,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"+","obfuscation":"Fs99enHSOq0k1ug"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":309,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"   ","obfuscation":"K8TJj7bUH18i9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":310,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" assert","obfuscation":"QATzCMVwD"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":311,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".deep","obfuscation":"sGQ8P3rThlp"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":312,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Equal","obfuscation":"p0ljRa2G2DL"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":313,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(ui","obfuscation":"lD57QuOx9Gssu"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":314,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".rows","obfuscation":"lNodyzS9Q9e"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":315,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"('","obfuscation":"RK7U6PLSZK1oKa"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":316,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"task","obfuscation":"dsp3j2AYQTc7"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":317,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"').","obfuscation":"ACsEgyKhiSF7q"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":318,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"map","obfuscation":"dz6cZarXttMNC"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":319,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(task","obfuscation":"tvgBZQCQdxK"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":320,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"Title","obfuscation":"rwcWWyoMOFZ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":321,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"),","obfuscation":"YNnkvkLQGxppfO"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":322,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" ['","obfuscation":"W62xAKZimASsQ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":323,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"First","obfuscation":"QCkiS4Gqwsk"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":324,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"']);","obfuscation":"QPy1IGFoJY0z"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":325,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\\","obfuscation":"K1qzbKytCMDi8Qx"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":326,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"n","obfuscation":"T4qbjIklZi7r6gA"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":327,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"***","obfuscation":"Puplq1iwyvdcS"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":328,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" End","obfuscation":"wihQIZrmvQP0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":329,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" Patch","obfuscation":"OgPq9bVwN6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":330,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\"));\n","obfuscation":"OgpzePtd1oX"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":331,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"text","obfuscation":"rhW0u0DAwGu8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":332,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"(await","obfuscation":"6B3qQqwjy6"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":333,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" tools","obfuscation":"8vtTuTRgNF"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":334,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":".exec","obfuscation":"BpNHM3wNOSg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":335,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_command","obfuscation":"I2CMc2x0"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":336,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"({","obfuscation":"jis147Uu0R9Hx9"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":337,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"cmd","obfuscation":"wYLH5LGnOMfaN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":338,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":":\"","obfuscation":"DY0xbv7GD0lqj2"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":339,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"npm","obfuscation":"IeLKoJeaTPVEW"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":340,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":" test","obfuscation":"gK1sBtgCYLg"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":341,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\",\"","obfuscation":"hdSwCsoZNX70g"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":342,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"yield","obfuscation":"i2MoTIAEc3J"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":343,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_time","obfuscation":"DA4YTkow64g"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":344,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_ms","obfuscation":"JJbAYTiTHaW6R"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":345,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\":","obfuscation":"o6jevNxd94dOKm"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":346,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"100","obfuscation":"uUaKGyH0fKYoE"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":347,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"rML0rohIs0Yo2oW"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":348,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":",\"","obfuscation":"ItyUZIPaPQuneY"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":349,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"max","obfuscation":"QX9hrWwXZ8M2G"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":350,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_output","obfuscation":"0GvUfNhyF"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":351,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"_tokens","obfuscation":"TCwvChFQZ"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":352,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"\":","obfuscation":"Wltj3KxlXTjdx8"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":353,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"300","obfuscation":"wcJIf5Qlfp2CN"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":354,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"0","obfuscation":"ER1rjazXDEU1Q4f"}
+
+event: response.custom_tool_call_input.delta
+data: {"type":"response.custom_tool_call_input.delta","sequence_number":355,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"delta":"}));\n","obfuscation":"3moCPmKmkIw"}
+
+event: response.custom_tool_call_input.done
+data: {"type":"response.custom_tool_call_input.done","sequence_number":356,"item_id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","output_index":1,"input":"text(await tools.apply_patch(\"*** Begin Patch\\n*** Update File: /home/agent/work/test/ui.test.js\\n@@\\n-test('due date controls save and clear without changing filters, rows, or other data', async () => {\\n+test('due date controls save and clear without changing filters, membership, or other data', async () => {\\n@@\\n-  const input = ui.byId('task-due-date-1');\\n-  const form = find(rows[0], (node) => node.attributes.class === 'task-due-date')[0];\\n+  const input = ui.byId('task-due-date-1');\\n@@\\n   for (const [value, expected] of [['  2024-02-29  ', '2024-02-29'], ['2025-02-29', '2024-02-29'], [' \\\\t ', '']]) {\\n-    input.value = value;\\n+    ui.byId('task-due-date-1').value = value;\\n+    const form = find(ui.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0];\\n@@\\n-      assert.equal(input.value, expected);\\n+      assert.equal(ui.byId('task-due-date-1').value, expected);\\n@@\\n-    assert.deepEqual(ui.rows('task'), rows);\\n+    assert.deepEqual(ui.rows('task').map(taskTitle), ['First']);\\n*** End Patch\"));\ntext(await tools.exec_command({cmd:\"npm test\",\"yield_time_ms\":1000,\"max_output_tokens\":3000}));\n"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":357,"output_index":1,"item":{"type":"custom_tool_call","id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"create_time":1791827899.2291603,"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"call_id":"call_944740b715c4452ab964971060cea7ee","name":"exec","input":"text(await tools.apply_patch(\"*** Begin Patch\\n*** Update File: /home/agent/work/test/ui.test.js\\n@@\\n-test('due date controls save and clear without changing filters, rows, or other data', async () => {\\n+test('due date controls save and clear without changing filters, membership, or other data', async () => {\\n@@\\n-  const input = ui.byId('task-due-date-1');\\n-  const form = find(rows[0], (node) => node.attributes.class === 'task-due-date')[0];\\n+  const input = ui.byId('task-due-date-1');\\n@@\\n   for (const [value, expected] of [['  2024-02-29  ', '2024-02-29'], ['2025-02-29', '2024-02-29'], [' \\\\t ', '']]) {\\n-    input.value = value;\\n+    ui.byId('task-due-date-1').value = value;\\n+    const form = find(ui.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0];\\n@@\\n-      assert.equal(input.value, expected);\\n+      assert.equal(ui.byId('task-due-date-1').value, expected);\\n@@\\n-    assert.deepEqual(ui.rows('task'), rows);\\n+    assert.deepEqual(ui.rows('task').map(taskTitle), ['First']);\\n*** End Patch\"));\ntext(await tools.exec_command({cmd:\"npm test\",\"yield_time_ms\":1000,\"max_output_tokens\":3000}));\n","status":"completed"}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":358,"safety_buffering":false,"response":{"id":"resp_0cc578770d4a788d016acd1fb5e32487d18b6fdbcaebf76c3a","object":"response","created_at":1791827894,"completed_at":1791827905,"status":"completed","background":false,"frequency_penalty":0.0,"presence_penalty":0.0,"moderation":null,"model":"gpt-6.1-sol","access_programs":{"cyber":"standard"},"previous_response_id":null,"instructions":null,"output":[{"type":"reasoning","id":"rs_0cc578770d4a788d016acd1fbaf25087d1850f4ecbd28e6403","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"summary":[],"content":[],"encrypted_content":"gAAAAABqzR-6dhY81j9Brc_s-9ecygEazdOsU01x6FKX5MXENgh_gyccAiJyiDTyIJCJrttvY0KWt1fLmKxENWTX8vqJBDEPRd4I8SUEYFuln-R8wJf0MS6ax3B7_g_eSDCfCcdGyOAFMzJr6iTfYeTX2F2X1BbD0NZttdZrrWl3CUCtDBR03_DLkUWsse1-MeZNPsleMb7cN-GLFJ6nh323iLrnTEyNhbRtFWNeLohpwa1rtgybCC_K_KjBv09hzfWjg8--oWPlc-kEnJ8Co5_j-5JaXv-DEyUW9kw9PrpG37HNRlFQ3r_SqMNvwMazEAI12LxfDSuMPsHGGBz6D4qvSYYyn-eJfmaOS3kAxuFu2lL6ViuYYEUKXjl4nR3_HDw7JyBCfpDgJ6Zi4kFtdHkUzpuKPjDjDach8x2sKn47za-KDoQ2e6lfz2nIRlfmGbQMd2BiIGY-r3_TKPstG8k1amu7Ax9_hPUqQTjMEtbf-hZyKCHq2s6ietpVYHyu0ikN2z5DsSXLDx0EnGryPdSRsVDpGy3jxuHCo6g3jahmu-AIrRu-ExBzmLuU-XVjXEPW2jevXQcI8wwdJfzy4Dk3FdQNl4a0KN6VJUOAHKSI9YxSJ-pPT491yruLFozIR1B2RMLl3xp6IAniI1OWQXvLBLRW1Y5m1rx2XHdimw1uB9sOOniM1M1fmOT3lM4rxtIbOcqEgXF_skRw3B2cQm05vlCSpFyJmRVQtPjqyAcwv5G39j7Kni66hioe37DeEWznCdhT_TZH6rr1agyvzOo2XlVLaOYG2PZGfpqhqdt2s0UAJ37J01sCblMcTsQsCOOktruLCMbaQZoom8z2BkPtfw79vbKLNdRU1htOPE4Vv0ry-cwnG07QCmQVm77hnqYV0_MGiMokGk-kwmOh0r-9DGIOcC6hsdiy98kkc5bxC8aWnYyoxLfxhZTCKmIdJ8JzqAQtNrZm2af5gM5RU60OlEqGPOHYoXMPiGRvYzd9OuMNv91Y_PK5yXTYKWrj0fgxarQCg9V38i9aZg0z9gXazrnrRKGPQElppcMjtbmBDsjV4fW9zk5e1iuyqCCLcEYegNbbwszlFI6IZNCjxqRXMvNvCGggNek7DAiIBHF50fyFng0voTP-u80VH3PmAbVQphcmryByFqNH3I-rfpzU72WejpdQw8L2WlSa0m5llYMRRB4Zw98NV953IZypK9d88wQZgcmsrZx9n4ubr6DWmZhLNW5VXRO-ErEYTvZfhHhgEEFF78bFNbENSng6rckRRt0nUFDV4RdRqL9c94oTnlNK2YZoEqKxvJmpz_zzny0pfTeC6YpDv7Lae97mSuJqJTVlYUDmD-Pkdj9YtX4oZs6Pf-Md9wPfT4Ky_K0Fpv49_HA-iVZ5DhZYmJvvAzAh3ZF94YJRYISiMq-5IrC6LBXpzpsBWAu92VOYwqsD8k9zM1LCUER4NK_nT-5vjIbvv2vLddCs71MwNQJkWD6vEfEAbTevhfwj_kl2QdlHZBl-LW26wi5SXXlksfvq_2Gt86OMyYh9qqf9bTIAvAqzDSQRaZnARUNsn2Jayw9aUApdOFSVnYz9r3tsIiK4Ic7U4yuqqQgbRO56HMQ1WLDWfWNDweQ363yVzPQBUekxS9WtDReb53hzDj3rEMUTkpGE9DKH4aXN5RvOs-X_m-fjQ6wYr8WLqnXrEhiGg2_ElhPnvSL_Rhv3C7lU8a7YTo_ZZMixkM7A015jDRCo8Wh3z7b4JkqLiCWUQs7UiaH2hoHdcShN6bhPQkcyU-TSpGbl5iAnCQiqf_VgiUNLSxovKB3MQ9mjlRTIREL2bHnSOvmLDf4ZC6G0BbOzkwosvnT-oPM8UMg7_LvzXZqSUt1B0Tt3ivfots2UCgS9Ambxt-G7SyqvwC71cplhqEG07u6e6isN1r4O7CkEdH5bhFb_0s7GxUFw2NorexbJjhgwHJxX4Y-NneAwIrxs1GVZXQu3ei7R7oqbjYrh7LEGuzHmAggAdL54oPOI7S_9xsDwLhgnCiHMJIUQGovgKHH2iTopyR9hKYkKyXX2zHMNEmQlnETIAsfSOhrIrwnRFTZtWYjES-0U0mhoub6dHWicnwnGkMSoX6Hp0Dqm5WrGyRPSGzMZj_R_4UhXEuGteJK81IoyWLoSw1Ei8mgV-qacHk4Qe4n2cuNGt9L9E4Rxvi6HHMJvguGhFQmBUqveGowvVDtC0oVKsOsi3OjR0EYkcuDml9LF2S9pnKI0-WQDFmQIcvwtQ6KI4_T6SQ9wtyVlYSQzl2FwDA6r3Cshqz01freThJRygHb5sH6QgqsCEaAcv3nbfrvdNLJ68qqnCE1ZPIuBfSCnsN6mhQ6LT6jUaOpsyzK-lBXb2XAC6mkuNkl_JBkBn4HTC3J3LfN4sTezumQBC8C8Lfj4Lf6VYl7X74VtdVeVP_xctyD_dnnyRqvXO-1RJaE7RH2Jgr5W4eEPRvqc0visrJDJC-RKr2THyp0BRs-wTebrB0Xd5g9V8EKRoTAxw575nB7Yd4cG_J73xBgJvyQN32h9q4tNxqURkAoh3viccFtKjC6eRYefsRZtkMM9jeRUUnNCJX8BBwy2FmGl62b0F4xUSa1_F0AjziXgX-uCs0NJs9nGlyqInSIrzBH6Age0qclS93IyT_DbeqzAna_BeBNCyNIjBcaBkvE5m6Haw_8gycWAuBOU89JTRe1qDzPL2EQCfWPFPv4tBUUee1IL6hD8faU4n04ppa-mNuV2pW4lxQLw2PzGrQ0JUECNJACoGg=="},{"type":"custom_tool_call","id":"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec","metadata":{"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"internal_chat_message_metadata_passthrough":{"create_time":1791827899.2291603,"turn_id":"01a13142-bd32-7390-b3e9-342c0c5ef195"},"call_id":"call_944740b715c4452ab964971060cea7ee","name":"exec","input":"text(await tools.apply_patch(\"*** Begin Patch\\n*** Update File: /home/agent/work/test/ui.test.js\\n@@\\n-test('due date controls save and clear without changing filters, rows, or other data', async () => {\\n+test('due date controls save and clear without changing filters, membership, or other data', async () => {\\n@@\\n-  const input = ui.byId('task-due-date-1');\\n-  const form = find(rows[0], (node) => node.attributes.class === 'task-due-date')[0];\\n+  const input = ui.byId('task-due-date-1');\\n@@\\n   for (const [value, expected] of [['  2024-02-29  ', '2024-02-29'], ['2025-02-29', '2024-02-29'], [' \\\\t ', '']]) {\\n-    input.value = value;\\n+    ui.byId('task-due-date-1').value = value;\\n+    const form = find(ui.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0];\\n@@\\n-      assert.equal(input.value, expected);\\n+      assert.equal(ui.byId('task-due-date-1').value, expected);\\n@@\\n-    assert.deepEqual(ui.rows('task'), rows);\\n+    assert.deepEqual(ui.rows('task').map(taskTitle), ['First']);\\n*** End Patch\"));\ntext(await tools.exec_command({cmd:\"npm test\",\"yield_time_ms\":1000,\"max_output_tokens\":3000}));\n","status":"completed"}],"error":null,"incomplete_details":null,"tools":[{"type":"namespace","name":"functions","description":"","tools":[{"type":"function","strict":false,"name":"wait","description":"Waits on a yielded `exec` cell and returns new output or completion.\n- Use `wait` only after `exec` returns `Script running with cell ID ...`.\n- `cell_id` identifies the running `exec` cell to resume.\n- `yield_time_ms` controls how long to wait for more output before yielding again. Defaults to 10000 ms.\n- `max_tokens` limits how much new output this wait call returns. Defaults to 10000 tokens.\n- `terminate: true` stops the running cell; false or omitted waits for output.\n- `wait` returns only the new output since the last yield, or the final completion or termination result for that cell.\n- If the cell is still running, `wait` may yield again with the same `cell_id`.\n- If the cell has already finished, `wait` returns the completed result and closes the cell.","output_schema":null,"parameters":{"type":"object","properties":{"cell_id":{"type":"string","description":"Identifier of the running exec cell."},"max_tokens":{"type":"number","description":"Output token budget for this wait call. Defaults to 10000 tokens."},"terminate":{"type":"boolean","description":"True stops the running exec cell; false or omitted waits for output."},"yield_time_ms":{"type":"number","description":"Wait before yielding more output. Defaults to 10000 ms."}},"required":["cell_id"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input","description":"Request user input for one to three short questions and wait for the response. This tool is only available in Plan mode.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"Questions to show the user. Prefer 1 and do not exceed 3","items":{"type":"object","properties":{"header":{"type":"string","description":"Short header label shown in the UI (12 or fewer chars)."},"id":{"type":"string","description":"Stable identifier for mapping answers (snake_case)."},"options":{"type":"array","description":"Provide 2-3 mutually exclusive choices. Put the recommended option first and suffix its label with \"(Recommended)\". Do not include an \"Other\" option in this list; the client will add a free-form \"Other\" option automatically.","items":{"type":"object","properties":{"description":{"type":"string","description":"One short sentence explaining impact/tradeoff if selected."},"label":{"type":"string","description":"User-facing label (1-5 words)."}},"required":["label","description"],"additionalProperties":false}},"question":{"type":"string","description":"Single-sentence prompt shown to the user."}},"required":["id","header","question","options"],"additionalProperties":false}}},"required":["questions"],"additionalProperties":false}},{"type":"function","strict":false,"name":"request_user_input_async","description":"Ask the user one or more questions during ongoing work. Use this tool only to request missing information, preferences, constraints, clarification, or approval. The tool returns immediately without ending the turn or waiting for a reply; any reply arrives asynchronously as a new user message. Keep questions concise, self-contained, and easy to understand, using a level of detail appropriate to the user and task. The UI always allows a free-text answer, including when suggested options are provided. A preselected option is not submitted automatically.","output_schema":null,"parameters":{"type":"object","properties":{"questions":{"type":"array","description":"One or more self-contained questions to present together, in display order.","items":{"type":"object","properties":{"options":{"type":"array","description":"Suggested answers, in display order. Put the recommended answer first; the first option is preselected by default. The user can select one option or enter a free-text answer. Do not include an Other option or a free-text placeholder; the UI provides free-text input automatically. Omit options for a free-text-only question.","items":{"type":"string"},"minItems":1},"title":{"type":"string","description":"The complete question shown to the user, including any context needed to answer it."}},"required":["title"],"additionalProperties":false},"minItems":1}},"required":["questions"],"additionalProperties":false}},{"type":"custom","name":"exec","description":"Run JavaScript code to orchestrate/compose tool calls\n- Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.\n- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`. Tool names are exposed as normalized JavaScript identifiers, for example `await tools.mcp__ologs__get_profile(...)`.\n- Nested tool methods take either a string or an object as their input argument.\n- Nested tools return either an object or a string, based on the description.\n- Runs raw JavaScript -- no Node, no file system, no network access, no console.\n- Accepts raw JavaScript source text, not JSON, quoted strings, or markdown code fences.\n- You may optionally start the tool input with a first-line pragma like `// @exec: {\"yield_time_ms\": 10000, \"max_output_tokens\": 1000}`.\n- `yield_time_ms` asks `exec` to yield early if the script is still running. Defaults to 30000 ms.\n- `max_output_tokens` sets the token budget for direct `exec` results. Defaults to 10000 tokens.\n- When the JS code is fully evaluated, the isolate's lifetime ends and unawaited promises are silently discarded.\n\n- Global helpers:\n- `exit()`: Immediately ends the current script successfully (like an early return from the top level).\n- `text(value: string | number | boolean | undefined | null)`: Appends a text item. Non-string values are stringified with `JSON.stringify(...)` when possible.\n- `image(imageUrlOrItem: string | { image_url: string; detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null } | ImageContent, detail?: \"auto\" | \"low\" | \"high\" | \"original\" | null)`: Appends an image item. `image_url` should be a base64-encoded `data:` URL. To forward an MCP tool image, pass an individual `ImageContent` block from `result.content`, for example `image(result.content[0])`. MCP image blocks may request detail with `_meta: { \"codex/imageDetail\": \"original\" }`. When provided, the second `detail` argument overrides any detail embedded in the first argument.\n- `audio(audioUrlOrItem: string | { audio_url: string } | AudioContent)`: Appends an audio item. `audio_url` should be a base64-encoded `data:` URL. To forward an MCP tool audio block, pass an individual `AudioContent` block from `result.content`, for example `audio(result.content[0])`.\n- `generatedImage(result: { image_url: string; output_hint?: string })`: Appends an image-generation result and its optional output hint. HTTP(S) URLs are not supported.\n- `store(key: string, value: any)`: stores a serializable value under a string key for later `exec` calls in the same session.\n- `load(key: string)`: returns the stored value for a string key, or `undefined` if it is missing.\n- `notify(value: string | number | boolean | undefined | null)`: immediately injects an extra `custom_tool_call_output` for the current `exec` call. Values are stringified like `text(...)`.\n- `setTimeout(callback: () => void, delayMs?: number)`: schedules a callback to run later and returns a timeout id. Pending timeouts do not keep `exec` alive by themselves; await an explicit promise if you need to wait for one.\n- `clearTimeout(timeoutId?: number)`: cancels a timeout created by `setTimeout`.\n- `ALL_TOOLS`: metadata for the enabled nested tools as `{ name, description }` entries.\n- `yield_control()`: yields the accumulated output to the model immediately while the script keeps running.\n\nSome deferred nested tools may be omitted from this description. They are still available on the global `tools` object and listed in `ALL_TOOLS`.\nTo find one, filter `ALL_TOOLS` by `name` and `description`.\n\nTool availability can change between calls.\n\nShared MCP Types:\n```ts\ntype Role = \"user\" | \"assistant\";\ntype MetaObject = Record<string, unknown>;\ntype Annotations = {\n  audience?: Role[];\n  priority?: number;\n  lastModified?: string;\n};\ntype Icon = {\n  src: string;\n  mimeType?: string;\n  sizes?: string[];\n  theme?: \"light\" | \"dark\";\n};\ntype TextResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  text: string;\n};\ntype BlobResourceContents = {\n  uri: string;\n  mimeType?: string;\n  _meta?: MetaObject;\n  blob: string;\n};\ntype TextContent = {\n  type: \"text\";\n  text: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ImageContent = {\n  type: \"image\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype AudioContent = {\n  type: \"audio\";\n  data: string;\n  mimeType: string;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ResourceLink = {\n  icons?: Icon[];\n  name: string;\n  title?: string;\n  uri: string;\n  description?: string;\n  mimeType?: string;\n  annotations?: Annotations;\n  size?: number;\n  _meta?: MetaObject;\n  type: \"resource_link\";\n};\ntype EmbeddedResource = {\n  type: \"resource\";\n  resource: TextResourceContents | BlobResourceContents;\n  annotations?: Annotations;\n  _meta?: MetaObject;\n};\ntype ContentBlock =\n  | TextContent\n  | ImageContent\n  | AudioContent\n  | ResourceLink\n  | EmbeddedResource;\ntype CallToolResult<TStructured = { [key: string]: unknown }> = {\n  _meta?: MetaObject;\n  content: ContentBlock[];\n  isError?: boolean;\n  structuredContent?: TStructured;\n  [key: string]: unknown;\n};\n```\n\n### `apply_patch`\nThe `apply_patch` tool can be used to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.\n\nexec tool declaration:\n```ts\ndeclare const tools: { apply_patch(input: string): Promise<unknown>; };\n```\n\n### `create_goal`\nCreate a goal only when explicitly requested by the user or system/developer instructions; do not infer goals from ordinary tasks.\nSet token_budget only when an explicit token budget is requested. Fails if an unfinished goal exists; use update_goal only for status.\n\nexec tool declaration:\n```ts\ndeclare const tools: { create_goal(args: {\n  // Required. The concrete objective to start pursuing. This starts a new active goal when no goal exists or replaces the current goal when it is complete.\n  objective: string;\n  // Positive token budget for the new goal. Omit unless explicitly requested.\n  token_budget?: number;\n}): Promise<unknown>; };\n```\n\n### `exec_command`\nRuns a command in a PTY, returning output or a session ID for ongoing interaction.\n\nexec tool declaration:\n```ts\ndeclare const tools: { exec_command(args: {\n  // Shell command to execute.\n  cmd: string;\n  // User-facing approval question for `require_escalated`; omit otherwise.\n  justification?: string;\n  // True runs the shell with -l/-i semantics; false disables them. Defaults to true.\n  login?: boolean;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Reusable approval prefix for `cmd`, only with `sandbox_permissions: \"require_escalated\"`; for example [\"git\", \"pull\"].\n  prefix_rule?: Array<string>;\n  // Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution.\n  sandbox_permissions?: \"use_default\" | \"require_escalated\";\n  // Shell binary to launch. Defaults to the user's default shell.\n  shell?: string;\n  // True allocates a PTY for the command; false or omitted uses plain pipes.\n  tty?: boolean;\n  // Working directory for the command. Defaults to the turn cwd.\n  workdir?: string;\n  // Wait before yielding output. Defaults to 10000 ms; effective range is 250-30000 ms.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n### `get_goal`\nGet the current goal for this thread, including status, budgets, token and elapsed-time usage, and remaining token budget.\n\nexec tool declaration:\n```ts\ndeclare const tools: { get_goal(args: {}): Promise<unknown>; };\n```\n\n### `list_mcp_resource_templates`\nLists resource templates provided by MCP servers. Parameterized resource templates allow servers to share data that takes parameters and provides context to language models, such as files, database schemas, or application-specific information. Prefer resource templates over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resource_templates(args: {\n  // Opaque cursor from a previous list_mcp_resource_templates call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resource templates from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `list_mcp_resources`\nLists resources provided by MCP servers. Resources allow servers to share data that provides context to language models, such as files, database schemas, or application-specific information. Prefer resources over web search when possible.\n\nexec tool declaration:\n```ts\ndeclare const tools: { list_mcp_resources(args: {\n  // Opaque cursor from a previous list_mcp_resources call; omit for the first page.\n  cursor?: string;\n  // MCP server name. Omit to list resources from every configured server.\n  server?: string;\n}): Promise<unknown>; };\n```\n\n### `read_mcp_resource`\nRead a specific resource from an MCP server given the server name and resource URI.\n\nexec tool declaration:\n```ts\ndeclare const tools: { read_mcp_resource(args: {\n  // MCP server name exactly as configured. Must match the 'server' field returned by list_mcp_resources.\n  server: string;\n  // Resource URI to read. Must be one of the URIs returned by list_mcp_resources.\n  uri: string;\n}): Promise<unknown>; };\n```\n\n### `update_goal`\nUpdate the existing goal.\nSet status to `paused` only at the user's explicit request to pause this goal, never on your own initiative. Ask if unclear; a later resume revokes that request. Report the returned status and stop goal work. Budget limits take precedence over pausing.\nSet status to `complete` only when the objective has actually been achieved and no required work remains.\nSet status to `blocked` only when the same blocking condition has repeated for at least three consecutive goal turns, counting the original/user-triggered turn and any automatic continuations, and the agent cannot make meaningful progress without user input or an external-state change.\nIf the user resumes a goal that was previously marked `blocked`, treat the resumed run as a fresh blocked audit. If the same blocking condition then repeats for at least three consecutive resumed goal turns, set status to `blocked` again.\nOnce the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal active; set status to `blocked`.\nDo not use `blocked` merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.\nDo not mark a goal complete merely because its budget is nearly exhausted or because you are stopping work.\nYou cannot use this tool to resume, budget-limit, or usage-limit a goal; those status changes are controlled by the user or system.\nWhen marking a budgeted goal achieved with status `complete`, report the final token usage from the tool result to the user.\n\nexec tool declaration:\n```ts\ndeclare const tools: { update_goal(args: {\n  // Required. `paused` requires an explicit user request. Set to `complete` only when the objective is achieved and no required work remains. Set to `blocked` only after the same blocking condition has recurred for at least three consecutive goal turns and the agent is at an impasse. After a previously blocked goal is resumed, the resumed run starts a fresh blocked audit.\n  status: \"complete\" | \"blocked\" | \"paused\";\n}): Promise<unknown>; };\n```\n\n### `view_image`\nView a local image file from the filesystem when visual inspection is needed. Use this for images already available on disk.\n\nexec tool declaration:\n```ts\ndeclare const tools: { view_image(args: {\n  // Image detail level. Defaults to `high`; use `original` to preserve exact resolution.\n  detail?: \"high\" | \"original\";\n  // Local filesystem path to an image file.\n  path: string;\n}): Promise<{\n  // Image detail hint returned by view_image. Returns `high` for default resized behavior or `original` when original resolution is preserved.\n  detail: \"high\" | \"original\";\n  // Data URL for the loaded image.\n  image_url: string;\n}>; };\n```\n\n### `write_stdin`\nWrites characters to an existing unified exec session and returns recent output.\n\nexec tool declaration:\n```ts\ndeclare const tools: { write_stdin(args: {\n  // Bytes to write to stdin. Defaults to empty, which polls without writing.\n  chars?: string;\n  // Output token budget. Defaults to 10000 tokens; larger requests may be capped by policy.\n  max_output_tokens?: number;\n  // Identifier of the running unified exec session.\n  session_id: number;\n  // Wait before yielding output. Non-empty writes default to 250 ms and cap at 30000 ms; empty polls wait 5000-300000 ms by default.\n  yield_time_ms?: number;\n}): Promise<{\n  // Chunk identifier included when the response reports one.\n  chunk_id?: string;\n  // Process exit code when the command finished during this call.\n  exit_code?: number;\n  // Approximate token count before output truncation.\n  original_token_count?: number;\n  // Command output text, possibly truncated.\n  output: string;\n  // Session identifier to pass to write_stdin when the process is still running.\n  session_id?: number;\n  // Elapsed wall time spent waiting for output in seconds.\n  wall_time_seconds: number;\n}>; };\n```\n\n## clock\nTools for reading and waiting on time.\n\n### `clock__curr_time`\nReturn the current time in UTC.\n\nexec tool declaration:\n```ts\ndeclare const tools: { clock__curr_time(args: {}): Promise<{\n  // Current UTC time formatted as YYYY-MM-DD HH:MM:SS UTC.\n  current_time: string;\n}>; };\n```","format":{"type":"grammar","syntax":"lark","definition":"\nstart: pragma_source | plain_source\npragma_source: PRAGMA_LINE NEWLINE SOURCE\nplain_source: SOURCE\n\nPRAGMA_LINE: /[ \\t]*\\/\\/ @exec:[^\\r\\n]*/\nNEWLINE: /\\r?\\n/\nSOURCE: /[\\s\\S]+/\n"}}]},{"type":"namespace","name":"clock","description":"Tools for reading and waiting on time.","tools":[{"type":"function","strict":false,"name":"sleep","description":"Pause execution for a specified duration. The sleep ends early when new input arrives for the active turn. Returns the elapsed wall-clock time.","output_schema":null,"parameters":{"type":"object","properties":{"duration_ms":{"type":"number","description":"How long to sleep in milliseconds. Must be between 1 and 43200000."}},"required":["duration_ms"],"additionalProperties":false}}]},{"type":"namespace","name":"collaboration","description":"Tools for spawning and managing sub-agents.","tools":[{"type":"function","strict":false,"name":"followup_task","description":"Send a follow-up task to an existing non-root target agent and trigger a turn if it is idle. If the target is already running, deliver the task promptly at message boundaries while sampling, or after the pending tool call completes.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to send to the target agent.","encrypted":true},"target":{"type":"string","description":"Agent id or canonical task name to send a follow-up task to (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"interrupt_agent","description":"Interrupt an agent's current turn, if any, and return its previous status. The agent remains available for messages and follow-up tasks.","output_schema":null,"parameters":{"type":"object","properties":{"target":{"type":"string","description":"Agent id or canonical task name to interrupt (from spawn_agent)."}},"required":["target"],"additionalProperties":false}},{"type":"function","strict":false,"name":"list_agents","description":"List live agents in the current root thread tree. Optionally filter by task-path prefix.","output_schema":null,"parameters":{"type":"object","properties":{"path_prefix":{"type":"string","description":"Task-path prefix filter without a trailing slash. Omit to list all live agents."}},"additionalProperties":false}},{"type":"function","strict":false,"name":"send_message","description":"Send a message to an existing agent. The message will be delivered promptly. Does not trigger a new turn.","output_schema":null,"parameters":{"type":"object","properties":{"message":{"type":"string","description":"Message text to queue on the target agent.","encrypted":true},"target":{"type":"string","description":"Relative or canonical task name to message (from spawn_agent)."}},"required":["target","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"spawn_agent","description":"\n        Available model overrides (optional; inherited parent model is preferred):\n- `gpt-6.1-sol`: Latest workhorse model for coding and everyday work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-astra`: Frontier intelligence for the most demanding work. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-sol`: Previous generation workhorse model. Reasoning efforts: low, medium (default), high, xhigh, max, ultra. Service tiers: priority.\n- `gpt-6-luna`: Fast and affordable model for easier tasks. Reasoning efforts: low, medium (default), high, xhigh, max. Service tiers: priority.\n- `gpt-5.6-sol`: Older generation workhorse model. Reasoning efforts: low (default), medium, high, xhigh, max, ultra. Service tiers: priority.\n        Spawns an agent to work on the specified task. If your current task is `/root/task1` and you spawn_agent with task_name \"task_3\" the agent will have canonical task name `/root/task1/task_3`.\nYou are then able to refer to this agent as `task_3` or `/root/task1/task_3` interchangeably. However an agent `/root/task2/task_3` would only be able to communicate with this agent via its canonical name `/root/task1/task_3`.\nThe spawned agent will have the same tools as you and the ability to spawn its own subagents.\n\nIt will be able to send you and other running agents messages, and its final answer will be provided to you when it finishes.\nThe new agent's canonical task name will be provided to it along with the message.\n\nNote that passing `fork_turns=\"none\"` will not pass any surrounding context to the spawned subagent, which may cause the agent to lack the context it needs to complete its task, whereas `fork_turns=\"all\"` will provide the subagent with all surrounding context.","output_schema":null,"parameters":{"type":"object","properties":{"fork_turns":{"type":"string","description":"Parent history to inherit. Defaults to `all`; use `none` to start without parent history. Only `all` and `none` are supported."},"message":{"type":"string","description":"Initial plain-text task for the new agent.","encrypted":true},"model":{"type":"string","description":"Model override for the new agent. Omit unless an explicit override is needed."},"reasoning_effort":{"type":"string","description":"Reasoning effort override for the new agent. Omit to inherit the parent effort."},"task_name":{"type":"string","description":"Task name for the new agent. Use lowercase letters, digits, and underscores."}},"required":["task_name","message"],"additionalProperties":false}},{"type":"function","strict":false,"name":"wait_agent","description":"Wait for a mailbox update from any live agent, including queued messages and final-status notifications. The wait also ends early when new user input is steered into the active turn. Does not return the content; returns either a summary of which agents have updates (if any), an interruption summary for steered input, or a timeout summary if no activity arrives before the deadline.","output_schema":null,"parameters":{"type":"object","properties":{"timeout_ms":{"type":"number","description":"Timeout in milliseconds. Defaults to 30000, min 10000, max 3600000."}},"additionalProperties":false}}]}],"tool_choice":"auto","parallel_tool_calls":false,"prompt_cache_key":"4a3f32e1-ec7d-41c9-8647-5fa333d61ee4","prompt_cache_retention":"24h","text":{"format":{"type":"text"},"verbosity":"low"},"top_p":0.98,"top_logprobs":0,"temperature":1.0,"reasoning":{"effort":"medium","context":"all_turns","summary":null,"mode":"standard"},"user":null,"usage":{"input_tokens":35585,"input_tokens_details":{"cached_tokens":9088,"cache_write_tokens":0},"output_tokens":453,"output_tokens_details":{"reasoning_tokens":90},"total_tokens":36038,"attribution":{"items":{"at_1e77fd68-fc32-5ddf-84cd-a020793a835d":{"input_tokens":5096,"cached_tokens":5096,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1f6ebb8c87d1b81cc99437fee737":{"input_tokens":131,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1f743b6c87d1b6a3dd9aa44da9b7":{"input_tokens":140,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1f7bb07487d1bc1823392ebbd40e":{"input_tokens":59,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1f82f2b487d1af92c5b91734bff0":{"input_tokens":1176,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1f9f7cc887d1b8912e316538d8b0":{"input_tokens":858,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1fb4c7ac87d181b6e44ef7297534":{"input_tokens":40,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"ctc_0cc578770d4a788d016acd1fbb3a0887d19c7edc2fdfdc3eec":{"input_tokens":0,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":363},"ctco_01a13142-d6e2-7210-966e-870b1670f4f3":{"input_tokens":218,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":87,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":111,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"ctco_01a13142-ef81-7551-a456-8c3e7221109c":{"input_tokens":10746,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":10726,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"ctco_01a13142-ff0b-78a2-956b-f1adaa8661b6":{"input_tokens":5659,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":5639,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"ctco_01a13143-70b7-7203-a98d-a1f9c14ac148":{"input_tokens":22,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":2,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"ctco_01a13143-cf30-7341-b86b-65cb55b97ae8":{"input_tokens":22,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":2,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"ctco_01a13143-dcf9-7091-af91-9285d2e1d63a":{"input_tokens":2710,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":20,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":2690,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_01a13142-bd35-7711-911a-9e716b1ddf7d":{"input_tokens":979,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":260,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":473,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":67,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},{"input_tokens":179,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_01a13142-bd35-7711-911a-9e8ad497cfd2":{"input_tokens":534,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":534,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_01a13142-bd35-7711-911a-9e9d5bd085e8":{"input_tokens":56,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":56,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_01a13142-bd35-7711-911a-9ea68f7a2768":{"input_tokens":97,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":97,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_01a13142-bd35-7711-911a-9ecaf24c231a":{"input_tokens":2618,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":2618,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_0cc578770d4a788d016acd1f6d8e1487d1a3b9f5d915b0655f":{"input_tokens":30,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":30,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_0cc578770d4a788d016acd1f814e1c87d1ab39870d1881034f":{"input_tokens":55,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":55,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0}]},"msg_d080b232-eb4a-55fc-909c-e1d4353fc05d":{"input_tokens":4216,"cached_tokens":3992,"cache_write_tokens":0,"output_tokens":0,"content":[{"input_tokens":4216,"cached_tokens":3992,"cache_write_tokens":0,"output_tokens":0}]},"rs_0cc578770d4a788d016acd1f8127c887d1a19f36e99f340f07":{"input_tokens":70,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"rs_0cc578770d4a788d016acd1f9f585487d188c5c003661a41c6":{"input_tokens":51,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":0},"rs_0cc578770d4a788d016acd1fbaf25087d1850f4ecbd28e6403":{"input_tokens":2,"cached_tokens":0,"cache_write_tokens":0,"output_tokens":90}}}},"tool_usage":{"image_gen":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"text_tokens":0,"image_tokens":0},"output_tokens_details":{"image_tokens":0,"text_tokens":0}},"web_search":{"num_requests":0}},"safety_identifier":"user-ZglLa0AK1sUTDt85g9NsGTX5","store":false,"metadata":{},"max_output_tokens":null,"max_tool_calls":null,"service_tier":"default","truncation":"disabled"}}
