@@ -89,3 +89,7 @@ L060 resource ledger reconciliation: registered 1 additional names (1 present an
 L062 partial021 publication verified:284 source checkpoints and568 original refs, including independently restored rejected001–007 and before-recovery006. All prior remote heads preserved, zero-finding exact-target scan, temporary snapshot removed. Accounting totals remain scoped to closed020; current and later native attempts are excluded.
 
 L069 task021 recovery outcome: verified own020 restoration did not establish a behavioral fix; original013 fails011date and073Unicode ordering. Native/publication013 histories independently restored and014starts from rejected013commit. Active014 remains unassessed; no PM implementation or comparison change. Evidence: preflight/task021-recovery-outcome002.
+
+L060 resource ledger reconciliation: registered 2 additional names (1 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 retirement coverage verified at 287 native application archives (nine beyond the prior278 subset), with independent SQLite restoration/integrity and recorded resource absence; current25 resources retained. The two PM-rescued task016 launch retirements remain separately verified. Evidence: preflight/retired-resources-20261012T213843831644Z/verified.json. No comparison change.
