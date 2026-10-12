@@ -7,6 +7,8 @@ import path from 'node:path';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
+// Ensure committed edits are durably flushed before the process exits/restarts.
+db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
