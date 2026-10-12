@@ -12,10 +12,12 @@ Open `http://localhost:8080`. `PORT` defaults to `8080`; `DB_PATH` defaults to `
 
 Health: `GET /health` returns `{"status":"ok"}`.
 
+Project pages provide inclusive `Due from` / `Due through` filtering, intersected with completion and priority filters. Empty boundaries are unbounded; undated tasks match only when both are empty. Applied ranges are preserved through edits and reset when opening a project from the list.
+
 ## Verify
 
 ```sh
 npm test
 ```
 
-Tests exercise project and task validation, ordering, escaped rendering, navigation, filtering and ownership, completion updates, archive/restore, project and task renaming with identity preservation, read-only archived projects, summaries, independent task priorities, combined priority/completion filters with selection preservation through edits, independent project priority defaults affecting only future tasks, strict Gregorian due-date validation and clearing, schema migration, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
+Tests exercise project and task validation, ordering, escaped rendering, navigation, filtering and ownership, completion updates, archive/restore, project and task renaming with identity preservation, read-only archived projects, summaries, independent task priorities, combined priority/completion filters with selection preservation through edits, independent project priority defaults affecting only future tasks, strict Gregorian due-date validation and clearing, inclusive due-range filtering and validation with preservation through edits, schema migration, health, and persistence across server restarts using isolated SQLite databases that are removed afterward.
