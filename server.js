@@ -10,6 +10,11 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function escapeTextarea(value) {
+  // Character references prevent HTML parsing from dropping an initial newline.
+  return escapeHtml(value).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
+}
+
 // Validate calendar days directly, without JavaScript Date's timezone or year coercion.
 export function isValidDueDate(value) {
   if (value.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -40,10 +45,10 @@ function page(title, content) {
     main { max-width: 720px; margin: 64px auto; padding: 28px; background: white; border-radius: 12px; }
     h1 { margin-top: 0; overflow-wrap: anywhere; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
-    input:not([type="checkbox"]), select { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #718096; border-radius: 6px; font: inherit; }
+    input:not([type="checkbox"]), select, textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #718096; border-radius: 6px; font: inherit; }
     button { padding: 10px 16px; background: #2454bc; color: white; border: 0; border-radius: 6px; font: inherit; cursor: pointer; }
     button:disabled { background: #718096; cursor: not-allowed; }
-    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #e69619; outline-offset: 3px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #e69619; outline-offset: 3px; }
     .create button { margin-top: 12px; }
     .projects { list-style: none; padding: 0; margin-top: 28px; }
     .project { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid #dee4ee; }
@@ -97,6 +102,10 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
     db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // Notes are plain text; upgrading leaves every existing task field untouched.
+  if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
   // Keep the legacy order column to migrate existing databases without reordering.
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'task_order')) {
     db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET task_order = id');
@@ -112,7 +121,7 @@ export function createApplication(dbPath) {
     INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
       SELECT id, project_id, task_order FROM tasks;`);
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+  const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
     FROM tasks t JOIN task_positions p ON p.task_id = t.id AND p.project_id = t.project_id
     WHERE t.project_id = ? ORDER BY p.position, t.id`);
   const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
@@ -139,6 +148,7 @@ export function createApplication(dbPath) {
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+  const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
   const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
     COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -269,6 +279,12 @@ export function createApplication(dbPath) {
           <label for="task-due-date-${task.id}">Task due date</label>
           <input id="task-due-date-${task.id}" name="dueDate" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
           <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+        </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+          ${editFields}
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>${escapeTextarea(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
         </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/move">
           ${editFields}
@@ -440,7 +456,7 @@ export function createApplication(dbPath) {
         }
         response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, range, search) });
         response.end();
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date|move))?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date|notes|move))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
         const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -482,6 +498,13 @@ export function createApplication(dbPath) {
             return changes;
           });
           if (!moved) {
+            sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
+        } else if (parts[5] === 'notes') {
+          const taskId = Number(parts[4]);
+          const notes = body.get('notes') ?? '';
+          if (!Number.isSafeInteger(taskId) || !setTaskNotes.run(notes, taskId, projectId).changes) {
             sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
             return;
           }

@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0`, using `PORT` (default `8080`) and SQLite at
 `DB_PATH` (default `./data/workboard.sqlite`). Parent directories are created
 on startup. Keep that database file to preserve projects, archive states, tasks,
-completion states, task priorities, due dates, and project priority defaults across restarts. Existing databases are migrated automatically.
+completion states, task priorities, due dates, notes, and project priority defaults across restarts. Existing databases are migrated automatically.
 
 Example:
 
@@ -54,6 +54,14 @@ Dates are stored as calendar-day strings without timezone conversion. Invalid
 values display an alert and leave saved data unchanged. Date changes preserve
 both filters and all other task data; renaming preserves dates. Archived projects
 disable date editing, and restoration preserves saved dates.
+
+Each task has a multiline Task notes textarea and Save notes button. Notes are
+plain text, saved without trimming, including whitespace, Unicode and literal markup;
+empty text clears them. Existing and new tasks start with empty notes. Notes persist
+across restarts, moves and return-position restoration without changing other task
+data. Saving preserves all applied filters and search; notes do not add search
+matches. Archived projects show notes with editing disabled and reject saves;
+restoration enables editing again. Forms have a 64 KiB encoded request-body limit.
 
 Project pages also offer Due from and Due through textboxes with Apply due range.
 These use the same calendar-date rules and inclusive boundaries. Blank boundaries
