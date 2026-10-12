@@ -35,3 +35,9 @@ Existing and new tasks default to Normal. Priorities persist independently acros
 renames and restarts; archived projects disable priority edits until restored.
 
 Run the integration checks with `npm test`.
+
+Project pages also offer a Priority filter with All, Low, Normal, and High options.
+Tasks must match both the completion and priority filters and retain creation
+order. Both selections stay in place during task edits, which immediately update
+the matching rows. Opening a project from the list starts both filters at All.
+Filters remain usable while archived and never change completion summaries.
