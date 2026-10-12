@@ -29,8 +29,13 @@ filter. Both start at All when opening a project from the list. Changes preserve
 the other selection; task edits immediately re-evaluate matching rows without
 resetting either filter. Both filters remain usable in archived projects, and
 project summaries always count all tasks.
+Each project has a Default task priority selector (Low, Normal, High), initially
+Normal. Changes persist independently per project and apply only to subsequently
+created tasks, leaving existing tasks, summaries, and selected filters unchanged.
+The default survives renaming, restart, archival, and restoration; archived
+projects display it in a disabled selector.
 Native HTML forms handle creation and navigation; small inline browser event
-handlers submit completion, priority, and filter changes.
+handlers submit completion, priority, default priority, and filter changes.
 
 ## Verify
 
@@ -48,3 +53,6 @@ archive protection, restoration, and persistence across process restarts.
 Combined-filter tests cover every completion/priority combination, creation order,
 selection retention through edits and validation, live membership changes,
 unchanged summaries, archived filtering, and saved data across restarts.
+Project-default tests cover migration, independent defaults, inheritance only by
+new tasks, unchanged filters and summaries, validation, renaming, archived write
+protection, restoration, and process-restart persistence.
