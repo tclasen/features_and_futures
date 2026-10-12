@@ -15,10 +15,10 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
 
 Each project page lets you create tasks, toggle their completion, and filter by
-All, Open, or Completed. A separate Priority filter offers All, Low, Normal, and
+All, Open, Completed, or Deleted. A separate Priority filter offers All, Low, Normal, and
 High. Tasks must match both filters and retain their creation order. Task edits
 preserve both selections and immediately update the matching rows. Both filters
-remain usable in archived projects, and completion summaries always count all
+remain usable in archived projects, and completion summaries always count all live
 tasks. The project list shows completion summaries and lets you
 filter Active or Archived projects, archive projects, and restore them. Archived
 projects keep their tasks visible but disable task creation and completion changes.
@@ -63,7 +63,7 @@ horizontal tabs in queries and names/titles match as one space, without changing
 the saved or displayed names/titles. Other internal whitespace remains significant.
 Project search intersects Active/Archived, and task search intersects completion,
 priority, and the applied due range. Searches retain all other filters, order, and
-all-task summaries. Edits immediately update task search membership. Search remains
+all-live-task summaries. Edits immediately update task search membership. Search remains
 usable while archived and starts empty when opening either page or returning through
 Projects.
 
@@ -75,3 +75,11 @@ literal markup; empty text clears them. Notes persist and travel with moved task
 without changing any other data or filters. Searches still match only names and
 titles. Archived projects display notes with editing disabled until restoration.
 Existing databases initialize notes to empty while preserving all prior data.
+
+Live task rows offer Delete task; deleted rows offer Restore task. Deletion is
+persistent and reversible, retaining all fields and remembered project positions.
+All, Open and Completed exclude deleted tasks; Deleted intersects the same priority,
+due range and title search controls. Summaries count only live tasks. Deleted rows
+show saved data with editing and movement disabled until restoration. Archived
+projects also disable deletion and restoration. Database upgrades keep existing
+tasks live.

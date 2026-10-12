@@ -18,11 +18,13 @@ test('migrated order and independent return positions survive edits, archives, a
       id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
       title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
       priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
       position INTEGER NOT NULL
     );
     INSERT INTO projects (id, name) VALUES (1, 'Source'), (2, 'Destination'), (3, 'Third');
     INSERT INTO tasks (id, project_id, title, position) VALUES
       (1, 1, 'B', 20), (2, 1, 'A', 10), (3, 1, 'C', 30), (4, 2, 'D', 5);
+    UPDATE tasks SET notes = '  Saved notes Ω <b>literal</b>  ' WHERE id = 4;
   `);
   legacy.close();
   const reservation = createServer();
@@ -70,7 +72,9 @@ test('migrated order and independent return positions survive edits, archives, a
   try {
     await start();
     await order(1, [2, 1, 3]); // Migration preserves position order, not ID order.
-    assert.ok((await tasks(1)).every((task) => task.notes === ''));
+    assert.ok((await tasks(1)).every((task) => task.notes === '' && task.deleted === false));
+    assert.equal((await tasks(2))[0].notes, '  Saved notes Ω <b>literal</b>  ');
+    assert.equal((await tasks(2))[0].deleted, false);
     const originalTask = (await tasks(1))[0];
     const notes = '  First line\n\t第二行 📝\n<script>alert("literal")</script> & <b>text</b>  \n';
     const withNotes = await write('1/tasks/2', { notes });
@@ -139,6 +143,52 @@ test('migrated order and independent return positions survive edits, archives, a
     await stop();
     await start();
     assert.deepEqual((await tasks(1))[0], { ...currentA, notes: updatedNotes });
+    // Deletion reserves order and all fields; summaries include live tasks only.
+    const saved = await tasks(1);
+    assert.ok(saved.every((task) => task.deleted === false));
+    const summary = async (id) => {
+      const { total, completed } = await (await fetch(`${base}/api/projects/${id}`)).json();
+      return { total, completed };
+    };
+    await write('1/tasks/2', { deleted: 'true' }, 400);
+    await write('2/tasks/2', { deleted: true }, 404);
+    await write('1/tasks/99999', { deleted: true }, 404);
+    for (const task of saved) await write(`1/tasks/${task.id}`, { deleted: true });
+    assert.deepEqual(await summary(1), { total: 0, completed: 0 });
+    assert.deepEqual(await summary(2), { total: 1, completed: 0 });
+    assert.deepEqual(await tasks(1), saved.map((task) => ({ ...task, deleted: true })));
+    for (const change of [{ title: 'blocked' }, { completed: false }, { priority: 'Low' },
+      { due_date: '' }, { notes: '' }, { destination_project_id: 2 }]) {
+      await write('1/tasks/2', change, 409);
+    }
+    await write('1', { default_priority: 'Low' });
+    await write('1', { archived: true });
+    await write('1/tasks/2', { deleted: false }, 409);
+    await write('2', { archived: true });
+    await write('2/tasks/4', { deleted: true }, 409);
+    await write('2', { archived: false });
+    await stop();
+    await start();
+    assert.deepEqual(await summary(1), { total: 0, completed: 0 });
+    assert.deepEqual(await tasks(1), saved.map((task) => ({ ...task, deleted: true })));
+    await write('1', { archived: false });
+    const later = await write('1/tasks', { title: 'Created while others deleted' }, 201, 'POST');
+    assert.equal(later.deleted, false);
+    assert.equal(later.priority, 'Low');
+    for (const task of [...saved].reverse()) await write(`1/tasks/${task.id}`, { deleted: false });
+    assert.deepEqual(await tasks(1), [...saved, later]);
+    assert.deepEqual(await summary(1), { total: saved.length + 1, completed: 1 });
+    await move(1, 2, 2);
+    assert.deepEqual((await tasks(2)).at(-1), saved[0]);
+    await write('2/tasks/2', { deleted: true });
+    await move(2, 2, 1, 409);
+    await write('2/tasks/2', { deleted: false });
+    await move(2, 2, 1);
+    assert.deepEqual(await tasks(1), [...saved, later]);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(1), [...saved, later]);
+    assert.deepEqual(await summary(1), { total: saved.length + 1, completed: 1 });
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

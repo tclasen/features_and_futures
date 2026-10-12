@@ -60,7 +60,7 @@ class Element {
   }
 }
 
-async function projectPage(archived = false, dates = [], destinations = [], initialTitles = [], initialNotes = []) {
+async function projectPage(archived = false, dates = [], destinations = [], initialTitles = [], initialNotes = [], initialDeleted = []) {
   const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '', notes: '' },
@@ -70,6 +70,7 @@ async function projectPage(archived = false, dates = [], destinations = [], init
     task.due_date = dates[index] ?? '';
     task.title = initialTitles[index] ?? task.title;
     task.notes = initialNotes[index] ?? '';
+    task.deleted = initialDeleted[index] ?? false;
   });
   const app = new Element('main');
   const document = { querySelector: () => app, createElement: (tag) => new Element(tag) };
@@ -80,7 +81,7 @@ async function projectPage(archived = false, dates = [], destinations = [], init
       const change = JSON.parse(options.body);
       if (options.method === 'POST') {
         const task = { id: tasks.length + 1, title: change.title.trim(), completed: false,
-          priority: project.default_priority, due_date: '', notes: '' };
+          priority: project.default_priority, due_date: '', notes: '', deleted: false };
         tasks.push(task);
         writes.push(change);
         return { ok: true, json: async () => structuredClone(task) };
@@ -198,7 +199,7 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(app.querySelector('#empty-tasks').hidden, false);
   assert.equal(completion.value, 'open');
   assert.equal(priority.value, 'Low');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High', due_date: '', notes: '' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High', due_date: '', notes: '', deleted: false });
   await select(priority, 'High');
   assert.deepEqual(titles(), ['Low open', 'High open']);
   const checkbox = rows()[0].querySelector('input');
@@ -216,7 +217,7 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(rows()[0].querySelector('input').attributes['aria-label'], 'Complete Renamed task');
   assert.equal(completion.value, 'completed');
   assert.equal(priority.value, 'High');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High', due_date: '', notes: '' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High', due_date: '', notes: '', deleted: false });
   assert.deepEqual(page.writes, [{ priority: 'High' }, { completed: true }, { title: 'Renamed task' }]);
 });
 
@@ -750,4 +751,88 @@ test('archived notes remain readable and disabled; restored notes are editable',
   editable.value = 'Changed after restoration';
   await editable.parent.fire('submit');
   assert.equal(restored.tasks[0].notes, 'Changed after restoration');
+});
+
+
+test('deleting and restoring retains all applied controls and returns rows to their order', async () => {
+  const page = await projectPage(false, ['2024-03-01'], [{ id: 2, name: 'Other', archived: false }], [], [' Saved\nnotes ']);
+  const { app, rows, titles, completion, priority, select, tasks } = page;
+  assert.deepEqual(completion.children.map((option) => option.textContent), ['All', 'Open', 'Completed', 'Deleted']);
+  await select(completion, 'open');
+  await select(priority, 'Low');
+  await applyRange(page, '2024-03-01', '2024-03-01');
+  await searchTasks(page, 'LOW open');
+  const original = structuredClone(tasks[0]);
+  await rows()[0].children.at(-1).fire('click');
+  assert.deepEqual(titles(), []);
+  assert.deepEqual(tasks[0], { ...original, deleted: true });
+  assert.equal(completion.value, 'open');
+  assert.equal(priority.value, 'Low');
+  assert.equal(app.querySelector('#due-from').value, '2024-03-01');
+  assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+  assert.equal(app.querySelector('#task-search').value, 'LOW open');
+  await select(completion, 'deleted');
+  assert.deepEqual(titles(), ['Low open']);
+  const row = rows()[0];
+  assert.equal(row.children.at(-1).textContent, 'Restore task');
+  assert.equal(row.children.at(-1).disabled, false);
+  assert.equal(row.querySelector('textarea').value, original.notes);
+  for (const control of [...row.querySelectorAll('input'), ...row.querySelectorAll('select'), ...row.querySelectorAll('textarea')]) {
+    assert.equal(control.disabled, true);
+  }
+  for (const button of row.querySelectorAll('button').slice(0, -1)) assert.equal(button.disabled, true);
+  const before = page.writes.length;
+  for (const form of row.querySelectorAll('form')) await form.fire('submit');
+  await row.querySelector('input').fire('change');
+  await row.querySelector('select').fire('change');
+  assert.equal(page.writes.length, before);
+  await select(priority, 'High');
+  assert.deepEqual(titles(), []);
+  await select(priority, 'Low');
+  await applyRange(page, '2024-03-02', '');
+  assert.deepEqual(titles(), []);
+  await applyRange(page, '2024-03-01', '2024-03-01');
+  await searchTasks(page, 'Saved'); // Notes never match title search, including deleted rows.
+  assert.deepEqual(titles(), []);
+  await searchTasks(page, 'LOW open');
+  await rows()[0].children.at(-1).fire('click');
+  assert.equal(completion.value, 'deleted');
+  assert.deepEqual(titles(), []);
+  assert.deepEqual(tasks[0], original);
+  await select(completion, 'open');
+  assert.deepEqual(titles(), ['Low open']);
+  assert.equal(rows()[0].querySelector('textarea').disabled, false);
+  await select(completion, 'all');
+  await select(priority, 'all');
+  await applyRange(page, '', '');
+  await searchTasks(page, '');
+  assert.deepEqual(titles(), tasks.map((task) => task.title));
+});
+
+test('live filters exclude deleted tasks and archives disable deletion and restoration', async () => {
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived, [], [], [], ['Deleted notes'], [true, true]);
+    const { completion, select, titles, tasks, rows } = page;
+    for (const value of ['all', 'open', 'completed']) {
+      await select(completion, value);
+      assert.deepEqual(titles(), tasks.filter((task) => !task.deleted &&
+        (value === 'all' || task.completed === (value === 'completed'))).map((task) => task.title));
+      assert.ok(rows().every((row) => row.children.at(-1).textContent === 'Delete task'));
+      if (archived) {
+        for (const row of rows()) {
+          assert.equal(row.children.at(-1).disabled, true);
+          await row.children.at(-1).fire('click');
+        }
+      }
+    }
+    await select(completion, 'deleted');
+    assert.deepEqual(titles(), ['Low open', 'Low completed']);
+    assert.equal(rows()[0].querySelector('textarea').value, 'Deleted notes');
+    for (const row of rows()) {
+      assert.equal(row.children.at(-1).textContent, 'Restore task');
+      assert.equal(row.children.at(-1).disabled, archived);
+      if (archived) await row.children.at(-1).fire('click');
+    }
+    assert.deepEqual(page.writes, []);
+  }
 });
