@@ -21,7 +21,7 @@ npm test
 HTML forms; project names and task titles are trimmed on the server and escaped
 for display. Each project has its own tasks, with All, Open, and Completed
 filters, combined with a Priority filter offering All, Low, Normal, and High.
-Only tasks matching both filters appear, in creation order. Both filters default
+Only tasks matching all applied filters appear, in creation order. Both comboboxes default
 to All when opening a project from the list. Changing a checkbox or task priority
 saves immediately and refreshes matching tasks without resetting either filter.
 Renaming also retains both selections. Filters stay usable in archived projects
@@ -68,3 +68,14 @@ Saving dates preserves both selected filters and all other task data. Dates
 survive renaming, reloads, and process restarts; existing databases migrate with
 empty dates. Archived projects disable these controls and reject saves until
 restored.
+
+Each project page also provides Due from and Due through textboxes and an Apply
+due range button. Boundaries use the same Gregorian date rules as task dates and
+are inclusive. An empty boundary is unbounded; with either boundary set, undated
+tasks are excluded. Clearing both boundaries includes dated and undated tasks.
+The range intersects completion and priority filters without changing saved data
+or the all-task summary. Invalid or reversed ranges show an alert and preserve
+the previously applied range. Task edits immediately refresh matching rows;
+creation, renames, and project-default changes preserve all applied filters.
+Range controls remain usable while archived. Applied ranges are carried in the
+project URL and forms; opening a project from the list starts with empty boundaries.

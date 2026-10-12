@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { normalizeDueDate } from './due-date.js';
+import { normalizeDueDate, normalizeDueRange } from './due-date.js';
 
 const taskPriorities = ['Low', 'Normal', 'High'];
 const taskFilters = ['All', 'Open', 'Completed'];
@@ -11,19 +11,28 @@ const priorityFilters = ['All', ...taskPriorities];
 function readTaskFilters(parameters) {
   const filter = parameters.get('filter');
   const priorityFilter = parameters.get('priorityFilter');
+  const range = normalizeDueRange(parameters.get('dueFrom') ?? '', parameters.get('dueThrough') ?? '');
   return {
     filter: taskFilters.includes(filter) ? filter : 'All',
     priorityFilter: priorityFilters.includes(priorityFilter) ? priorityFilter : 'All',
+    dueFrom: range.dueFrom ?? '',
+    dueThrough: range.dueThrough ?? '',
   };
 }
 
-function hiddenTaskFilters({ filter, priorityFilter }) {
-  return `<input type="hidden" name="filter" value="${filter}"><input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
+function hiddenDueRange({ dueFrom, dueThrough }) {
+  return `<input type="hidden" name="dueFrom" value="${dueFrom}"><input type="hidden" name="dueThrough" value="${dueThrough}">`;
 }
 
-function projectLocation(id, { filter, priorityFilter }) {
+function hiddenTaskFilters(filters) {
+  return `<input type="hidden" name="filter" value="${filters.filter}"><input type="hidden" name="priorityFilter" value="${filters.priorityFilter}">${hiddenDueRange(filters)}`;
+}
+
+function projectLocation(id, { filter, priorityFilter, dueFrom, dueThrough }) {
   const parameters = new URLSearchParams({ filter });
   if (priorityFilter !== 'All') parameters.set('priorityFilter', priorityFilter);
+  if (dueFrom) parameters.set('dueFrom', dueFrom);
+  if (dueThrough) parameters.set('dueThrough', dueThrough);
   return `/projects/${id}?${parameters}`;
 }
 
@@ -128,7 +137,9 @@ export function createApp(databasePath) {
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?)
-      AND (? = 'All' OR priority = ?) ORDER BY id ASC`);
+      AND (? = 'All' OR priority = ?)
+      AND (? = '' OR (due_date != '' AND due_date >= ?))
+      AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY id ASC`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
@@ -160,9 +171,9 @@ ${dueDateError ? `<p id="task-due-date-error-${task.id}" role="alert">${escapeHt
 </form></li>`;
   }
 
-  function projectPage(project, filters, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '', taskDueDateError = '', taskDueDateId } = {}) {
-    const { filter, priorityFilter } = filters;
-    const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0, priorityFilter, priorityFilter);
+  function projectPage(project, filters, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '', taskDueDateError = '', taskDueDateId, dueRangeError = '', rangeFrom = filters.dueFrom, rangeThrough = filters.dueThrough } = {}) {
+    const { filter, priorityFilter, dueFrom, dueThrough } = filters;
+    const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0, priorityFilter, priorityFilter, dueFrom, dueFrom, dueThrough, dueThrough);
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
@@ -187,11 +198,21 @@ ${hiddenTaskFilters(filters)}
 ${taskError ? `<p id="task-error" role="alert">${escapeHtml(taskError)}</p>` : ''}
 </form>
 <form class="filter" method="get" action="/projects/${project.id}">
+${hiddenDueRange(filters)}
 <label for="task-filter">Task filter</label>
 <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">${taskFilters.map((option) => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}</select>
 <label for="priority-filter">Priority filter</label>
 <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${priorityFilters.map((option) => `<option${option === priorityFilter ? ' selected' : ''}>${option}</option>`).join('')}</select>
 <noscript><button type="submit">Apply filters</button></noscript>
+</form>
+<form class="filter" method="post" action="/projects/${project.id}/due-range">
+${hiddenTaskFilters(filters)}
+<label for="due-from">Due from</label>
+<input id="due-from" name="rangeFrom" type="text" value="${escapeHtml(rangeFrom)}">
+<label for="due-through">Due through</label>
+<input id="due-through" name="rangeThrough" type="text" value="${escapeHtml(rangeThrough)}">
+<button type="submit">Apply due range</button>
+${dueRangeError ? `<p role="alert">${escapeHtml(dueRangeError)}</p>` : ''}
 </form>
 ${tasks.length ? `<ul>${tasks.map((task) => taskRow(task, project, filters, task.id === taskRenameId ? taskRenameError : '', task.id === taskDueDateId ? taskDueDateError : '')).join('')}</ul>` : '<p class="empty">No tasks match this filter.</p>'}`);
   }
@@ -220,7 +241,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?|\/(archive|restore|rename|default-priority))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?|\/(archive|restore|rename|default-priority|due-range))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -245,6 +266,20 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         }
         if (request.method === 'GET' && pathname === `/projects/${id}`) {
           sendHtml(response, 200, projectPage(project, readTaskFilters(url.searchParams)));
+        } else if (request.method === 'POST' && projectRoute[4] === 'due-range') {
+          const form = await readForm(request);
+          const filters = readTaskFilters(form);
+          const rangeFrom = form.get('rangeFrom') ?? '';
+          const rangeThrough = form.get('rangeThrough') ?? '';
+          const range = normalizeDueRange(rangeFrom, rangeThrough);
+          if (range.error) {
+            sendHtml(response, 422, projectPage(project, filters, {
+              dueRangeError: range.error, rangeFrom, rangeThrough,
+            }));
+            return;
+          }
+          response.writeHead(303, { Location: projectLocation(id, { ...filters, ...range }) });
+          response.end();
         } else if (request.method === 'POST' && projectRoute[4] === 'default-priority') {
           const form = await readForm(request);
           const currentProject = findProject.get(id);
