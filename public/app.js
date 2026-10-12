@@ -49,6 +49,40 @@ function appendProject(project, onArchive) {
   app.querySelector('#empty').hidden = true;
 }
 
+function renderRename(project) {
+  const form = document.createElement('form');
+  form.innerHTML = `
+    <label for="new-project-name">New project name</label>
+    <div class="create-controls">
+      <input id="new-project-name" name="name" type="text" autocomplete="off">
+      <button type="submit">Rename project</button>
+    </div>`;
+  const input = form.querySelector('input');
+  const submit = form.querySelector('button');
+  input.disabled = project.archived;
+  submit.disabled = project.archived;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (submit.disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    if (!input.value.trim()) return showError(new Error('Project name is required'));
+    submit.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: input.value }),
+      });
+      Object.assign(project, saved);
+      app.querySelector('h1').textContent = project.name;
+      document.title = `${project.name} · Workboard`;
+      input.value = '';
+      input.focus();
+    } catch (error) { showError(error); }
+    finally { submit.disabled = project.archived; }
+  });
+  app.append(form);
+}
+
 async function renderTasks(project) {
   const projectId = project.id;
   const section = document.createElement('section');
@@ -155,6 +189,7 @@ async function render() {
         notice.textContent = 'Archived project';
         app.append(notice);
       }
+      renderRename(project);
       await renderTasks(project);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';

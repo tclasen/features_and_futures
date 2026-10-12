@@ -18,7 +18,11 @@ Each project page lets you create tasks, toggle their completion, and filter by
 All, Open, or Completed. The project list shows completion summaries and lets you
 filter Active or Archived projects, archive projects, and restore them. Archived
 projects keep their tasks visible but disable task creation and completion changes.
-Projects, tasks, and archive state persist in the configured SQLite file; existing
+Active project pages also let you rename projects with `New project name` and
+`Rename project`. Names are trimmed and required. Renaming preserves the URL,
+creation order, tasks, and completion summary. Archived projects disable renaming;
+restoration enables it again.
+Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
 
 Run the integration checks with `npm test`.

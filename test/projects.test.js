@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 
-test('projects, tasks, archives, and summaries persist with the original schema migrated', async () => {
+test('projects, tasks, archives, renames, and summaries persist with the original schema migrated', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -68,6 +68,11 @@ test('projects, tasks, archives, and summaries persist with the original schema 
   async function projects() {
     return (await fetch(`${base}/api/projects`)).json();
   }
+  async function renameProject(projectId, name) {
+    return fetch(`${base}/api/projects/${projectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+  }
   async function tasks(projectId) {
     return (await fetch(`${base}/api/projects/${projectId}/tasks`)).json();
   }
@@ -122,12 +127,29 @@ test('projects, tasks, archives, and summaries persist with the original schema 
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1, completed: 0 });
     assert.deepEqual(await projects(), expected);
+    for (const name of ['', '  \t\n  ', null]) {
+      const invalid = await renameProject(first.id, name);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Project name is required' });
+      assert.deepEqual(await projects(), expected);
+    }
+    assert.equal((await renameProject(99999, 'Missing')).status, 404);
+    const renamed = await renameProject(first.id, '  Renamed project  ');
+    assert.equal(renamed.status, 200);
+    first.name = 'Renamed project';
+    assert.deepEqual(await renamed.json(), first);
+    assert.deepEqual(await projects(), expected);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     assert.equal((await archiveProject(first.id, 'true')).status, 400);
     assert.equal((await archiveProject(99999, true)).status, 404);
     const archived = await archiveProject(first.id, true);
     assert.equal(archived.status, 200);
     first.archived = true;
     assert.deepEqual(await archived.json(), first);
+    const blockedRename = await renameProject(first.id, 'Blocked rename');
+    assert.equal(blockedRename.status, 409);
+    assert.deepEqual(await blockedRename.json(), { error: 'Archived project' });
+    assert.deepEqual(await projects(), expected);
     assert.equal((await createTask(first.id, 'Blocked')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
@@ -143,6 +165,12 @@ test('projects, tasks, archives, and summaries persist with the original schema 
     assert.equal(restored.status, 200);
     first.archived = false;
     assert.deepEqual(await restored.json(), first);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    const restoredRename = await renameProject(first.id, '  Restored project  ');
+    assert.equal(restoredRename.status, 200);
+    first.name = 'Restored project';
+    assert.deepEqual(await restoredRename.json(), first);
+    assert.deepEqual(await projects(), expected);
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     assert.deepEqual(await (await completeTask(first.id, firstTask.id, false)).json(), firstTask);
     first.completed = 0;
