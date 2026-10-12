@@ -12,6 +12,10 @@ def with_action_role_choices(text, filename):
   for receiver in ["row(page,archived)","row(page,title('Filter archived'))","row(page,title('Gap  task'))","rows(page).first()","rows(page).last()"]:
    old=receiver+".getByRole('button',{name:'Open project',exact:true})"
    result=result.replace(old,old+'.or('+receiver+".getByRole('link',{name:'Open project',exact:true}))")
+ if filename == 'directory-presence-helpers.mjs':
+  old="p.getByRole('button',{name:label,exact:true})"
+  replacement="(['Complete visible tasks','Reopen visible tasks'].includes(label)?"+old+".or(p.getByRole('link',{name:label,exact:true})):"+old+")"
+  result=result.replace(old,replacement)
  return result
 
 

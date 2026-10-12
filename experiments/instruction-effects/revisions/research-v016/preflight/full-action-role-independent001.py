@@ -13,7 +13,7 @@ parser.add_argument('--batch', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 args = parser.parse_args()
 base = Path('experiments/instruction-effects/revisions/research-v016/preflight')
-stem = 'task030-action-role-full002' if args.stage == 30 else 'task040-action-role-broader001'
+stem = 'task030-action-role-full003' if args.stage == 30 else 'task040-action-role-broader002'
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
 read = lambda p: json.loads(p.read_text())
 assert args.folder.parent == args.batch.parent == args.output.parent == base
@@ -34,7 +34,7 @@ batch_inputs = read(args.batch / 'inputs.json')
 assert batch_inputs['controller_sha256'] == sha(controller)
 assert batch_inputs['prepared_sha256'] == sha(base / (stem + '-inputs.json'))
 assert closure['batch_inputs_sha256'] == sha(args.batch / 'inputs.json')
-suite = base / ('task%03d-action-role-suite' % args.stage)
+suite = base / ('task030-action-role-suite' if args.stage == 30 else 'task040-action-role-suite002')
 assert inputs['suite_files'] == batch_inputs['suite_files'] == {
     str(p.relative_to(suite)): sha(p) for p in suite.rglob('*') if p.is_file()
 }
