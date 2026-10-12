@@ -43,3 +43,7 @@ L060 resource ledger reconciliation: inventory-only polling omitted 22 historica
 L069 task015 completion: b004attempt008 accepted and common015 deployed. Trace007 confirms date fill, Save button detachment/retry and empty date PATCH; accepted008 frontend is byte-identical. Measured acceptance is verified, causal race repair and observer-defect attribution are not established. Preserve all seven rejections and future independent timing-sensitive observations.
 
 L060 clarification and restoration verification:22new ledger names comprise12retired resources missed between polls and10ordinary newly live resources. All12retrospective names now covered by187independent archive/SQLite restorations. Prior173subset proof preserved; tracker002 reconciliation remains adopted.
+
+L060 resource ledger reconciliation: inventory-only polling omitted 20 historical native names; original ledger retained and tracker002 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+Checkpoint015 exact publication verified:202source checkpoints and404original refs, full secret scan, prior remote heads unchanged, snapshot removed. Queued task017 recurrence and measured acceptance appended once; causal timing-race resolution remains unestablished. Later observations/source-bound next-prefix selection are retained outside the scanned target.
