@@ -109,6 +109,7 @@ async function showRoute() {
 function renderDirectory() {
   const out = document.querySelector('#directory-results'); out.replaceChildren();
   const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
+  const matching = [];
   for (const task of directoryRows) {
     if (Boolean(task.projectArchived) !== (scope === 'Archived')) continue;
     if (filter === 'Deleted' ? !task.deleted : task.deleted) continue;
@@ -118,6 +119,7 @@ function renderDirectory() {
     if (!normalizeSearch(task.title).includes(directoryQuery)) continue;
     if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
+    matching.push(task);
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
@@ -128,6 +130,26 @@ function renderDirectory() {
     const open = document.createElement('button'); open.textContent = 'Open project'; open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
     row.append(title, owner, completion, pr, due, notes, open); out.append(row);
   }
+  document.querySelector('#directory-empty').hidden = matching.length > 0;
+  const eligible = scope === 'Active' && filter !== 'Deleted' ? matching.filter(task => !task.deleted) : [];
+  document.querySelector('#complete-visible').disabled = !eligible.some(task => !task.completed);
+  document.querySelector('#reopen-visible').disabled = !eligible.some(task => task.completed);
+}
+
+async function bulkDirectory(completed) {
+  const scope = document.querySelector('#directory-scope').value;
+  const filter = document.querySelector('#directory-task-filter').value;
+  const ids = directoryRows.filter(task => {
+    if (Boolean(task.projectArchived) !== (scope === 'Archived') || task.deleted) return false;
+    if (filter === 'Deleted' || (filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) return false;
+    if (document.querySelector('#directory-priority-filter').value !== 'All' && task.priority !== document.querySelector('#directory-priority-filter').value) return false;
+    if (!normalizeSearch(task.title).includes(directoryQuery)) return false;
+    if ((directoryRange.from || directoryRange.through) && !task.dueDate) return false;
+    if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) return false;
+    return true;
+  }).map(task => task.id);
+  await fetch('/api/directory/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, completed }) });
+  const response = await fetch('/api/directory'); directoryRows = await response.json(); renderDirectory();
 }
 function navigate(path, replace = false) {
   if (replace) history.replaceState({}, '', path);
@@ -408,6 +430,8 @@ document.querySelector('#open-directory').addEventListener('click', () => naviga
 document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
 for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
+document.querySelector('#complete-visible').addEventListener('click', () => bulkDirectory(true));
+document.querySelector('#reopen-visible').addEventListener('click', () => bulkDirectory(false));
 document.querySelector('#directory-apply-range').addEventListener('click', () => {
   const from = document.querySelector('#directory-due-from').value.trim(), through = document.querySelector('#directory-due-through').value.trim();
   const valid = value => { if (!value) return true; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value); if (!m) return false; const y=+m[1], mo=+m[2], d=+m[3], leap=y%4===0&&(y%100!==0||y%400===0); return y>=1&&mo>=1&&mo<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1]; };

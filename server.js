@@ -86,6 +86,18 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/directory' && req.method === 'GET') {
     return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM tasks t JOIN projects p ON p.id=t.project_id ORDER BY p.id, (SELECT position FROM task_project_positions x WHERE x.task_id=t.id AND x.project_id=t.project_id), t.id`).all());
   }
+  if (url.pathname === '/api/directory/bulk' && req.method === 'POST') {
+    try {
+      let raw = ''; for await (const chunk of req) raw += chunk;
+      const data = JSON.parse(raw || '{}');
+      if (!Array.isArray(data.ids) || typeof data.completed !== 'boolean') return json(res, 400, { error: 'Invalid request' });
+      const update = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0 AND project_id IN (SELECT id FROM projects WHERE archived = 0)');
+      db.exec('BEGIN');
+      try { for (const id of data.ids) if (Number.isInteger(id)) update.run(data.completed ? 1 : 0, id); db.exec('COMMIT'); }
+      catch (error) { db.exec('ROLLBACK'); throw error; }
+      return json(res, 200, { status: 'ok' });
+    } catch { return json(res, 400, { error: 'Invalid request' }); }
+  }
   if (url.pathname === '/api/projects' && req.method === 'POST') {
     let raw = '';
     try {
