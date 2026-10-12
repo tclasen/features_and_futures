@@ -20,6 +20,12 @@ export function isValidDueDate(value) {
   return day <= daysInMonth[month - 1];
 }
 
+// Fold ASCII letters only; other characters and internal whitespace stay significant.
+function matchesSearch(value, query) {
+  const fold = text => text.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return fold(value).includes(fold(query));
+}
+
 function page(title, content) {
   return `<!doctype html>
 <html lang="en">
@@ -142,37 +148,50 @@ export function createApplication(dbPath) {
   const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 
-  function projectList(error = '', name = '', filter = 'Active') {
-    const projects = listProjects.all(filter === 'Archived' ? 1 : 0);
+  function projectList(error = '', name = '', filter = 'Active', search = '') {
+    const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
+      .filter(project => matchesSearch(project.name, search));
+    const listFields = `<input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="search" value="${escapeHtml(search)}">`;
     return page('Projects', `<h1>Workboard</h1>
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <form class="create" method="post" action="/projects">
+        ${listFields}
         <label for="project-name">Project name</label>
         <input id="project-name" name="name" value="${escapeHtml(name)}">
         <button type="submit">Create project</button>
       </form>
       <form class="filter" method="get" action="/">
+        <input type="hidden" name="search" value="${escapeHtml(search)}">
         <label for="project-filter">Project filter</label>
         <select id="project-filter" name="filter" data-auto-submit>
           ${['Active', 'Archived'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
         </select>
+      </form>
+      <form class="filter" method="get" action="/">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="project-search">Project search</label>
+        <input id="project-search" name="search" value="${escapeHtml(search)}">
+        <button type="submit">Search projects</button>
       </form>
       <ul class="projects">${projects.map(project => `<li class="project" data-testid="project-row">
         <span>${escapeHtml(project.name)}</span>
         <span data-testid="project-summary">${project.completed}/${project.total} completed</span>
         <form method="get" action="/projects/${project.id}"><button type="submit">Open project</button></form>
         <form method="post" action="/projects/${project.id}/${project.archived ? 'restore' : 'archive'}">
+          ${listFields}
           <button type="submit">${project.archived ? 'Restore project' : 'Archive project'}</button>
         </form>
       </li>`).join('')}</ul>`);
   }
 
-  function projectPage(project, filter, priorityFilter = 'All', error = '', range = { from: '', through: '' }) {
+  function projectPage(project, filter, priorityFilter = 'All', error = '', range = { from: '', through: '' }, search = '') {
     const eligibleDestinations = destinations.all(project.id);
     const moveDisabled = project.archived || eligibleDestinations.length === 0;
     const tasks = listTasks.all(project.id).filter(task =>
       (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
       (priorityFilter === 'All' || task.priority === priorityFilter) &&
+      matchesSearch(task.title, search) &&
       ((!range.from && !range.through) || (task.due_date &&
         (!range.from || task.due_date >= range.from) &&
         (!range.through || task.due_date <= range.through))));
@@ -180,7 +199,8 @@ export function createApplication(dbPath) {
       <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
     const rangeFields = `<input type="hidden" name="rangeFrom" value="${range.from}">
       <input type="hidden" name="rangeThrough" value="${range.through}">`;
-    const editFields = filterFields + rangeFields;
+    const searchField = `<input type="hidden" name="search" value="${escapeHtml(search)}">`;
+    const editFields = filterFields + rangeFields + searchField;
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
       <form method="get" action="/"><button type="submit">Projects</button></form>
       ${project.archived ? '<p>Archived project</p>' : ''}
@@ -205,7 +225,7 @@ export function createApplication(dbPath) {
         <button type="submit"${project.archived ? ' disabled' : ''}>Create task</button>
       </form>
       <form class="filter" method="get" action="/projects/${project.id}">
-        ${rangeFields}
+        ${rangeFields}${searchField}
         <label for="task-filter">Task filter</label>
         <select id="task-filter" name="filter" data-auto-submit>
           ${['All', 'Open', 'Completed'].map(value => `<option${filter === value ? ' selected' : ''}>${value}</option>`).join('')}
@@ -222,6 +242,12 @@ export function createApplication(dbPath) {
         <label for="due-through">Due through</label>
         <input id="due-through" name="dueThrough" value="${range.through}">
         <button type="submit">Apply due range</button>
+      </form>
+      <form class="filter" method="get" action="/projects/${project.id}">
+        ${filterFields}${rangeFields}
+        <label for="task-search">Task search</label>
+        <input id="task-search" name="search" value="${escapeHtml(search)}">
+        <button type="submit">Search tasks</button>
       </form>
       <ul class="projects">${tasks.map(task => `<li class="task" data-testid="task-row">
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">
@@ -277,11 +303,17 @@ export function createApplication(dbPath) {
     return { from, through };
   }
 
-  function projectLocation(id, filter, priorityFilter, range) {
+  function projectListLocation(filter, search) {
+    if (!search) return filter === 'Archived' ? '/?filter=Archived' : '/';
+    return `/?${new URLSearchParams({ filter, search })}`;
+  }
+
+  function projectLocation(id, filter, priorityFilter, range, search = '') {
     const query = new URLSearchParams({ filter });
     if (priorityFilter !== 'All') query.set('priorityFilter', priorityFilter);
     if (range.from) query.set('rangeFrom', range.from);
     if (range.through) query.set('rangeThrough', range.through);
+    if (search) query.set('search', search);
     return `/projects/${id}?${query}`;
   }
 
@@ -312,16 +344,19 @@ export function createApplication(dbPath) {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
       } else if (request.method === 'GET' && pathname === '/') {
-        sendHtml(200, projectList('', '', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active'));
+        sendHtml(200, projectList('', '', url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active',
+          (url.searchParams.get('search') ?? '').trim()));
       } else if (request.method === 'POST' && pathname === '/projects') {
         const body = await readForm(request);
         const name = (body.get('name') ?? '').trim();
+        const filter = body.get('filter') === 'Archived' ? 'Archived' : 'Active';
+        const search = (body.get('search') ?? '').trim();
         if (!name) {
-          sendHtml(400, projectList('Project name is required'));
+          sendHtml(400, projectList('Project name is required', '', filter, search));
           return;
         }
         insertProject.run(name);
-        response.writeHead(303, { Location: '/' });
+        response.writeHead(303, { Location: projectListLocation(filter, search) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/(archive|restore)$/.test(pathname)) {
         const [, , idValue, action] = pathname.split('/');
@@ -330,7 +365,9 @@ export function createApplication(dbPath) {
           sendHtml(404, page('Not found', '<h1>Project not found</h1>'));
           return;
         }
-        response.writeHead(303, { Location: action === 'restore' ? '/?filter=Archived' : '/' });
+        const body = await readForm(request);
+        const filter = action === 'restore' ? 'Archived' : 'Active';
+        response.writeHead(303, { Location: projectListLocation(filter, (body.get('search') ?? '').trim()) });
         response.end();
       } else if (request.method === 'GET' && /^\/projects\/\d+$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
@@ -340,7 +377,8 @@ export function createApplication(dbPath) {
           return;
         }
         sendHtml(200, projectPage(project, taskFilter(url.searchParams.get('filter')),
-          priorityFilterValue(url.searchParams.get('priorityFilter')), '', readRange(url.searchParams)));
+          priorityFilterValue(url.searchParams.get('priorityFilter')), '', readRange(url.searchParams),
+          (url.searchParams.get('search') ?? '').trim()));
       } else if (request.method === 'POST' && /^\/projects\/\d+\/due-range$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
@@ -352,6 +390,7 @@ export function createApplication(dbPath) {
         const filter = taskFilter(body.get('filter'));
         const priorityFilter = priorityFilterValue(body.get('priorityFilter'));
         const previousRange = readRange(body);
+        const search = (body.get('search') ?? '').trim();
         const from = (body.get('dueFrom') ?? '').trim();
         const through = (body.get('dueThrough') ?? '').trim();
         let error = '';
@@ -361,10 +400,10 @@ export function createApplication(dbPath) {
           error = 'Due from must not be after Due through';
         }
         if (error) {
-          sendHtml(400, projectPage(project, filter, priorityFilter, error, previousRange));
+          sendHtml(400, projectPage(project, filter, priorityFilter, error, previousRange, search));
           return;
         }
-        response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, { from, through }) });
+        response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, { from, through }, search) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/(rename|default-priority)$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
@@ -377,7 +416,8 @@ export function createApplication(dbPath) {
         const filter = taskFilter(body.get('filter'));
         const priorityFilter = priorityFilterValue(body.get('priorityFilter'));
         const range = readRange(body);
-        const renderProject = error => projectPage(project, filter, priorityFilter, error, range);
+        const search = (body.get('search') ?? '').trim();
+        const renderProject = error => projectPage(project, filter, priorityFilter, error, range, search);
         if (project.archived) {
           sendHtml(403, renderProject('Archived projects cannot be changed'));
           return;
@@ -397,7 +437,7 @@ export function createApplication(dbPath) {
           }
           renameProject.run(name, id);
         }
-        response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, range) });
+        response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter, range, search) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date|move))?$/.test(pathname)) {
         const parts = pathname.split('/');
@@ -411,7 +451,8 @@ export function createApplication(dbPath) {
         const filter = taskFilter(body.get('filter'));
         const priorityFilter = priorityFilterValue(body.get('priorityFilter'));
         const range = readRange(body);
-        const renderProject = error => projectPage(project, filter, priorityFilter, error, range);
+        const search = (body.get('search') ?? '').trim();
+        const renderProject = error => projectPage(project, filter, priorityFilter, error, range, search);
         if (project.archived) {
           sendHtml(403, renderProject('Archived projects cannot be changed'));
           return;
@@ -488,7 +529,7 @@ export function createApplication(dbPath) {
             return;
           }
         }
-        response.writeHead(303, { Location: projectLocation(projectId, filter, priorityFilter, range) });
+        response.writeHead(303, { Location: projectLocation(projectId, filter, priorityFilter, range, search) });
         response.end();
       } else {
         sendHtml(404, page('Not found', '<h1>Page not found</h1>'));
