@@ -25,6 +25,7 @@
     .task-form, .task-filter { margin-top: 18px; }
     #tasks { display: grid; gap: 10px; margin-top: 18px; }
     .task-row { display: flex; align-items: center; gap: 12px; background: white; border: 1px solid #dce2e8; border-radius: 10px; padding: 16px 20px; }
+    .task-row { flex-wrap: wrap; }
     .task-row input { width: auto; }
     .task-row .task-name { flex: 1; overflow-wrap: anywhere; }
     .task-row .rename-task { display: flex; gap: 8px; flex: 1 1 100%; }
@@ -96,7 +97,7 @@
             (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : !!task.completed)) &&
             (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
           );
-          tasks.innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-id="${escapeHtml(task.id)}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><label><span class="sr-only">Task priority</span><select aria-label="Task priority" data-id="${escapeHtml(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><form class="rename-task" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><p class="task-rename-alert" role="alert" hidden></p></div>`).join('');
+          tasks.innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-id="${escapeHtml(task.id)}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><label><span class="sr-only">Task priority</span><select aria-label="Task priority" data-id="${escapeHtml(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><form class="rename-task" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><form class="due-date-form" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="Task due date" value="${escapeHtml(task.dueDate || '')}" placeholder="YYYY-MM-DD" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><p class="task-rename-alert" role="alert" hidden></p></div>`).join('');
           tasks.querySelectorAll('select[aria-label="Task priority"]').forEach(select => select.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(select.dataset.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ priority: select.value }) });
             await refreshTasks();
@@ -114,6 +115,16 @@
             alert.hidden = true;
             const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(form.dataset.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
             if (response.ok) await refreshTasks();
+          }));
+          tasks.querySelectorAll('.due-date-form').forEach(form => form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const input = form.querySelector('input');
+            const alert = form.parentElement.querySelector('.task-rename-alert');
+            const dueDate = input.value.trim();
+            const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(form.dataset.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ dueDate }) });
+            if (!response.ok) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; alert.hidden = false; input.focus(); return; }
+            alert.hidden = true;
+            await refreshTasks();
           }));
         }
         filter.addEventListener('change', refreshTasks);

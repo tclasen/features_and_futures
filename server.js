@@ -32,6 +32,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+  db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -106,7 +109,7 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(projectTasks[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId));
+      return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId));
     }
     if (req.method === 'POST') {
       let body = '';
@@ -137,6 +140,24 @@ const server = createServer(async (req, res) => {
       const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(payload.priority, taskId, projectId);
       if (!result.changes) return send(res, 404, { error: 'Task not found' });
       return send(res, 200, { id: taskId, projectId, priority: payload.priority });
+    }
+    if (Object.hasOwn(payload, 'dueDate')) {
+      let dueDate = payload.dueDate;
+      if (typeof dueDate !== 'string') return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      dueDate = dueDate.trim();
+      if (dueDate !== '') {
+        const match = dueDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) {
+          return send(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+        }
+      } else dueDate = null;
+      const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate, taskId, projectId);
+      if (!result.changes) return send(res, 404, { error: 'Task not found' });
+      return send(res, 200, { id: taskId, projectId, dueDate });
     }
     if (typeof payload.title === 'string') {
       const title = payload.title.trim();
