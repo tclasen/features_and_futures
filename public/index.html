@@ -19,6 +19,10 @@
     #projects { display: grid; gap: 10px; margin-top: 24px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .project-name { overflow-wrap: anywhere; }
+    .task-form, .task-filter { margin-top: 18px; }
+    #tasks { display: grid; gap: 10px; margin-top: 18px; }
+    .task-row { display: flex; align-items: center; gap: 12px; background: white; border: 1px solid #dce2e8; border-radius: 10px; padding: 16px 20px; }
+    .task-row input { width: auto; }
   </style>
 </head>
 <body>
@@ -35,8 +39,42 @@
           project = (await response.json()).find(item => item.id === decodeURIComponent(match[1]));
         } catch {}
         if (!project) { history.replaceState({}, '', '/'); return render(); }
-        app.innerHTML = `<button id="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        app.innerHTML = `<button id="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>
+          <form class="task-form" id="task-form" novalidate>
+            <label for="task-title">Task title</label>
+            <input id="task-title" name="title" type="text" autocomplete="off">
+            <button type="submit">Create task</button>
+            <p id="alert" role="alert" hidden></p>
+          </form>
+          <div class="task-filter"><label for="task-filter">Task filter</label>
+            <select id="task-filter"><option>All</option><option>Open</option><option>Completed</option></select>
+          </div>
+          <section id="tasks" aria-label="Tasks"></section>`;
         document.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        const tasks = document.querySelector('#tasks');
+        const filter = document.querySelector('#task-filter');
+        async function refreshTasks() {
+          const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks`);
+          const allTasks = await response.json();
+          const visible = allTasks.filter(task => filter.value === 'All' || (filter.value === 'Open' ? !task.completed : !!task.completed));
+          tasks.innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-id="${escapeHtml(task.id)}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''}><span>${escapeHtml(task.title)}</span></div>`).join('');
+          tasks.querySelectorAll('input[type="checkbox"]').forEach(checkbox => checkbox.addEventListener('change', async () => {
+            await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(checkbox.dataset.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ completed: checkbox.checked }) });
+            await refreshTasks();
+          }));
+        }
+        filter.addEventListener('change', refreshTasks);
+        document.querySelector('#task-form').addEventListener('submit', async event => {
+          event.preventDefault();
+          const input = document.querySelector('#task-title');
+          const alert = document.querySelector('#alert');
+          const title = input.value.trim();
+          if (!title) { alert.textContent = 'Task title is required'; alert.hidden = false; input.focus(); return; }
+          alert.hidden = true;
+          const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ title }) });
+          if (response.ok) { input.value = ''; await refreshTasks(); }
+        });
+        await refreshTasks();
         return;
       }
       app.innerHTML = `<h1>Workboard</h1>
