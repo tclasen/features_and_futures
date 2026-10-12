@@ -320,8 +320,8 @@ test('projects, tasks, archives, renames, priorities, and summaries persist with
     assert.deepEqual(await tasks(second.id), [otherTask, independent]);
     assert.equal((await archiveProject(first.id, false)).status, 200);
     first.archived = false;
-    const renamedDefaultProject = await renameProject(first.id, 'Default retained');
-    first.name = 'Default retained';
+    const renamedDefaultProject = await renameProject(first.id, '  Default \t  RETAINED  ');
+    first.name = 'Default \t  RETAINED';
     assert.deepEqual(await renamedDefaultProject.json(), first);
     const afterRestore = await (await createTask(first.id, 'Inherits restored Low')).json();
     assert.equal(afterRestore.priority, 'Low');
@@ -354,8 +354,8 @@ test('projects, tasks, archives, renames, priorities, and summaries persist with
     assert.equal((await saveDate(first.id, 99999, '2026-12-01')).status, 404);
     assert.equal((await saveDate(first.id, secondTask.id, '2027-01-02')).status, 200);
     secondTask.due_date = '2027-01-02';
-    const renamedDatedTask = await renameTask(first.id, firstTask.id, 'Dated task');
-    firstTask.title = 'Dated task';
+    const renamedDatedTask = await renameTask(first.id, firstTask.id, '  Dated \t  TASK  ');
+    firstTask.title = 'Dated \t  TASK';
     assert.deepEqual(await renamedDatedTask.json(), firstTask);
     assert.deepEqual(await projects(), expected);
     assert.deepEqual(await tasks(second.id), [otherTask, independent]);

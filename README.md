@@ -58,7 +58,9 @@ databases are migrated automatically.
 
 The project list provides Project search and Search projects. Each project page
 provides Task search and Search tasks. Search applies a substring query with ASCII
-case ignored and surrounding whitespace trimmed; internal whitespace is significant.
+case ignored and surrounding query whitespace trimmed. Runs of ASCII spaces and
+horizontal tabs in queries and names/titles match as one space, without changing
+the saved or displayed names/titles. Other internal whitespace remains significant.
 Project search intersects Active/Archived, and task search intersects completion,
 priority, and the applied due range. Searches retain all other filters, order, and
 all-task summaries. Edits immediately update task search membership. Search remains

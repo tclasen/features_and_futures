@@ -5,7 +5,8 @@ function asciiLower(value) {
 }
 
 function matchesSearch(value, query) {
-  return asciiLower(value).includes(asciiLower(query));
+  return asciiLower(value.replace(/[ \t]+/g, ' '))
+    .includes(asciiLower(query.replace(/[ \t]+/g, ' ')));
 }
 
 async function request(path, options) {

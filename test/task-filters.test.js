@@ -60,13 +60,16 @@ class Element {
   }
 }
 
-async function projectPage(archived = false, dates = [], destinations = []) {
+async function projectPage(archived = false, dates = [], destinations = [], initialTitles = []) {
   const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '' },
     { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority, due_date: '' },
   ]);
-  tasks.forEach((task, index) => { task.due_date = dates[index] ?? ''; });
+  tasks.forEach((task, index) => {
+    task.due_date = dates[index] ?? '';
+    task.title = initialTitles[index] ?? task.title;
+  });
   const app = new Element('main');
   const document = { querySelector: () => app, createElement: (tag) => new Element(tag) };
   const writes = [];
@@ -475,7 +478,7 @@ test('task search intersects all filters, retains applied queries, and works whi
           for (const prioritized of ['all', 'Low', 'Normal', 'High']) {
             await select(priority, prioritized);
             assert.deepEqual(titles(), tasks.filter((task) =>
-              task.title.toLowerCase().includes(query.trim().toLowerCase()) &&
+              task.title.toLowerCase().includes(query.trim().replace(/[ \t]+/g, ' ').toLowerCase()) &&
               (completed === 'all' || task.completed === (completed === 'completed')) &&
               (prioritized === 'all' || task.priority === prioritized) &&
               (!from || task.due_date === from)).map((task) => task.title));
@@ -541,13 +544,14 @@ test('task changes re-evaluate search while retaining every applied filter', asy
   assert.equal(reopened.app.querySelector('#task-search').value, '');
 });
 
-async function projectList() {
+async function projectList(initialNames = []) {
   const projects = [
     { id: 1, name: 'Alpha  Team', archived: false, completed: 2, total: 3 },
     { id: 2, name: 'ALPHA Team', archived: false, completed: 0, total: 0 },
     { id: 3, name: 'Alpha archive', archived: true, completed: 1, total: 1 },
     { id: 4, name: 'Älpha', archived: false, completed: 0, total: 0 },
   ];
+  projects.forEach((project, index) => { project.name = initialNames[index] ?? project.name; });
   const app = new Element('main');
   const writes = [];
   const window = { location: { pathname: '/' } };
@@ -595,7 +599,7 @@ test('project search preserves order and summaries and intersects archival witho
   assert.equal(app.querySelector('#project-search').value, 'aLPHa');
   await filter('active');
   await search('alpha  team');
-  assert.deepEqual(names(), ['Alpha  Team']);
+  assert.deepEqual(names(), ['Alpha  Team', 'ALPHA Team']);
   await search('älpha');
   assert.deepEqual(names(), []);
   await search('ÄLPHA');
@@ -621,4 +625,62 @@ test('project search preserves order and summaries and intersects archival witho
   assert.equal(page.window.location.href, '/projects/1');
   const reopened = await projectList();
   assert.equal(reopened.app.querySelector('#project-search').value, '');
+});
+
+test('project search collapses only spaces and tabs without changing displayed names', async () => {
+  const original = ['Alpha \t  TEAM', 'ALPHA Team', 'Alpha\t\tTeam archive', 'Alpha\nTeam'];
+  const page = await projectList(original);
+  for (const query of ['alpha team', '  ALPHA\t \tTEAM  ', 'alpha   team']) {
+    await page.search(query);
+    assert.deepEqual(page.names(), original.slice(0, 2));
+    assert.deepEqual(page.rows().map((row) => row.children[1].textContent), ['2/3 completed', '0/0 completed']);
+    await page.filter('archived');
+    assert.deepEqual(page.names(), [original[2]]);
+    await page.filter('active');
+    assert.deepEqual(page.names(), original.slice(0, 2));
+  }
+  await page.search('alpha\nteam');
+  assert.deepEqual(page.names(), [original[3]]);
+  await page.search('alpha\u00a0team');
+  assert.deepEqual(page.names(), []);
+  await page.search(' \t ');
+  assert.deepEqual(page.names(), [original[0], original[1], original[3]]);
+  assert.deepEqual(page.writes, []);
+  const reopened = await projectList(original);
+  assert.deepEqual(reopened.names(), page.names());
+  assert.equal(reopened.app.querySelector('#project-search').value, '');
+});
+
+test('normalized task search preserves titles and intersects every filter while archived', async () => {
+  const original = ['Alpha  \tTEAM', 'ALPHA\tTeam', 'Alpha Team', 'Alpha\nTeam', 'Alpha\u00a0Team', 'Other'];
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived, ['2024-03-01', '2024-03-01', '2024-03-02'], [], original);
+    const before = structuredClone(page.tasks);
+    await searchTasks(page, '  aLPHa\t \tteam  ');
+    assert.deepEqual(page.titles(), original.slice(0, 3));
+    await applyRange(page, '2024-03-01', '2024-03-01');
+    assert.deepEqual(page.titles(), original.slice(0, 2));
+    await page.select(page.completion, 'completed');
+    assert.deepEqual(page.titles(), [original[1]]);
+    await page.select(page.priority, 'Low');
+    assert.deepEqual(page.titles(), [original[1]]);
+    await searchTasks(page, 'alpha team');
+    assert.deepEqual(page.titles(), [original[1]]);
+    assert.equal(page.completion.value, 'completed');
+    assert.equal(page.priority.value, 'Low');
+    assert.equal(page.app.querySelector('#due-from').value, '2024-03-01');
+    await page.select(page.completion, 'all');
+    await page.select(page.priority, 'all');
+    await applyRange(page, '', '');
+    await searchTasks(page, 'alpha\nteam');
+    assert.deepEqual(page.titles(), [original[3]]);
+    await searchTasks(page, 'alpha\u00a0team');
+    assert.deepEqual(page.titles(), [original[4]]);
+    await searchTasks(page, ' \t ');
+    assert.deepEqual(page.titles(), original);
+    assert.deepEqual(page.tasks, before);
+    assert.deepEqual(page.writes, []);
+    const reopened = await projectPage(archived, [], [], original);
+    assert.deepEqual(reopened.titles(), original);
+  }
 });
