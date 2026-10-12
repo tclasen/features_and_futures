@@ -144,7 +144,44 @@ async function renderTasks(project) {
           showError(error);
         }
       });
-      row.append(title, checkbox);
+      const renameForm = document.createElement('form');
+      const renameLabel = document.createElement('label');
+      renameLabel.htmlFor = `new-task-title-${task.id}`;
+      renameLabel.textContent = 'New task title';
+      const renameControls = document.createElement('div');
+      renameControls.className = 'create-controls';
+      const renameInput = document.createElement('input');
+      renameInput.id = renameLabel.htmlFor;
+      renameInput.type = 'text';
+      renameInput.name = 'title';
+      renameInput.autocomplete = 'off';
+      renameInput.disabled = project.archived;
+      const renameButton = document.createElement('button');
+      renameButton.type = 'submit';
+      renameButton.textContent = 'Rename task';
+      renameButton.disabled = project.archived;
+      renameForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (renameButton.disabled) return;
+        app.querySelector('[role="alert"]')?.remove();
+        if (!renameInput.value.trim()) return showError(new Error('Task title is required'));
+        renameButton.disabled = true;
+        try {
+          const saved = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: renameInput.value }),
+          });
+          Object.assign(task, saved);
+          title.textContent = task.title;
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          renameInput.value = '';
+          renameInput.focus();
+        } catch (error) { showError(error); }
+        finally { renameButton.disabled = project.archived; }
+      });
+      renameControls.append(renameInput, renameButton);
+      renameForm.append(renameLabel, renameControls);
+      row.append(title, checkbox, renameForm);
       list.append(row);
     }
   }

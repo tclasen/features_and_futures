@@ -60,6 +60,11 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
     });
   }
+  async function renameTask(projectId, taskId, title) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
+    });
+  }
   async function archiveProject(projectId, archived) {
     return fetch(`${base}/api/projects/${projectId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -127,6 +132,26 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1, completed: 0 });
     assert.deepEqual(await projects(), expected);
+    for (const title of ['', '  \t\n  ', null]) {
+      const invalid = await renameTask(first.id, firstTask.id, title);
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), { error: 'Task title is required' });
+      assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    }
+    assert.equal((await renameTask(second.id, firstTask.id, 'Wrong owner')).status, 404);
+    assert.equal((await renameTask(first.id, 99999, 'Missing')).status, 404);
+    const renamedTask = await renameTask(first.id, firstTask.id, '  Renamed completed task  ');
+    assert.equal(renamedTask.status, 200);
+    firstTask.title = 'Renamed completed task';
+    completedTask.title = firstTask.title;
+    assert.deepEqual(await renamedTask.json(), completedTask);
+    const renamedOpenTask = await renameTask(first.id, secondTask.id, '  Renamed open task  ');
+    assert.equal(renamedOpenTask.status, 200);
+    secondTask.title = 'Renamed open task';
+    assert.deepEqual(await renamedOpenTask.json(), secondTask);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    assert.deepEqual(await tasks(second.id), [otherTask]);
+    assert.deepEqual(await projects(), expected);
     for (const name of ['', '  \t\n  ', null]) {
       const invalid = await renameProject(first.id, name);
       assert.equal(invalid.status, 400);
@@ -152,6 +177,9 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     assert.deepEqual(await projects(), expected);
     assert.equal((await createTask(first.id, 'Blocked')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    const blockedTaskRename = await renameTask(first.id, firstTask.id, 'Blocked title');
+    assert.equal(blockedTaskRename.status, 409);
+    assert.deepEqual(await blockedTaskRename.json(), { error: 'Archived project' });
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     await stop();
     await start();
@@ -173,6 +201,10 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     assert.deepEqual(await projects(), expected);
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     assert.deepEqual(await (await completeTask(first.id, firstTask.id, false)).json(), firstTask);
+    const restoredTaskRename = await renameTask(first.id, firstTask.id, '  Restored task  ');
+    assert.equal(restoredTaskRename.status, 200);
+    firstTask.title = 'Restored task';
+    assert.deepEqual(await restoredTaskRename.json(), firstTask);
     first.completed = 0;
     await stop();
     await start();
