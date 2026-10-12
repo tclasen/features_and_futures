@@ -23,17 +23,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -104,6 +107,8 @@ const server = createServer(async (req, res) => {
       let result;
       if (typeof body.completed === 'boolean') {
         result = updateTask.run(body.completed ? 1 : 0, taskId, Number(taskUpdateMatch[1]));
+      } else if (typeof body.priority === 'string' && ['Low', 'Normal', 'High'].includes(body.priority)) {
+        result = updatePriority.run(body.priority, taskId, Number(taskUpdateMatch[1]));
       } else if (typeof body.title === 'string' && body.title.trim()) {
         renameTask.run(body.title.trim(), taskId, Number(taskUpdateMatch[1]));
         result = { changes: db.prepare('SELECT changes() AS count').get().count };

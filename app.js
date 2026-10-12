@@ -66,7 +66,14 @@ async function render() {
               alert.textContent = ''; await refreshTasks();
             } catch (error) { alert.textContent = error.message; }
           });
-          row.append(renameInput, renameButton); return row;
+          const priority = document.createElement('select'); priority.setAttribute('aria-label', 'Task priority'); priority.disabled = Boolean(project.archived);
+          for (const value of ['Low', 'Normal', 'High']) { const option = element('option', value); option.value = value; priority.append(option); }
+          priority.value = task.priority || 'Normal';
+          priority.addEventListener('change', async () => {
+            try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ priority: priority.value })); }
+            catch (error) { alert.textContent = error.message; await refreshTasks(); }
+          });
+          row.append(renameInput, renameButton, priority); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);
