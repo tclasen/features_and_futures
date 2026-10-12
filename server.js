@@ -318,6 +318,7 @@ const page = `<!doctype html>
       const projectScope = addSelect('Project scope', 'Project scope', ['Active', 'Archived']);
       const taskFilter = addSelect('Task filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted']);
       const priorityFilter = addSelect('Priority filter', 'Priority filter', ['All', 'Low', 'Normal', 'High']);
+      const directoryOrder = addSelect('Directory order', 'Directory order', ['Original', 'Priority', 'Due date', 'Title']);
       const rangeForm = document.createElement('form');
       const makeDateInput = (labelText) => {
         const label = document.createElement('label');
@@ -405,7 +406,7 @@ const page = `<!doctype html>
       function render() {
         list.replaceChildren();
         const visibleTasks = [];
-        for (const task of tasks) {
+        for (const [originalIndex, task] of tasks.entries()) {
           // SQLite returns 0/1 for this column; compare its boolean meaning.
           if (Boolean(task.archived) !== (projectScope.value === 'Archived')) continue;
           if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
@@ -416,7 +417,35 @@ const page = `<!doctype html>
           if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
           if (appliedFrom && task.dueDate < appliedFrom) continue;
           if (appliedThrough && task.dueDate > appliedThrough) continue;
-          visibleTasks.push(task);
+          visibleTasks.push({ task, originalIndex });
+        }
+        const priorityRank = { High: 0, Normal: 1, Low: 2 };
+        const foldedTitle = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+        const compareCodePoints = (left, right) => {
+          const leftPoints = Array.from(left, (character) => character.codePointAt(0));
+          const rightPoints = Array.from(right, (character) => character.codePointAt(0));
+          for (let index = 0; index < Math.min(leftPoints.length, rightPoints.length); index += 1) {
+            if (leftPoints[index] !== rightPoints[index]) return leftPoints[index] - rightPoints[index];
+          }
+          return leftPoints.length - rightPoints.length;
+        };
+        visibleTasks.sort((left, right) => {
+          let comparison = 0;
+          if (directoryOrder.value === 'Priority') {
+            comparison = priorityRank[left.task.priority || 'Normal'] - priorityRank[right.task.priority || 'Normal'];
+          } else if (directoryOrder.value === 'Due date') {
+            const leftDate = left.task.dueDate || '';
+            const rightDate = right.task.dueDate || '';
+            comparison = leftDate && rightDate ? (leftDate < rightDate ? -1 : leftDate > rightDate ? 1 : 0) : leftDate ? -1 : rightDate ? 1 : 0;
+          } else if (directoryOrder.value === 'Title') {
+            const leftTitle = foldedTitle(left.task.title);
+            const rightTitle = foldedTitle(right.task.title);
+            comparison = compareCodePoints(leftTitle, rightTitle);
+          }
+          return comparison || left.originalIndex - right.originalIndex;
+        });
+        for (const result of visibleTasks) {
+          const task = result.task;
           const row = document.createElement('li');
           row.dataset.testid = 'directory-task-row';
           row.dataset.taskId = String(task.id);
@@ -446,7 +475,7 @@ const page = `<!doctype html>
           list.append(row);
         }
         const eligibleScope = projectScope.value === 'Active' && taskFilter.value !== 'Deleted';
-        const liveVisible = visibleTasks.filter((task) => !task.deleted);
+        const liveVisible = visibleTasks.map((result) => result.task).filter((task) => !task.deleted);
         completeVisible.disabled = !eligibleScope || !liveVisible.some((task) => !task.completed);
         reopenVisible.disabled = !eligibleScope || !liveVisible.some((task) => task.completed);
         emptyResult.hidden = loading || visibleTasks.length !== 0;
@@ -471,6 +500,7 @@ const page = `<!doctype html>
       projectScope.addEventListener('change', render);
       taskFilter.addEventListener('change', render);
       priorityFilter.addEventListener('change', render);
+      directoryOrder.addEventListener('change', render);
       render();
     }
     async function showProject(id, savedView = null) {
