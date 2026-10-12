@@ -125,7 +125,39 @@ function page(content) {
   .row form { flex-shrink: 0; }
   [role=alert] { color: #a21725; background: #fff0f1; padding: 12px; border-radius: 6px; }
   @media (max-width: 600px) { main { margin: 20px 12px; padding: 20px; } }
-</style></head><body><main>${content}</main></body></html>`;
+</style></head><body><main>${content}</main><script>
+  // Autosaves must finish before a later edit or navigation can discard them.
+  // Keep the current DOM for matching rows so unrelated draft inputs stay intact.
+  let saves = Promise.resolve();
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    const action = new URL(form.action);
+    const autosave = action.pathname.match(/\\/projects\\/\\d+\\/(?:default-priority|tasks\\/(\\d+)(?:\\/priority)?)$/)
+      && !form.querySelector('button');
+    event.preventDefault();
+    if (!autosave) {
+      saves.then(() => HTMLFormElement.prototype.submit.call(form));
+      return;
+    }
+    // Capture now, not when the queue runs: each event owns its selected value.
+    const body = new URLSearchParams(new FormData(form));
+    const row = form.closest('[data-task-id]');
+    saves = saves.then(async () => {
+      const response = await fetch(action, { method: 'POST', body });
+      const result = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (!response.ok) throw new Error(result.querySelector('[role="alert"]')?.textContent || 'Unable to save task');
+      if (row && !result.querySelector('[data-task-id="' + row.dataset.taskId + '"]')) row.remove();
+    }).catch(error => {
+      let alert = document.querySelector('[role="alert"]');
+      if (!alert) {
+        alert = document.createElement('p');
+        alert.setAttribute('role', 'alert');
+        document.querySelector('main').append(alert);
+      }
+      alert.textContent = error.message;
+    });
+  });
+</script></body></html>`;
 }
 
 function projectFilter(value) {
@@ -162,7 +194,7 @@ function projectList(error = '', name = '', filter = 'Active', search = '') {
     <form class="filter" action="/" method="get">
       <input type="hidden" name="search" value="${escape(search)}">
       <label for="project-filter">Project filter</label>
-      <select id="project-filter" name="filter" onchange="this.form.submit()">
+      <select id="project-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['Active', 'Archived'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
@@ -234,17 +266,17 @@ function renderProjectPage(project, filter = 'All', error = '', priority = 'All'
       && ((!range.from && !range.through) || (task.due_date
         && (!range.from || task.due_date >= range.from)
         && (!range.through || task.due_date <= range.through))))
-    .map(task => `<div class="row" data-testid="task-row">
+    .map(task => `<div class="row" data-testid="task-row" data-task-id="${task.id}">
       <label class="task-title" for="task-${task.id}">${escape(task.title)}</label>
       <form method="post" action="/projects/${project.id}/tasks/${task.id}">
         <input type="hidden" name="filter" value="${filter}">
         <input type="hidden" name="priorityFilter" value="${priority}">
         <input class="task-check" id="task-${task.id}" type="checkbox" name="completed" value="1"
-          aria-label="Complete ${escape(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived || task.deleted ? 'disabled' : ''} onchange="this.form.submit()">
+          aria-label="Complete ${escape(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived || task.deleted ? 'disabled' : ''} onchange="this.form.requestSubmit()">
       </form>
       <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
         <label for="task-priority-${task.id}">Task priority</label>
-        <select id="task-priority-${task.id}" name="priority"${project.archived || task.deleted ? ' disabled' : ''} onchange="this.form.submit()">
+        <select id="task-priority-${task.id}" name="priority"${project.archived || task.deleted ? ' disabled' : ''} onchange="this.form.requestSubmit()">
           ${['Low', 'Normal', 'High'].map(option => `<option${option === task.priority ? ' selected' : ''}>${option}</option>`).join('')}
         </select>
         <input type="hidden" name="filter" value="${filter}">
@@ -301,7 +333,7 @@ ${escape(task.notes)}</textarea>
     </form>
     <form class="filter" action="/projects/${project.id}/default-priority" method="post">
       <label for="default-task-priority">Default task priority</label>
-      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.submit()">
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
         ${['Low', 'Normal', 'High'].map(option => `<option${option === project.default_priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <input type="hidden" name="filter" value="${filter}">
@@ -316,11 +348,11 @@ ${escape(task.notes)}</textarea>
     </form>
     <form class="filter" action="/projects/${project.id}" method="get">
       <label for="task-filter">Task filter</label>
-      <select id="task-filter" name="filter" onchange="this.form.submit()">
+      <select id="task-filter" name="filter" onchange="this.form.requestSubmit()">
         ${['All', 'Open', 'Completed', 'Deleted'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
       <label for="priority-filter">Priority filter</label>
-      <select id="priority-filter" name="priorityFilter" onchange="this.form.submit()">
+      <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">
         ${['All', 'Low', 'Normal', 'High'].map(option => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
