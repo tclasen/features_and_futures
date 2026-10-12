@@ -23,6 +23,23 @@ database.exec(`
   )
 `);
 
+// Keep a position for every task in every project it has belonged to. A task's
+// current project remains on tasks; this table also remembers prior positions.
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id,
+    ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY id) - 1
+  FROM tasks
+  WHERE NOT EXISTS (SELECT 1 FROM task_project_positions);
+`);
+
 // Add persistent priorities to databases created by earlier versions of Workboard.
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
 if (!taskColumns.some((column) => column.name === 'priority')) {
@@ -55,7 +72,9 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
 
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+  FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -66,12 +85,17 @@ function moveTask(taskId, sourceProjectId, destinationProjectId) {
   if (!task) return null;
   database.exec('BEGIN');
   try {
-    const result = database.prepare(`
-      INSERT INTO tasks (project_id, title, completed, priority, due_date)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(destinationProjectId, task.title, task.completed, task.priority, task.due_date);
-    database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceProjectId);
-    const movedTask = findTask.get(result.lastInsertRowid, destinationProjectId);
+    const rememberedPosition = database.prepare(`SELECT position FROM task_project_positions
+      WHERE task_id = ? AND project_id = ?`).get(taskId, destinationProjectId);
+    if (!rememberedPosition) {
+      const nextPosition = database.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?')
+        .get(destinationProjectId).value;
+      database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)')
+        .run(taskId, destinationProjectId, nextPosition);
+    }
+    database.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?')
+      .run(destinationProjectId, taskId, sourceProjectId);
+    const movedTask = findTask.get(taskId, destinationProjectId);
     database.exec('COMMIT');
     return movedTask;
   } catch (error) {
@@ -193,6 +217,10 @@ const server = createServer(async (request, response) => {
         const project = findProject.get(projectId);
         const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)')
           .run(projectId, title, project.default_task_priority);
+        const position = database.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS value FROM task_project_positions WHERE project_id = ?')
+          .get(projectId).value;
+        database.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)')
+          .run(result.lastInsertRowid, projectId, position);
         return sendJson(response, 201, findTask.get(result.lastInsertRowid, projectId));
       } catch {
         return sendJson(response, 400, { error: 'Invalid request' });
