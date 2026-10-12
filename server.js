@@ -130,10 +130,43 @@ function validDueDate(value) {
   return day <= days[month - 1];
 }
 
-function projectPage(project, filter = 'All', error = '', priority = 'All') {
+function dueRange(params) {
+  const from = (params.get('dueFrom') || '').trim();
+  const through = (params.get('dueThrough') || '').trim();
+  return { from, through };
+}
+
+function rangeError(range) {
+  if ((range.from && !validDueDate(range.from)) || (range.through && !validDueDate(range.through))) {
+    return 'Due range must use valid YYYY-MM-DD dates';
+  }
+  if (range.from && range.through && range.from > range.through) {
+    return 'Due from must not be after Due through';
+  }
+  return '';
+}
+
+function savedRange(params) {
+  const range = dueRange(params);
+  return rangeError(range) ? { from: '', through: '' } : range;
+}
+
+function redirectProject(res, project, filter, priority, range) {
+  const params = new URLSearchParams({ filter, priorityFilter: priority });
+  if (range.from) params.set('dueFrom', range.from);
+  if (range.through) params.set('dueThrough', range.through);
+  res.writeHead(303, { Location: `/projects/${project.id}?${params}` });
+  res.end();
+}
+
+function renderProjectPage(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }) {
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${escape(range.from)}"><input type="hidden" name="dueThrough" value="${escape(range.through)}">`;
   const rows = listTasks.all(project.id)
     .filter(task => (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
-      && (priority === 'All' || task.priority === priority))
+      && (priority === 'All' || task.priority === priority)
+      && ((!range.from && !range.through) || (task.due_date
+        && (!range.from || task.due_date >= range.from)
+        && (!range.through || task.due_date <= range.through))))
     .map(task => `<div class="row" data-testid="task-row">
       <label class="task-title" for="task-${task.id}">${escape(task.title)}</label>
       <form method="post" action="/projects/${project.id}/tasks/${task.id}">
@@ -165,7 +198,7 @@ function projectPage(project, filter = 'All', error = '', priority = 'All') {
         <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
       </form>
     </div>`).join('');
-  return page(`<h1>${escape(project.name)}</h1>
+  const content = `<h1>${escape(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
     ${error ? `<p role="alert">${escape(error)}</p>` : ''}
@@ -201,7 +234,18 @@ function projectPage(project, filter = 'All', error = '', priority = 'All') {
         ${['All', 'Low', 'Normal', 'High'].map(option => `<option${option === priority ? ' selected' : ''}>${option}</option>`).join('')}
       </select>
     </form>
-    <section aria-label="Tasks">${rows || '<p>No matching tasks.</p>'}</section>`);
+    <form class="filter" action="/projects/${project.id}/due-range" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      <input type="hidden" name="priorityFilter" value="${priority}">
+      <label for="due-from">Due from</label>
+      <input id="due-from" name="newDueFrom" type="text" value="${escape(range.from)}">
+      <label for="due-through">Due through</label>
+      <input id="due-through" name="newDueThrough" type="text" value="${escape(range.through)}">
+      <button type="submit">Apply due range</button>
+    </form>
+    <section aria-label="Tasks">${rows || '<p>No matching tasks.</p>'}</section>`;
+  // Every project form carries the applied range, not unsaved range-field drafts.
+  return page(content.replaceAll('</form>', `${rangeFields}</form>`));
 }
 
 async function formBody(req) {
@@ -214,7 +258,9 @@ async function formBody(req) {
       throw error;
     }
   }
-  return new URLSearchParams(body);
+  const params = new URLSearchParams(body);
+  req.appliedDueRange = savedRange(params);
+  return params;
 }
 
 function html(res, status, body) {
@@ -225,6 +271,8 @@ function html(res, status, body) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
+    req.appliedDueRange = savedRange(url.searchParams);
+    const projectPage = (...args) => renderProjectPage(...args, req.appliedDueRange);
     if (req.method === 'GET' && url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ status: 'ok' }));
@@ -240,6 +288,21 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(303, { Location: '/' });
       return res.end();
     }
+    const rangeMatch = url.pathname.match(/^\/projects\/(\d+)\/due-range$/);
+    if (req.method === 'POST' && rangeMatch) {
+      const project = findProject.get(rangeMatch[1]);
+      if (!project) return html(res, 404, page('<h1>Page not found</h1>'));
+      const body = await formBody(req);
+      const filter = taskFilter(body.get('filter'));
+      const priority = priorityFilter(body.get('priorityFilter'));
+      const range = {
+        from: (body.get('newDueFrom') || '').trim(),
+        through: (body.get('newDueThrough') || '').trim()
+      };
+      const error = rangeError(range);
+      if (error) return html(res, 422, projectPage(project, filter, error, priority));
+      return redirectProject(res, project, filter, priority, range);
+    }
     const renameMatch = url.pathname.match(/^\/projects\/(\d+)\/rename$/);
     if (req.method === 'POST' && renameMatch) {
       const project = findProject.get(renameMatch[1]);
@@ -251,8 +314,7 @@ const server = http.createServer(async (req, res) => {
       const name = (body.get('name') || '').trim();
       if (!name) return html(res, 422, projectPage(project, filter, 'Project name is required', priority));
       renameProject.run(name, project.id);
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${priority}` });
-      return res.end();
+      return redirectProject(res, project, filter, priority, req.appliedDueRange);
     }
     const archiveMatch = url.pathname.match(/^\/projects\/(\d+)\/(archive|restore)$/);
     if (req.method === 'POST' && archiveMatch) {
@@ -274,8 +336,7 @@ const server = http.createServer(async (req, res) => {
         return html(res, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority));
       }
       setDefaultPriority.run(priority, project.id);
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${selectedPriority}` });
-      return res.end();
+      return redirectProject(res, project, filter, selectedPriority, req.appliedDueRange);
     }
     const priorityMatch = url.pathname.match(/^\/projects\/(\d+)\/tasks\/(\d+)\/priority$/);
     if (req.method === 'POST' && priorityMatch) {
@@ -292,8 +353,7 @@ const server = http.createServer(async (req, res) => {
         return html(res, 422, projectPage(project, filter, 'Invalid task priority', selectedPriority));
       }
       setTaskPriority.run(priority, priorityMatch[2], project.id);
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${selectedPriority}` });
-      return res.end();
+      return redirectProject(res, project, filter, selectedPriority, req.appliedDueRange);
     }
     const dueDateMatch = url.pathname.match(/^\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
     if (req.method === 'POST' && dueDateMatch) {
@@ -310,8 +370,7 @@ const server = http.createServer(async (req, res) => {
         return html(res, 422, projectPage(project, filter, 'Due date must be a valid YYYY-MM-DD date', priority));
       }
       setTaskDueDate.run(dueDate, dueDateMatch[2], project.id);
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${priority}` });
-      return res.end();
+      return redirectProject(res, project, filter, priority, req.appliedDueRange);
     }
     const taskRenameMatch = url.pathname.match(/^\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
     if (req.method === 'POST' && taskRenameMatch) {
@@ -326,8 +385,7 @@ const server = http.createServer(async (req, res) => {
       const title = (body.get('title') || '').trim();
       if (!title) return html(res, 422, projectPage(project, filter, 'Task title is required', priority));
       renameTask.run(title, taskRenameMatch[2], project.id);
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${priority}` });
-      return res.end();
+      return redirectProject(res, project, filter, priority, req.appliedDueRange);
     }
     const taskMatch = url.pathname.match(/^\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
     if (req.method === 'POST' && taskMatch) {
@@ -345,8 +403,7 @@ const server = http.createServer(async (req, res) => {
         if (!title) return html(res, 422, projectPage(project, filter, 'Task title is required', priority));
         createTask.run(project.id, title, project.default_priority);
       }
-      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}&priorityFilter=${priority}` });
-      return res.end();
+      return redirectProject(res, project, filter, priority, req.appliedDueRange);
     }
     const match = url.pathname.match(/^\/projects\/(\d+)$/);
     if (req.method === 'GET' && match) {
