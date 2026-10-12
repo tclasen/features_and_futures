@@ -28,6 +28,7 @@
   <main id="app"></main>
   <script type="module">
     const app = document.querySelector('#app');
+    const projectViewStates = new Map();
     const requestProjects = async (options) => {
       const response = await fetch('/api/projects', options);
       const data = await response.json();
@@ -159,6 +160,7 @@
         open.type = 'button';
         open.textContent = 'Open project';
         open.addEventListener('click', () => {
+          projectViewStates.delete(project.id);
           history.pushState({}, '', `/projects/${project.id}`);
           render();
         });
@@ -201,6 +203,15 @@
       heading.textContent = project ? project.name : 'Project not found';
       app.append(heading);
       if (!project) return;
+      const viewState = projectViewStates.get(project.id) || {
+        taskFilter: 'All',
+        priorityFilter: 'All',
+        dueFrom: '',
+        dueThrough: '',
+        appliedDueFrom: '',
+        appliedDueThrough: ''
+      };
+      projectViewStates.set(project.id, viewState);
       if (project.archived) {
         const archivedNotice = document.createElement('p');
         archivedNotice.textContent = 'Archived project';
@@ -295,6 +306,7 @@
         const option = document.createElement('option');
         option.value = value;
         option.textContent = value;
+        option.selected = value === viewState.taskFilter;
         filter.append(option);
       }
       filterField.append(filterLabel, filter);
@@ -310,6 +322,7 @@
         const option = document.createElement('option');
         option.value = value;
         option.textContent = value;
+        option.selected = value === viewState.priorityFilter;
         priorityFilter.append(option);
       }
       priorityFilterField.append(priorityFilterLabel, priorityFilter);
@@ -322,12 +335,14 @@
       const dueFrom = document.createElement('input');
       dueFrom.id = 'due-from';
       dueFrom.type = 'text';
+      dueFrom.value = viewState.dueFrom;
       const dueThroughLabel = document.createElement('label');
       dueThroughLabel.htmlFor = 'due-through';
       dueThroughLabel.textContent = 'Due through';
       const dueThrough = document.createElement('input');
       dueThrough.id = 'due-through';
       dueThrough.type = 'text';
+      dueThrough.value = viewState.dueThrough;
       const applyDueRange = document.createElement('button');
       applyDueRange.type = 'button';
       applyDueRange.textContent = 'Apply due range';
@@ -336,8 +351,8 @@
       const list = document.createElement('div');
       app.append(list);
       let tasks = await requestTasks(project.id);
-      let appliedDueFrom = '';
-      let appliedDueThrough = '';
+      let appliedDueFrom = viewState.appliedDueFrom;
+      let appliedDueThrough = viewState.appliedDueThrough;
       const isValidDate = (value) => {
         const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if (!match) return false;
@@ -363,6 +378,10 @@
         }
         appliedDueFrom = from;
         appliedDueThrough = through;
+        viewState.dueFrom = from;
+        viewState.dueThrough = through;
+        viewState.appliedDueFrom = from;
+        viewState.appliedDueThrough = through;
         alert.hidden = true;
         renderTasks();
       });
@@ -464,8 +483,16 @@
           list.append(row);
         }
       };
-      filter.addEventListener('change', renderTasks);
-      priorityFilter.addEventListener('change', renderTasks);
+      filter.addEventListener('change', () => {
+        viewState.taskFilter = filter.value;
+        renderTasks();
+      });
+      priorityFilter.addEventListener('change', () => {
+        viewState.priorityFilter = priorityFilter.value;
+        renderTasks();
+      });
+      dueFrom.addEventListener('input', () => { viewState.dueFrom = dueFrom.value; });
+      dueThrough.addEventListener('input', () => { viewState.dueThrough = dueThrough.value; });
       renderTasks();
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
