@@ -34,6 +34,7 @@ const listProjects = database.prepare(`
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -135,8 +136,15 @@ function projectPage(project, filter = 'All', error = '') {
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
+    ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form class="create-form" method="post" action="${action}/rename?${query}">
+      <label for="new-project-name">New project name</label>
+      <div class="controls">
+        <input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form class="create-form" method="post" action="${action}/tasks?${query}">
-      ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <label for="task-title">Task title</label>
       <div class="controls">
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -204,7 +212,7 @@ const server = http.createServer(async (request, response) => {
       }
       redirect(response, url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/');
     } else if ((request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) ||
-      (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+)?$/.test(url.pathname))) {
+      (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|tasks(?:\/\d+)?)$/.test(url.pathname))) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
       if (!project) {
@@ -223,7 +231,14 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         const taskId = url.pathname.split('/')[4];
-        if (taskId === undefined) {
+        if (url.pathname.endsWith('/rename')) {
+          const name = (body.get('name') ?? '').trim();
+          if (!name) {
+            html(response, 400, projectPage(currentProject, filter, 'Project name is required'));
+            return;
+          }
+          renameProject.run(name, project.id);
+        } else if (taskId === undefined) {
           const title = (body.get('title') ?? '').trim();
           if (!title) {
             html(response, 400, projectPage(project, filter, 'Task title is required'));
