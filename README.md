@@ -27,3 +27,7 @@ migration from the previous schema, and project/task renaming with identity,
 order, ownership, and completion preservation and archived-project protection.
 Priority tests cover migration defaults, independent saved values, exact options,
 filter and summary preservation, rename preservation, and archive/restore protection.
+Combined-filter tests cover all completion/priority combinations, creation order,
+selection preservation through edits and validation, immediate matching-row changes,
+and saved task state across restarts and archive/restore. Both filters remain usable
+on archived project pages.
