@@ -91,3 +91,13 @@ deleted tasks in stored order. Exports include task title, completion, priority,
 due date, notes and deletion state, independently of page filters. Notes line
 breaks use LF in the portable document; exporting leaves saved data and page
 controls unchanged.
+
+The home page provides Project JSON, Imported project name and Import project.
+Paste a version 1 portable document and enter a nonblank override name to create
+and open a new independent project. The complete document is validated before a
+single transaction creates the project and its tasks. Invalid documents and blank
+names show an alert, retain the submitted fields, and leave existing data unchanged.
+Imports preserve task order, exact titles, completion, explicit priorities, due
+dates, notes (with LF line endings), deletion status, project archival and default
+priority. Imported copies receive new identities and remembered ordering positions;
+editing or restoring a copy never changes the original.

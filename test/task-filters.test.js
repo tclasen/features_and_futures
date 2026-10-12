@@ -868,3 +868,53 @@ test('live filters exclude deleted tasks and archives disable deletion and resto
     assert.deepEqual(page.writes, []);
   }
 });
+
+test('project import retains submitted fields on errors and opens the independent project on success', async () => {
+  const app = new Element('main');
+  const location = { pathname: '/', href: '/' };
+  const writes = [];
+  let error = 'Invalid project JSON';
+  const fetch = async (path, options) => {
+    if (!options) return { ok: true, json: async () => [] };
+    assert.equal(path, '/api/projects/import');
+    assert.equal(options.method, 'POST');
+    writes.push(JSON.parse(options.body));
+    return { ok: !error, json: async () => error ? { error } : { id: 42 } };
+  };
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  await runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Element(tag) },
+    fetch, window: { location },
+  });
+  const form = app.querySelector('#project-import-form');
+  const json = form.querySelector('#project-json');
+  const name = form.querySelector('#imported-project-name');
+  const button = form.querySelector('button');
+  assert.equal(json.tag, 'textarea');
+  assert.equal(button.textContent, 'Import project');
+  for (const [control, label] of [[json, 'Project JSON'], [name, 'Imported project name']]) {
+    assert.equal(form.querySelectorAll('label').find((item) => item.htmlFor === control.id).textContent, label);
+    assert.equal(control.value, '');
+  }
+  json.value = '  { invalid JSON Ω\n';
+  name.value = '  Copy  ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Invalid project JSON');
+  assert.equal(json.value, '  { invalid JSON Ω\n');
+  assert.equal(name.value, '  Copy  ');
+  assert.equal(location.href, '/');
+  assert.equal(button.disabled, false);
+  error = 'Project name is required';
+  name.value = ' \t ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(json.value, '  { invalid JSON Ω\n');
+  assert.equal(name.value, ' \t ');
+  error = '';
+  json.value = '{"format":"workboard-project"}';
+  name.value = '  Copy  ';
+  await form.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]'), null);
+  assert.equal(location.href, '/projects/42');
+  assert.deepEqual(writes.at(-1), { name: '  Copy  ', document: '{"format":"workboard-project"}' });
+});

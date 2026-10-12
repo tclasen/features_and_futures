@@ -521,6 +521,13 @@ async function render() {
           <button type="submit">Create project</button>
         </div>
       </form>
+      <form id="project-import-form">
+        <label for="project-json">Project JSON</label>
+        <textarea id="project-json" rows="8"></textarea>
+        <label for="imported-project-name">Imported project name</label>
+        <input id="imported-project-name" type="text" autocomplete="off">
+        <button type="submit">Import project</button>
+      </form>
       <h2>Projects</h2>
       <form id="project-search-form">
         <label for="project-search">Project search</label>
@@ -537,6 +544,25 @@ async function render() {
     const form = app.querySelector('form');
     const input = app.querySelector('input');
     const submit = form.querySelector('button');
+    const importForm = app.querySelector('#project-import-form');
+    const importButton = importForm.querySelector('button');
+    importForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (importButton.disabled) return;
+      app.querySelector('[role="alert"]')?.remove();
+      importButton.disabled = true;
+      try {
+        const project = await request('/api/projects/import', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: importForm.querySelector('#imported-project-name').value,
+            document: importForm.querySelector('#project-json').value,
+          }),
+        });
+        window.location.href = `/projects/${project.id}`;
+      } catch (error) { showError(error); }
+      finally { importButton.disabled = false; }
+    });
     const filter = app.querySelector('#project-filter');
     const searchForm = app.querySelector('#project-search-form');
     const searchInput = app.querySelector('#project-search');

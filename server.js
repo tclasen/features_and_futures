@@ -79,6 +79,10 @@ const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, n
 const getTask = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, ?)`);
+const importProject = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const importTask = db.prepare(`INSERT INTO tasks
+  (project_id, title, completed, priority, due_date, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE project_id = ? AND id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
@@ -109,15 +113,30 @@ function validDueDate(value) {
 }
 
 async function readJSON(request) {
-  let body = '';
+  const chunks = [];
+  let size = 0;
   for await (const chunk of request) {
-    body += chunk;
-    if (Buffer.byteLength(body) > 1024 * 1024) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size > 1024 * 1024) {
       throw Object.assign(new Error('Request is too large'), { status: 413 });
     }
   }
-  try { return JSON.parse(body); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { throw Object.assign(new Error('Invalid JSON'), { status: 400 }); }
+}
+
+function validPortableProject(document) {
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = (value) => typeof value === 'string' && value.trim() !== '';
+  const priority = (value) => ['Low', 'Normal', 'High'].includes(value);
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return false;
+  const project = document.project;
+  return object(project) && nonblank(project.name) && typeof project.archived === 'boolean' &&
+    priority(project.defaultPriority) && Array.isArray(project.tasks) && project.tasks.every((task) =>
+      object(task) && nonblank(task.title) && typeof task.completed === 'boolean' &&
+      priority(task.priority) && typeof task.dueDate === 'string' && validDueDate(task.dueDate) &&
+      typeof task.notes === 'string' && typeof task.deleted === 'boolean');
 }
 
 const server = http.createServer(async (request, response) => {
@@ -125,6 +144,29 @@ const server = http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && path === '/health') return json(response, 200, { status: 'ok' });
     if (request.method === 'GET' && path === '/api/projects') return json(response, 200, listProjects.all().map(projectJSON));
+    if (request.method === 'POST' && path === '/api/projects/import') {
+      let input;
+      try { input = await readJSON(request); }
+      catch { return json(response, 400, { error: 'Invalid project JSON' }); }
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      if (!name) return json(response, 400, { error: 'Project name is required' });
+      let document;
+      try { document = JSON.parse(input.document); }
+      catch { return json(response, 400, { error: 'Invalid project JSON' }); }
+      if (!validPortableProject(document)) return json(response, 400, { error: 'Invalid project JSON' });
+      const projectId = transaction(() => {
+        const project = document.project;
+        const id = Number(importProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid);
+        project.tasks.forEach((task, index) => {
+          const position = index + 1;
+          const taskId = Number(importTask.run(id, task.title, Number(task.completed), task.priority,
+            task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), position).lastInsertRowid);
+          savePosition.run(taskId, id, position);
+        });
+        return id;
+      });
+      return json(response, 201, projectJSON(getProject.get(projectId)));
+    }
     const exportApi = path.match(/^\/api\/projects\/(\d+)\/export$/);
     if (request.method === 'GET' && exportApi) {
       const project = getProject.get(exportApi[1]);
