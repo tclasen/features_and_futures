@@ -75,6 +75,105 @@ function priorityControls(html) {
   }));
 }
 
+test('project imports validate atomically and preserve independent portable state and order', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-import-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    await create(server.baseUrl, 'Original');
+    await post(server.baseUrl, '/projects/1/tasks', { title: 'Original task' });
+    const task = { title: '  Exact  Title 📝  ', completed: true, priority: 'High',
+      dueDate: '2000-02-29', notes: '  <script>& 📝\r\nsecond\rline  ', deleted: false };
+    const document = { format: 'workboard-project', version: 1,
+      project: { name: 'Portable', archived: false, defaultPriority: 'Low',
+        tasks: [task, { ...task, title: 'Deleted', deleted: true, dueDate: '', notes: '' }] } };
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) =>
+        db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all()); }
+      finally { db.close(); }
+    };
+    const before = snapshot();
+    const invalid = ['{', '{}'];
+    const change = (mutate) => {
+      const copy = structuredClone(document);
+      mutate(copy);
+      invalid.push(JSON.stringify(copy));
+    };
+    change((d) => { d.format = 'other'; });
+    change((d) => { d.version = '1'; });
+    change((d) => { d.version = 2; });
+    change((d) => { d.project = []; });
+    change((d) => { d.project.name = ' \t '; });
+    change((d) => { d.project.archived = 0; });
+    change((d) => { d.project.defaultPriority = 'Urgent'; });
+    change((d) => { d.project.tasks = {}; });
+    for (const key of Object.keys(task)) {
+      change((d) => { delete d.project.tasks[1][key]; });
+      change((d) => { d.project.tasks[1][key] = null; });
+    }
+    for (const date of ['1900-02-29', '0000-01-01', '2025-04-31', '2025-1-01', ' 2025-01-01 ', '9999-12-32']) {
+      change((d) => { d.project.tasks[1].dueDate = date; });
+    }
+    change((d) => { d.project.tasks[1].title = '\t '; });
+    change((d) => { d.project.tasks[1].priority = 'low'; });
+    for (const json of invalid) {
+      const response = await post(server.baseUrl, '/projects/import', { json, name: '  Copy  ' });
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.match(html, /role="alert">Invalid project JSON/);
+      assert.match(html, /value="  Copy  "/);
+      assert.deepEqual(snapshot(), before);
+    }
+    const blank = await post(server.baseUrl, '/projects/import', { json: JSON.stringify(document), name: ' \t ' });
+    assert.match(await blank.text(), /role="alert">Project name is required/);
+    assert.deepEqual(snapshot(), before);
+    // Additional properties cannot choose application IDs or ordering positions.
+    document.project.id = 1;
+    document.project.tasks[0].id = 1;
+    document.project.tasks[0].position = -999;
+    const response = await post(server.baseUrl, '/projects/import', { json: JSON.stringify(document), name: '  Copy  ' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/2');
+    const expected = structuredClone(document);
+    delete expected.project.id;
+    delete expected.project.tasks[0].id;
+    delete expected.project.tasks[0].position;
+    expected.project.name = 'Copy';
+    expected.project.tasks[0].notes = task.notes.replace(/\r\n?/g, '\n');
+    const download = async (id) => (await fetch(`${server.baseUrl}/projects/${id}/download`)).json();
+    assert.deepEqual(await download(2), expected);
+    assert.deepEqual(projectSummaries(await (await fetch(`${server.baseUrl}/`)).text()), ['0/1 completed', '1/1 completed']);
+    await post(server.baseUrl, '/projects/2/tasks', { title: 'Later' });
+    await post(server.baseUrl, '/projects/2/tasks/3/restore', { filter: 'Deleted' });
+    assert.deepEqual((await download(2)).project.tasks.map((t) => t.title), [task.title, 'Deleted', 'Later']);
+    await post(server.baseUrl, '/projects/2/tasks/2/move', { destination: '1' });
+    await post(server.baseUrl, '/projects/1/tasks/2/move', { destination: '2' });
+    assert.deepEqual((await download(2)).project.tasks.map((t) => t.title), [task.title, 'Deleted', 'Later']);
+    assert.equal((await download(1)).project.tasks[0].title, 'Original task');
+    const saved = await download(2);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(2), saved);
+    document.project.archived = true;
+    const archived = await post(server.baseUrl, '/projects/import', { json: JSON.stringify(document), name: 'Archived copy' });
+    assert.equal(archived.headers.get('location'), '/projects/3');
+    const html = await (await fetch(`${server.baseUrl}/projects/3?filter=Deleted`)).text();
+    assert.match(html, /Archived project/);
+    assert.match(html, /disabled>Restore task/);
+    await post(server.baseUrl, '/projects/3/restore', {});
+    assert.equal((await download(3)).project.tasks[1].deleted, true);
+    const empty = structuredClone(document);
+    empty.project.tasks = [];
+    assert.equal((await post(server.baseUrl, '/projects/import', { json: JSON.stringify(empty), name: 'Empty' })).status, 303);
+    assert.deepEqual((await download(4)).project.tasks, []);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('portable project downloads include all ordered state without changing data or filters', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
   const databasePath = join(directory, 'board.sqlite');

@@ -224,7 +224,7 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-function projectList(error = '', filter = 'Active', search = '') {
+function projectList(error = '', filter = 'Active', search = '', importDraft = { json: '', name: '' }) {
   const rows = listProjects.all(filter === 'Archived' ? 1 : 0)
     .filter((project) => matchesSearch(project.name, search)).map((project) => `
     <li data-testid="project-row">
@@ -250,6 +250,16 @@ function projectList(error = '', filter = 'Active', search = '') {
       </div>
     </form>
     ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+    <form action="/projects/import" method="post">
+      <input type="hidden" name="filter" value="${filter}">
+      ${searchField(search)}
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="6">
+${escapeHtml(importDraft.json).replace(/\r/g, '&#13;')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="name" type="text" value="${escapeHtml(importDraft.name)}">
+      <button type="submit">Import project</button>
+    </form>
     <h2>Projects</h2>
     <form action="/" method="get" class="project-filter">
       ${searchField(search)}
@@ -288,6 +298,43 @@ function portableProject(project) {
       })),
     },
   };
+}
+
+// Validate every portable field before beginning a transaction. Extra properties
+// are deliberately ignored and never passed to persistence operations.
+function parseProjectImport(json) {
+  let document;
+  try { document = JSON.parse(json); } catch { return null; }
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = (value) => typeof value === 'string' && value.trim().length > 0;
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return null;
+  const project = document.project;
+  if (!object(project) || !nonblank(project.name) || typeof project.archived !== 'boolean' ||
+      !taskPriorities.includes(project.defaultPriority) || !Array.isArray(project.tasks)) return null;
+  for (const task of project.tasks) {
+    if (!object(task) || !nonblank(task.title) || typeof task.completed !== 'boolean' ||
+        !taskPriorities.includes(task.priority) || typeof task.dueDate !== 'string' ||
+        !validDueDate(task.dueDate) || typeof task.notes !== 'string' || typeof task.deleted !== 'boolean') return null;
+  }
+  return project;
+}
+
+const insertImportedProject = database.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const insertImportedTask = database.prepare(`
+  INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+
+function importProject(project, name) {
+  return inTransaction(() => {
+    const id = insertImportedProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid;
+    for (const task of project.tasks) {
+      const taskId = insertImportedTask.run(id, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted)).lastInsertRowid;
+      rememberPosition.run(taskId, id, id);
+    }
+    return id;
+  });
 }
 
 function projectPage(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, search = '', draftRange = range) {
@@ -485,6 +532,19 @@ const server = http.createServer(async (request, response) => {
       });`);
     } else if (request.method === 'GET' && url.pathname === '/') {
       sendHtml(response, 200, projectList('', projectFilter(url.searchParams.get('filter')), readSearch(url.searchParams)));
+    } else if (request.method === 'POST' && url.pathname === '/projects/import') {
+      const form = await readForm(request);
+      const draft = { json: form.get('json') || '', name: form.get('name') || '' };
+      const name = draft.name.trim();
+      const imported = name ? parseProjectImport(draft.json) : null;
+      if (!name || !imported) {
+        sendHtml(response, 400, projectList(name ? 'Invalid project JSON' : 'Project name is required',
+          projectFilter(form.get('filter')), readSearch(form), draft));
+        return;
+      }
+      const id = importProject(imported, name);
+      response.writeHead(303, { Location: `/projects/${id}` });
+      response.end();
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
       const name = (form.get('name') || '').trim();
