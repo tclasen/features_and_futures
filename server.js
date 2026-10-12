@@ -82,6 +82,23 @@ const server = createServer(async (req, res) => {
     if (!result.changes) return send(res, 404, { error: 'Project not found' });
     return send(res, 200, { id: projectId, archived: archived ? 1 : 0 });
   }
+  const projectExport = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
+  if (req.method === 'GET' && projectExport) {
+    let projectId;
+    try { projectId = decodeURIComponent(projectExport[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
+    const project = db.prepare('SELECT name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(projectId);
+    if (!project) return send(res, 404, { error: 'Project not found' });
+    const tasks = db.prepare(`SELECT title, completed, priority, COALESCE(due_date, '') AS dueDate,
+      COALESCE(notes, '') AS notes, deleted FROM tasks t LEFT JOIN task_project_positions p
+      ON p.task_id = t.id AND p.project_id = t.project_id WHERE t.project_id = ?
+      ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid`).all(projectId).map(task => ({
+        title: task.title, completed: !!task.completed, priority: task.priority,
+        dueDate: task.dueDate, notes: task.notes.replace(/\r\n?/g, '\n'), deleted: !!task.deleted
+      }));
+    const document = { format: 'workboard-project', version: 1, project: { ...project, archived: !!project.archived, tasks } };
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="workboard-project.json"', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(document));
+  }
   const projectRoute = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
   if (req.method === 'PATCH' && projectRoute) {
     let projectId;
