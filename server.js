@@ -82,10 +82,19 @@ const server = createServer(async (request, response) => {
   if (projectRoute && request.method === 'PATCH') {
     const body = await readBody(request);
     if (body.error) return sendJson(response, 400, { error: body.error });
+    const id = Number(projectRoute[1]);
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(id);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (typeof body.value?.name === 'string') {
+      if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
+      const name = body.value.name.trim();
+      if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+      db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id);
+      return sendJson(response, 200, { id, name });
+    }
     if (typeof body.value?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archived must be boolean' });
-    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.value.archived), Number(projectRoute[1]));
-    if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, { id: Number(projectRoute[1]), archived: body.value.archived });
+    db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.value.archived), id);
+    return sendJson(response, 200, { id, archived: body.value.archived });
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     const projects = db.prepare(`SELECT p.id, p.name, p.archived,

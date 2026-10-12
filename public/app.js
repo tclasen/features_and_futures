@@ -93,8 +93,28 @@ async function renderProject(id) {
     app.append(back);
     return;
   }
-  app.append(element('h1', project.name));
+  const heading = element('h1', project.name);
+  app.append(heading);
   if (project.archived) app.append(element('p', 'Archived project'));
+  const renameForm = element('form');
+  const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New project name', name: 'name' });
+  const renameButton = element('button', 'Rename project', { type: 'submit' });
+  renameInput.disabled = project.archived;
+  renameButton.disabled = project.archived;
+  renameForm.append(renameInput, renameButton);
+  app.append(renameForm);
+  renameForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const name = renameInput.value.trim();
+    if (!name) { showError('Project name is required'); renameInput.focus(); return; }
+    const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name })
+    });
+    if (!response.ok) { const error = await response.json(); showError(error.error || 'Could not rename project'); return; }
+    heading.textContent = name;
+    renameInput.value = '';
+    app.querySelector('[role="alert"]')?.remove();
+  });
   const back = element('button', 'Projects', { type: 'button' });
   back.addEventListener('click', () => { window.location.href = '/'; });
   app.append(back);
