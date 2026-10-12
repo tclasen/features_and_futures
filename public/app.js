@@ -123,7 +123,31 @@ function renderTasks() {
         renderTasks();
       }
     });
-    row.append(title, checkbox);
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    const renameButton = document.createElement('button');
+    renameButton.type = 'button';
+    renameButton.textContent = 'Rename task';
+    const archived = document.querySelector('#archived-notice').hidden === false;
+    renameInput.disabled = archived;
+    renameButton.disabled = archived;
+    renameButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: renameInput.value })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        window.alert(result.error || 'Unable to rename task');
+        return;
+      }
+      const updated = await response.json();
+      task.title = updated.title;
+      renderTasks();
+    });
+    row.append(title, checkbox, renameInput, renameButton);
     taskContainer.append(row);
   }
 }
