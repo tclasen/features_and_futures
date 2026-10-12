@@ -61,14 +61,14 @@ test('notes migrate, remain plain text, preserve filters and travel with tasks',
   const location = '/projects/1?filter=Completed&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-02-29&search=first';
   try {
     await start();
-    assert.deepEqual(stored().map(({ notes, ...task }) => task), before);
+    assert.deepEqual(stored().map(({ notes, deleted, ...task }) => task), before);
     assert.deepEqual(stored().map(task => task.notes), ['', '']);
     assert.match(await get('/projects/1'), /name="notes" rows="4">\n<\/textarea>/);
     const saved = await post('/projects/1/tasks/1/notes', { ...state, notes });
     assert.equal(saved.status, 303);
     assert.equal(saved.headers.get('location'), location);
     assert.equal(stored()[0].notes, notes);
-    assert.deepEqual(stored().map(({ notes, ...task }) => task), before);
+    assert.deepEqual(stored().map(({ notes, deleted, ...task }) => task), before);
     let body = await get(location);
     assert.deepEqual(titles(body), ['First']);
     assert.match(body, /name="notes" rows="4">\n\n  leading spaces/);

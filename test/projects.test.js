@@ -230,7 +230,7 @@ test('combined priority and completion filters preserve selections through edits
     for (const filter of ['All', 'Open', 'Completed']) {
       for (const priorityFilter of ['All', 'Low', 'Normal', 'High']) {
         const body = await get(`/projects/1?filter=${filter}&priorityFilter=${priorityFilter}`);
-        selection(body, 'task-filter', filter, ['All', 'Open', 'Completed']);
+        selection(body, 'task-filter', filter, ['All', 'Open', 'Completed', 'Deleted']);
         selection(body, 'priority-filter', priorityFilter, ['All', 'Low', 'Normal', 'High']);
         assert.deepEqual(rows(body), tasks.filter((task) =>
           (filter === 'All' || task.completed === (filter === 'Completed')) &&
@@ -245,7 +245,7 @@ test('combined priority and completion filters preserve selections through edits
     response = await post('/projects/1/tasks/5/rename', { ...values, title: ' ' });
     const invalid = await response.text();
     assert.match(invalid, /role="alert">Task title is required/);
-    selection(invalid, 'task-filter', 'Open', ['All', 'Open', 'Completed']);
+    selection(invalid, 'task-filter', 'Open', ['All', 'Open', 'Completed', 'Deleted']);
     selection(invalid, 'priority-filter', 'High', ['All', 'Low', 'Normal', 'High']);
     assert.deepEqual(rows(invalid), ['Renamed']);
     response = await post('/projects/1/tasks/5/priority', { ...values, priority: 'Low' });
