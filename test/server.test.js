@@ -717,3 +717,104 @@ test('project priority defaults migrate, affect only future tasks, and persist i
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('due dates validate Gregorian days and persist without changing task identity or filters', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'workboard.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Existing'), ('Other');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Existing task', 1);
+    `);
+    legacy.close();
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const rows = html => [...html.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map(match => match[1]);
+    const date = (html, id) => new RegExp(`<input id="task-due-date-${id}"[^>]*value="([^"]*)"`).exec(html)[1];
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    const summary = await get('/');
+    const other = await get('/projects/2');
+    const newRow = rows(await get('/projects/1'))[1];
+    const filters = { filter: 'Completed', priorityFilter: 'High' };
+    const path = '/projects/1?filter=Completed&priorityFilter=High';
+    const initial = await get(path);
+    assert.equal(date(initial, 1), '');
+    assert.equal(date(newRow, 2), '');
+    assert.match(initial, /<label for="task-due-date-1">Task due date<\/label>/);
+    const form = /<form[^>]*action="\/projects\/1\/tasks\/1\/due-date">([\s\S]*?)<\/form>/.exec(initial)[1];
+    assert.match(form, /name="filter" value="Completed"/);
+    assert.match(form, /name="priorityFilter" value="High"/);
+    for (const dueDate of ['0001-01-01', '0099-12-31', '2000-02-29', '2024-02-29', '9999-12-31', '  2026-04-30  ']) {
+      const response = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), path);
+      const html = await get(path);
+      assert.equal(date(html, 1), dueDate.trim());
+      assert.match(html, /aria-label="Complete Existing task" checked/);
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.match(html, /<option selected>High<\/option>/);
+      assert.equal(rows(html).length, 1);
+      assert.equal(rows(await get('/projects/1'))[1], newRow);
+      assert.equal(await get('/'), summary);
+      assert.equal(await get('/projects/2'), other);
+    }
+    const saved = await get(path);
+    for (const dueDate of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32', '2026-1-01', '26-01-01', '2026-01-01T00:00:00Z', '2026-01-01\nextra', '<script>']) {
+      const response = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate });
+      assert.equal(response.status, 422, dueDate);
+      const html = await response.text();
+      assert.match(html, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      assert.equal(date(html, 1), '2026-04-30');
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.match(html, /<option selected>High<\/option>/);
+      assert.equal(await get(path), saved);
+    }
+    assert.equal((await post('/projects/2/tasks/1/due-date', { dueDate: '2026-01-01' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/due-date', { dueDate: '' })).status, 404);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get(path), saved);
+    await post('/projects/1/tasks/1/rename', { ...filters, title: 'Renamed' });
+    assert.equal(date(await get(path), 1), '2026-04-30');
+    await post('/projects/1/tasks/2/due-date', { dueDate: '2027-05-01' });
+    await post('/projects/1/archive');
+    const archived = await get(path);
+    assert.match(archived, /id="task-due-date-1"[^>]* disabled/);
+    assert.match(archived, /<button type="submit" disabled>Save due date/);
+    assert.doesNotMatch(archived, /<select id="(?:task-filter|priority-filter)"[^>]* disabled/);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { dueDate: '' })).status, 403);
+    assert.equal(await get(path), archived);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get(path), archived);
+    await post('/projects/1/restore');
+    const restored = await get(path);
+    assert.equal(date(restored, 1), '2026-04-30');
+    assert.match(restored, /aria-label="Complete Renamed" checked/);
+    assert.doesNotMatch(restored, /id="task-due-date-1"[^>]* disabled/);
+    for (const dueDate of ['', ' \t\n ']) {
+      await post('/projects/1/tasks/1/due-date', { ...filters, dueDate });
+      assert.equal(date(await get(path), 1), '');
+      assert.equal(date(await get('/projects/1'), 2), '2027-05-01');
+    }
+    const cleared = await get(path);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get(path), cleared);
+    assert.equal(date(await get('/projects/1'), 2), '2027-05-01');
+    assert.equal(await get('/'), summary);
+    assert.equal(await get('/projects/2'), other);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
