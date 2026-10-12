@@ -55,17 +55,23 @@ async function projectPage(archived = false) {
   const tasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
     for (const completed of [false, true]) {
-      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority });
+      tasks.push({ id: tasks.length + 1, title: `${priority} ${completed ? 'done' : 'open'}`, completed, priority, dueDate: '' });
     }
   }
-  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High' });
+  tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High', dueDate: '0001-01-01' });
   const requests = [];
+  let nextError;
   const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
   const context = {
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     location: { pathname: '/projects/1' },
     fetch: async (path, options) => {
       requests.push({ path, options });
+      if (nextError) {
+        const error = nextError;
+        nextError = undefined;
+        return { ok: false, json: async () => ({ error }) };
+      }
       let data;
       if (options?.method === 'PATCH') {
         const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
@@ -83,7 +89,8 @@ async function projectPage(archived = false) {
   const rows = () => app.querySelector('#task-list').children;
   const titles = () => rows().map(row => row.children[0].textContent);
   async function select(element, value) { element.value = value; await element.trigger('change'); }
-  return { app, tasks, project, requests, completion, priority, rows, titles, select };
+  return { app, tasks, project, requests, completion, priority, rows, titles, select,
+    rejectNext: error => { nextError = error; } };
 }
 
 test('combined filters preserve selections, creation order and data across all combinations', async () => {
@@ -179,4 +186,45 @@ test('saving a project default leaves task rows and both filters unchanged', asy
     assert.equal(page.project.totalCount, 7);
     assert.equal(page.project.completedCount, 3);
   }
+});
+
+test('due date controls save, clear and report errors while preserving rows and filters', async () => {
+  const page = await projectPage();
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  const originalTasks = structuredClone(page.tasks);
+  const originalRows = [...page.rows()];
+  const input = page.app.querySelector('#task-due-date-5');
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  const form = page.rows()[0].querySelectorAll('form')[1];
+  assert.equal(form.querySelector('label').textContent, 'Task due date');
+  assert.equal(form.querySelector('button').textContent, 'Save due date');
+  for (const value of ['  2000-02-29  ', ' \t ', '9999-12-31']) {
+    input.value = value;
+    await form.trigger('submit');
+    originalTasks[4].dueDate = value.trim();
+    assert.equal(input.value, value.trim());
+    assert.deepEqual(page.tasks, originalTasks);
+    assert.deepEqual(page.rows(), originalRows);
+    assert.equal(page.completion.value, 'Open');
+    assert.equal(page.priority.value, 'High');
+    assert.equal(page.project.totalCount, 7);
+    assert.equal(page.project.completedCount, 3);
+  }
+  input.value = '1900-02-29';
+  page.rejectNext('Due date must be a valid YYYY-MM-DD date');
+  await form.trigger('submit');
+  const alert = page.app.querySelector('[role="alert"]');
+  assert.equal(alert.hidden, false);
+  assert.equal(alert.textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.deepEqual(page.tasks, originalTasks);
+  assert.equal(form.querySelector('button').disabled, false);
+  const rename = page.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'Renamed dated task';
+  await rename.trigger('submit');
+  assert.equal(page.tasks[4].dueDate, '9999-12-31');
+  await page.select(page.priority, 'All');
+  assert.equal(page.app.querySelector('#task-due-date-5').value, '9999-12-31');
+  assert.equal(page.app.querySelector('#task-due-date-7').value, '0001-01-01');
 });
