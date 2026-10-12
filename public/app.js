@@ -120,7 +120,12 @@ function renderDirectory() {
       if (order === 'Due date') return a.dueDate && b.dueDate ? a.dueDate.localeCompare(b.dueDate) : a.dueDate ? -1 : b.dueDate ? 1 : 0;
       const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
       const right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-      return left < right ? -1 : left > right ? 1 : 0;
+      const leftPoints = Array.from(left, char => char.codePointAt(0));
+      const rightPoints = Array.from(right, char => char.codePointAt(0));
+      for (let i = 0; i < Math.min(leftPoints.length, rightPoints.length); i++) {
+        if (leftPoints[i] !== rightPoints[i]) return leftPoints[i] - rightPoints[i];
+      }
+      return leftPoints.length - rightPoints.length;
     });
   }
   for (const task of orderedRows) {
