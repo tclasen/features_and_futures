@@ -33,3 +33,5 @@ Checkpoint005 exact publication verified:126original refs and first5source/evide
 L055 task014 observation: b004/b011 original submissions fail frozen task/project whitespace matching, with b004 search-intersection regressions also retained. Preserve original evidence and native measured repairs under unchanged correction-in-place policy; implementation causes and recovery remain unverified. PM source changes: zero.
 
 L069 task015 observed: two b004 sources fail the same011 due-date seed assertion. Retain measured originals and generic feedback; hold the common round under unchanged correction/five-identical-failure rules. Failure at seeding does not establish an actual-restart defect, and recovery remains unverified.
+
+L069 archive-first task015 recovery verified: five identical b004 diagnostics, all five original histories and working trees plus before-restore bundle independently restored. The recorded own-task014 restoration matches attempt006 start. Effective task015 repair remains pending; no comparison change or implementation hint.
