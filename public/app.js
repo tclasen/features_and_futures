@@ -113,7 +113,7 @@ async function openProject(id) {
   taskSearchInput.value = '';
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
-  document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(project.id)}/export`;
+  document.querySelector('#download-project').dataset.projectId = project.id;
   setProjectArchived(project.archived);
   defaultPriority.value = project.defaultPriority || 'Normal';
   defaultPriority.dataset.saved = defaultPriority.value;
@@ -360,7 +360,7 @@ async function renderRoute() {
     const project = await request(`/api/projects/${encodeURIComponent(decodeURIComponent(match[1]))}`);
     document.querySelector('#detail-name').textContent = project.name;
     activeProjectId = project.id;
-    document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(project.id)}/export`;
+    document.querySelector('#download-project').dataset.projectId = project.id;
     taskFilter.value = 'All';
     priorityFilter.value = 'All';
     resetDueRange();
@@ -483,6 +483,26 @@ defaultPriority.addEventListener('change', async () => {
   }
 });
 projectFilter.addEventListener('change', loadProjects);
+document.querySelector('#download-project').addEventListener('click', async event => {
+  const projectId = event.currentTarget.dataset.projectId;
+  if (!projectId) return;
+  try {
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/export`);
+    if (!response.ok) throw new Error('Project download failed');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'workboard-project.json';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    taskAlert.textContent = error.message;
+    taskAlert.hidden = false;
+  }
+});
 projectSearchForm.addEventListener('submit', event => {
   event.preventDefault();
   appliedProjectQuery = projectSearchInput.value.trim();
