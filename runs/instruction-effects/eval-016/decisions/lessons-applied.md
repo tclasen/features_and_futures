@@ -119,3 +119,7 @@ L060 retired archive coverage verified at294 native application resources (seven
 L062 partial021 publication verified:297 source checkpoints and594 original refs, including independently restored rejected001–018 and before-recovery006/012/018. All prior remote heads preserved, zero-finding exact-target scan, temporary snapshot removed. Accounting totals remain scoped to closed020; current and later native attempts are excluded.
 
 L062 publication002 PM transport recovery verified: initial restricted GitHub DNS lookup failed before push; exact scanned target retry with authorized access succeeded. Both original logs retained in preflight/checkpoint021partial-publication002/scan-archive001/publication-attempts001. Native execution and accounting unchanged.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 archive-first task021 recovery verified: five identical b004 diagnostics, all twenty-four original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt025 start. Effective task021 repair remains pending; no comparison change or implementation hint.
