@@ -13,10 +13,11 @@ from orchestrator.bounded_confirmation import METHOD
 class ActionRoleReadinessTests(unittest.TestCase):
     def test_dynamic_protection_helper_preserves_explicit_task_write_buttons(self):
         source="for(const label of ['Complete visible tasks','Reopen visible tasks','Delete visible tasks','Set visible priority'])await expect(p.getByRole('button',{name:label,exact:true})).toBeDisabled();"
-        result=with_action_role_choices(source,'directory-presence-helpers.mjs')
-        self.assertIn("['Complete visible tasks','Reopen visible tasks'].includes(label)?",result)
-        self.assertIn(".or(p.getByRole('link',{name:label,exact:true}))",result)
-        self.assertIn(":p.getByRole('button',{name:label,exact:true})",result)
+        for filename in ['directory-presence-helpers.mjs','directory-word-search.spec.mjs']:
+            result=with_action_role_choices(source,filename)
+            self.assertIn("['Complete visible tasks','Reopen visible tasks'].includes(label)?",result)
+            self.assertIn(".or(p.getByRole('link',{name:label,exact:true}))",result)
+            self.assertIn(":p.getByRole('button',{name:label,exact:true})",result)
         self.assertEqual(with_action_role_choices(source,'unrelated.mjs'),source)
 
     def test_explicit_buttons_remain_required_and_directory_task_open_is_scoped(self):
