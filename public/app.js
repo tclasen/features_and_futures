@@ -316,9 +316,11 @@ function renderTasks() {
         error.hidden = false;
         return;
       }
-      task.dueDate = (await response.json()).dueDate;
-      dueDate.value = task.dueDate || '';
-      renderTasks();
+      const updated = await response.json();
+      task.dueDate = updated.dueDate;
+      // Refresh from the persisted task list so the UI always reflects SQLite's
+      // canonical value, including after a move or a previous process restart.
+      await loadTasks();
     });
     const notes = document.createElement('textarea');
     notes.setAttribute('aria-label', 'Task notes');
