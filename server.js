@@ -142,6 +142,11 @@ function sendPage(response) {
       </form>
       <label for="project-filter">Project filter</label>
       <select id="project-filter"><option>Active</option><option>Archived</option></select>
+      <form id="project-search-form">
+        <label for="project-search">Project search</label>
+        <input id="project-search" type="text" autocomplete="off">
+        <button type="submit">Search projects</button>
+      </form>
       <ul id="projects" aria-label="Projects"></ul>
     </section>
     <section id="detail" hidden>
@@ -168,6 +173,11 @@ function sendPage(response) {
       </select>
       <label for="default-task-priority">Default task priority</label>
       <select id="default-task-priority"><option>Low</option><option>Normal</option><option>High</option></select>
+      <form id="task-search-form">
+        <label for="task-search">Task search</label>
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </form>
       <form id="due-range-form">
         <label for="due-from">Due from</label>
         <input id="due-from" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
@@ -188,6 +198,12 @@ function sendPage(response) {
     let currentProjectArchived = false;
     let appliedDueFrom = '';
     let appliedDueThrough = '';
+    let appliedProjectQuery = '';
+    let appliedTaskQuery = '';
+
+    function asciiLower(value) {
+      return value.replace(/[A-Z]/g, character => character.toLowerCase());
+    }
 
     async function loadProjects() {
       const response = await fetch('/api/projects');
@@ -200,9 +216,11 @@ function sendPage(response) {
       detailView.hidden = true;
       error.hidden = true;
       projectList.replaceChildren();
+      document.querySelector('#project-search').value = appliedProjectQuery;
       const selectedState = document.querySelector('#project-filter').value;
       for (const project of await loadProjects()) {
         if (Boolean(project.archived) !== (selectedState === 'Archived')) continue;
+        if (!asciiLower(project.name).includes(asciiLower(appliedProjectQuery))) continue;
         const row = document.createElement('li');
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
@@ -238,6 +256,8 @@ function sendPage(response) {
       currentProjectId = id;
       appliedDueFrom = '';
       appliedDueThrough = '';
+      appliedTaskQuery = '';
+      document.querySelector('#task-search').value = '';
       document.querySelector('#due-from').value = '';
       document.querySelector('#due-through').value = '';
       listView.hidden = true;
@@ -267,10 +287,12 @@ function sendPage(response) {
       const eligibleProjects = (await projectResponse.json()).filter(project => !project.archived && String(project.id) !== String(currentProjectId));
       const filter = document.querySelector('#task-filter').value;
       const priorityFilter = document.querySelector('#priority-filter').value;
+      const taskQuery = asciiLower(appliedTaskQuery);
       taskList.replaceChildren();
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+        if (!asciiLower(task.title).includes(taskQuery)) continue;
         if ((appliedDueFrom || appliedDueThrough) && !task.due_date) continue;
         if (task.due_date && appliedDueFrom && task.due_date < appliedDueFrom) continue;
         if (task.due_date && appliedDueThrough && task.due_date > appliedDueThrough) continue;
@@ -452,6 +474,18 @@ function sendPage(response) {
       if (!response.ok) throw new Error('Unable to update default task priority');
     });
     document.querySelector('#project-filter').addEventListener('change', showList);
+    document.querySelector('#project-search-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      appliedProjectQuery = document.querySelector('#project-search').value.trim();
+      error.hidden = true;
+      await showList();
+    });
+    document.querySelector('#task-search-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      appliedTaskQuery = document.querySelector('#task-search').value.trim();
+      error.hidden = true;
+      await renderTasks();
+    });
 
     function isValidCalendarDate(value) {
       const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
@@ -485,7 +519,7 @@ function sendPage(response) {
       await showList();
     });
 
-    document.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
+    document.querySelector('#back').addEventListener('click', () => { appliedProjectQuery = ''; window.location.href = '/'; });
     const match = window.location.pathname.match(/^\\/projects\\/(\\d+)\\/?$/);
     if (match) showProject(match[1]);
     else showList();
