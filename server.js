@@ -31,13 +31,25 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0'); } catch {}
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_order INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, task_order)
+  SELECT id, project_id, task_order FROM tasks`);
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY task_order, id');
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+  FROM tasks t LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY COALESCE(pos.task_order, t.task_order), t.id`);
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(task_order) + 1 FROM tasks WHERE project_id = ?), 0))');
-const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(task_order) + 1, 0) AS nextOrder FROM tasks WHERE project_id = ?');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(task_order) + 1, 0) AS nextOrder FROM task_project_positions WHERE project_id = ?');
+const positionForTask = db.prepare('SELECT task_order AS taskOrder FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const rememberPosition = db.prepare('INSERT OR IGNORE INTO task_project_positions (task_id, project_id, task_order) VALUES (?, ?, ?)');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -96,8 +108,12 @@ const server = createServer(async (req, res) => {
       const owner = getProject.get(Number(taskMatch[1]));
       if (!owner) return send(404, JSON.stringify({ error: 'Project not found' }));
       if (owner.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
-      const result = createTask.run(Number(taskMatch[1]), title, owner.defaultPriority, Number(taskMatch[1]));
-      return send(201, JSON.stringify(getTask.get(Number(result.lastInsertRowid), Number(taskMatch[1]))));
+      const projectId = Number(taskMatch[1]);
+      const result = createTask.run(projectId, title, owner.defaultPriority, projectId);
+      const taskId = Number(result.lastInsertRowid);
+      const order = db.prepare('SELECT task_order AS taskOrder FROM tasks WHERE id = ?').get(taskId).taskOrder;
+      rememberPosition.run(taskId, projectId, order);
+      return send(201, JSON.stringify(getTask.get(taskId, projectId)));
     } catch {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
     }
@@ -118,8 +134,10 @@ const server = createServer(async (req, res) => {
         const destinationId = body.destinationProjectId;
         const destination = getProject.get(destinationId);
         if (!destination || destination.archived || destinationId === Number(taskUpdateMatch[1])) return send(400, JSON.stringify({ error: 'Invalid destination project' }));
-        const nextOrder = nextTaskOrder.get(destinationId).nextOrder;
+        const remembered = positionForTask.get(taskId, destinationId);
+        const nextOrder = remembered ? remembered.taskOrder : nextTaskOrder.get(destinationId).nextOrder;
         result = moveTask.run(destinationId, nextOrder, taskId, Number(taskUpdateMatch[1]));
+        if (result.changes && !remembered) rememberPosition.run(taskId, destinationId, nextOrder);
         responseProjectId = destinationId;
       } else if (typeof body.completed === 'boolean') {
         result = updateTask.run(body.completed ? 1 : 0, taskId, Number(taskUpdateMatch[1]));
