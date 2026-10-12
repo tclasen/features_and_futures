@@ -99,9 +99,11 @@ async function loadTasks() {
 
 function renderTasks() {
   const filter = document.querySelector('#task-filter').value;
+  const priorityFilter = document.querySelector('#priority-filter').value;
   taskContainer.replaceChildren();
   for (const task of projectTasks) {
-    if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+    if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
+    if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.testid = 'task-row';
@@ -165,7 +167,10 @@ function renderTasks() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority: priority.value })
       });
-      if (response.ok) task.priority = (await response.json()).priority;
+      if (response.ok) {
+        task.priority = (await response.json()).priority;
+        renderTasks();
+      }
     });
     row.append(title, checkbox, renameInput, renameButton, priority);
     taskContainer.append(row);
@@ -173,6 +178,7 @@ function renderTasks() {
 }
 
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
+document.querySelector('#priority-filter').addEventListener('change', renderTasks);
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#task-form').addEventListener('submit', async event => {
   event.preventDefault();
