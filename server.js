@@ -66,6 +66,7 @@ database.exec(`
     SELECT id, project_id, position FROM tasks;
 `);
 const taskPriorities = ['Low', 'Normal', 'High'];
+const directoryOrders = ['Original', 'Priority', 'Due date', 'Title'];
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
@@ -341,8 +342,37 @@ function matchesTask(task, filter, priorityFilter, dueRange, search) {
       (!dueRange.through || task.due_date <= dueRange.through)));
 }
 
-function directoryQuery(scope, filter, priorityFilter, dueRange, search) {
-  return `${taskFilterQuery(filter, priorityFilter, dueRange, search)}&scope=${scope}`;
+function directoryQuery(scope, filter, priorityFilter, dueRange, search, order = 'Original') {
+  const query = new URLSearchParams(taskFilterQuery(filter, priorityFilter, dueRange, search));
+  query.set('scope', scope);
+  if (order !== 'Original') query.set('order', order);
+  return query.toString();
+}
+
+function compareCodePoints(left, right) {
+  const leftPoints = Array.from(left, character => character.codePointAt(0));
+  const rightPoints = Array.from(right, character => character.codePointAt(0));
+  for (let index = 0; index < Math.min(leftPoints.length, rightPoints.length); index++) {
+    if (leftPoints[index] !== rightPoints[index]) return leftPoints[index] - rightPoints[index];
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
+function orderDirectoryTasks(tasks, order) {
+  // Stable sorting keeps the original owner/task order for equal keys.
+  if (order === 'Priority') {
+    const rank = { High: 0, Normal: 1, Low: 2 };
+    tasks.sort((left, right) => rank[left.priority] - rank[right.priority]);
+  } else if (order === 'Due date') {
+    tasks.sort((left, right) => {
+      if (!left.due_date || !right.due_date) return Number(!left.due_date) - Number(!right.due_date);
+      return compareCodePoints(left.due_date, right.due_date);
+    });
+  } else if (order === 'Title') {
+    const fold = title => title.replace(/[A-Z]/g, letter => letter.toLowerCase());
+    tasks.sort((left, right) => compareCodePoints(fold(left.title), fold(right.title)));
+  }
+  return tasks;
 }
 
 function directoryTasks(scope, filter, priorityFilter, dueRange, search) {
@@ -361,16 +391,16 @@ function setDirectoryCompletion(scope, filter, priorityFilter, dueRange, search,
   });
 }
 
-function directoryPage(scope, filter, priorityFilter, dueRange, search, error = '') {
-  const tasks = directoryTasks(scope, filter, priorityFilter, dueRange, search);
+function directoryPage(scope, filter, priorityFilter, dueRange, search, error = '', order = 'Original') {
+  const tasks = orderDirectoryTasks(directoryTasks(scope, filter, priorityFilter, dueRange, search), order);
   const readOnly = scope === 'Archived' || filter === 'Deleted';
-  const query = escapeHtml(directoryQuery(scope, filter, priorityFilter, dueRange, search));
+  const query = escapeHtml(directoryQuery(scope, filter, priorityFilter, dueRange, search, order));
   const completionForm = (action, label, completed) => `
     <form method="post" action="/directory/${action}?${query}">
       <button type="submit"${readOnly || !tasks.some(task => Boolean(task.completed) !== completed) ? ' disabled' : ''}>${label}</button>
     </form>`;
   const fields = {
-    scope, filter, priorityFilter, dueFrom: dueRange.from, dueThrough: dueRange.through, search,
+    scope, filter, priorityFilter, dueFrom: dueRange.from, dueThrough: dueRange.through, search, order,
   };
   const hiddenFields = excluded => Object.entries(fields)
     .filter(([name]) => !excluded.includes(name))
@@ -390,6 +420,7 @@ function directoryPage(scope, filter, priorityFilter, dueRange, search, error = 
     ${selectForm('Project scope', 'scope', ['Active', 'Archived'])}
     ${selectForm('Task filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'])}
     ${selectForm('Priority filter', 'priorityFilter', ['All', ...taskPriorities])}
+    ${selectForm('Directory order', 'order', directoryOrders)}
     <form class="create-form" method="get" action="/directory">
       ${hiddenFields(['search'])}
       <label for="directory-search">Directory search</label>
@@ -398,7 +429,7 @@ function directoryPage(scope, filter, priorityFilter, dueRange, search, error = 
         <button type="submit">Search directory</button>
       </div>
     </form>
-    <form class="create-form" method="post" action="/directory/due-range?${escapeHtml(directoryQuery(scope, filter, priorityFilter, dueRange, search))}">
+    <form class="create-form" method="post" action="/directory/due-range?${escapeHtml(directoryQuery(scope, filter, priorityFilter, dueRange, search, order))}">
       <label for="directory-due-from">Due from</label>
       <input id="directory-due-from" name="dueFrom" type="text" value="${escapeHtml(dueRange.from)}">
       <label for="directory-due-through">Due through</label>
@@ -599,6 +630,8 @@ const server = http.createServer(async (request, response) => {
     } else if ((request.method === 'GET' && url.pathname === '/directory') ||
       (request.method === 'POST' && ['/directory/due-range', '/directory/complete', '/directory/reopen'].includes(url.pathname))) {
       const scope = url.searchParams.get('scope') === 'Archived' ? 'Archived' : 'Active';
+      const requestedOrder = url.searchParams.get('order');
+      const order = directoryOrders.includes(requestedOrder) ? requestedOrder : 'Original';
       const requestedFilter = url.searchParams.get('filter');
       const filter = ['Open', 'Completed', 'Deleted'].includes(requestedFilter) ? requestedFilter : 'All';
       const requestedPriority = url.searchParams.get('priorityFilter');
@@ -609,14 +642,14 @@ const server = http.createServer(async (request, response) => {
       };
       const rangeError = dueRangeError(dueRange);
       if (rangeError) {
-        html(response, 400, directoryPage(scope, filter, priorityFilter, { from: '', through: '' }, search, rangeError));
+        html(response, 400, directoryPage(scope, filter, priorityFilter, { from: '', through: '' }, search, rangeError, order));
         return;
       }
       if (request.method === 'GET') {
-        html(response, 200, directoryPage(scope, filter, priorityFilter, dueRange, search));
+        html(response, 200, directoryPage(scope, filter, priorityFilter, dueRange, search, '', order));
       } else if (url.pathname !== '/directory/due-range') {
         setDirectoryCompletion(scope, filter, priorityFilter, dueRange, search, url.pathname === '/directory/complete');
-        redirect(response, `/directory?${directoryQuery(scope, filter, priorityFilter, dueRange, search)}`);
+        redirect(response, `/directory?${directoryQuery(scope, filter, priorityFilter, dueRange, search, order)}`);
       } else {
         const body = await readForm(request);
         const nextRange = {
@@ -625,9 +658,9 @@ const server = http.createServer(async (request, response) => {
         };
         const error = dueRangeError(nextRange);
         if (error) {
-          html(response, 400, directoryPage(scope, filter, priorityFilter, dueRange, search, error));
+          html(response, 400, directoryPage(scope, filter, priorityFilter, dueRange, search, error, order));
         } else {
-          redirect(response, `/directory?${directoryQuery(scope, filter, priorityFilter, nextRange, search)}`);
+          redirect(response, `/directory?${directoryQuery(scope, filter, priorityFilter, nextRange, search, order)}`);
         }
       }
     } else if (request.method === 'POST' && url.pathname === '/projects/import') {

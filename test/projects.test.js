@@ -2286,3 +2286,115 @@ test('import preserves portable state independently through restart, restoration
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory ordering is stable across owners, intersects filters and never changes stored positions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async (path = '/directory') => (await fetch(server.address + path)).text();
+    const titles = html => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map(match => match[1]);
+    const exported = async id => (await fetch(`${server.address}/projects/${id}/export`)).json();
+    const snapshot = () => {
+      const database = new DatabaseSync(databasePath);
+      try {
+        return ['projects', 'tasks', 'task_project_positions'].map(table => database.prepare(`SELECT * FROM ${table}`).all().map(row => ({ ...row })));
+      } finally { database.close(); }
+    };
+    const task = (title, priority, dueDate, completed = false, deleted = false) => ({
+      title, priority, dueDate, completed, deleted, notes: '  literal <b>日本語</b>\n ',
+    });
+    const first = [
+      task('Zulu', 'Low', ''), task('ALPHA', 'High', '2024-03-01'),
+      task('alpha  two', 'Normal', '2024-02-29', true), task('alpha\ttwo', 'High', '2024-02-29'),
+      task('😀', 'Normal', '9999-12-31'), task('\uE000', 'Normal', ''),
+      task('Deleted Z', 'Low', '', true, true), task('Deleted A', 'High', '2024-01-01', false, true),
+    ];
+    const second = [task('alpha', 'High', '2024-03-01', true), task('Beta', 'Low', ''),
+      task('Deleted B', 'High', '2024-01-01', true, true)];
+    const archived = [task('Archived Z', 'Low', ''), task('Archived A', 'High', '2024-01-01'),
+      task('Removed Z', 'Low', '', false, true), task('Removed A', 'High', '2024-01-01', true, true)];
+    for (const [index, tasks] of [first, second, archived].entries()) {
+      await post('/projects/import', { name: `Owner ${index}`, json: JSON.stringify({
+        format: 'workboard-project', version: 1,
+        project: { name: 'Source', archived: index === 2, defaultPriority: 'Low', tasks },
+      }) });
+    }
+    const original = ['Zulu', 'ALPHA', 'alpha  two', 'alpha\ttwo', '😀', '\uE000', 'alpha', 'Beta'];
+    const before = snapshot();
+    const exports = await Promise.all([1, 2, 3].map(exported));
+    assert.deepEqual(titles(await view()), original);
+    const initial = await view();
+    assert.match(initial, /<label for="directory-order">Directory order<\/label>/);
+    assert.match(initial, /<select id="directory-order"[^>]*>\s*<option selected>Original<\/option><option>Priority<\/option><option>Due date<\/option><option>Title<\/option>/);
+    const expected = {
+      Priority: ['ALPHA', 'alpha\ttwo', 'alpha', 'alpha  two', '😀', '\uE000', 'Zulu', 'Beta'],
+      'Due date': ['alpha  two', 'alpha\ttwo', 'ALPHA', 'alpha', '😀', 'Zulu', '\uE000', 'Beta'],
+      Title: ['ALPHA', 'alpha', 'alpha\ttwo', 'alpha  two', 'Beta', 'Zulu', '\uE000', '😀'],
+    };
+    for (const [order, result] of Object.entries(expected)) {
+      assert.deepEqual(titles(await view('/directory?order=' + encodeURIComponent(order))), result);
+    }
+    assert.deepEqual(titles(await view('/directory?scope=Archived&order=Priority')), ['Archived A', 'Archived Z']);
+    assert.deepEqual(titles(await view('/directory?scope=Archived&filter=Deleted&order=Title')), ['Removed A', 'Removed Z']);
+    assert.deepEqual(titles(await view('/directory?filter=Deleted&order=Priority')), ['Deleted A', 'Deleted B', 'Deleted Z']);
+    assert.deepEqual(titles(await view('/directory?filter=Deleted&order=Due+date')), ['Deleted A', 'Deleted B', 'Deleted Z']);
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual(await Promise.all([1, 2, 3].map(exported)), exports);
+
+    const query = '?filter=Open&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-03-01&search=alpha&scope=Active&order=Title';
+    const selected = await view('/directory' + query);
+    assert.deepEqual(titles(selected), ['ALPHA', 'alpha\ttwo']);
+    // Every GET form carries every other control, including ordering and search/range.
+    const fields = { scope: 'Active', filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01', search: 'alpha', order: 'Title' };
+    for (const form of selected.matchAll(/<form(?: class="create-form")? method="get" action="\/directory">([\s\S]*?)<\/form>/g)) {
+      for (const [name, value] of Object.entries(fields)) {
+        if (form[1].includes(`name="${name}" onchange=`)) continue;
+        assert.ok(form[1].includes(`name="${name}"`) && form[1].includes(`value="${value}"`), name);
+      }
+    }
+    const invalid = await post('/directory/due-range' + query, { dueFrom: '2023-02-29' });
+    assert.equal(invalid.status, 400);
+    const rejected = await invalid.text();
+    assert.match(rejected, /<option selected>Title<\/option>/);
+    assert.deepEqual(titles(rejected), ['ALPHA', 'alpha\ttwo']);
+    const applied = await post('/directory/due-range' + query, { dueFrom: '2024-02-29', dueThrough: '2024-03-01' });
+    assert.equal(applied.headers.get('location'), '/directory' + query);
+    const complete = await post('/directory/complete' + query);
+    assert.equal(complete.headers.get('location'), '/directory' + query);
+    const empty = await view(complete.headers.get('location'));
+    assert.deepEqual(titles(empty), []);
+    assert.match(empty, /No matching tasks/);
+    assert.match(empty, /<option selected>Title<\/option>/);
+    const after = snapshot();
+    assert.deepEqual(after, before.map((rows, index) => index === 1 ? rows.map(row =>
+      [2, 4].includes(row.id) ? { ...row, completed: 1 } : row) : rows));
+    const completedQuery = query.replace('filter=Open', 'filter=Completed');
+    assert.deepEqual(titles(await view('/directory' + completedQuery)), ['ALPHA', 'alpha', 'alpha\ttwo']);
+    const reopen = await post('/directory/reopen' + completedQuery);
+    assert.equal(reopen.headers.get('location'), '/directory' + completedQuery);
+    assert.deepEqual(titles(await view(reopen.headers.get('location'))), []);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(titles(await view('/directory?order=Title')), expected.Title);
+    assert.match(await view(), /<option selected>Original<\/option>/);
+    // Sorted views must not alter exports or remembered move/return positions.
+    assert.deepEqual((await exported(1)).project.tasks.map(task => task.title), first.map(task => task.title));
+    await post('/projects/1/tasks/2/move', { destinationProject: '2' });
+    await view('/directory?order=Title');
+    await post('/projects/2/tasks/2/move', { destinationProject: '1' });
+    assert.deepEqual((await exported(1)).project.tasks.map(task => task.title), first.map(task => task.title));
+    assert.deepEqual(titles(await view()), original);
+    assert.match(await view('/directory?order=Title'), /action="\/projects\/1"><button type="submit">Open project/);
+    assert.match(await view('/projects/1'), /<option selected>All<\/option>/);
+    assert.deepEqual(await (await fetch(server.address + '/health')).json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

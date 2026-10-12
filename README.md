@@ -90,10 +90,14 @@ without changing existing data.
 Task directory on the home page opens a read-only view across projects. Project
 scope (Active or Archived), live/deleted completion filters, priority, inclusive
 due range and normalized task-title search intersect without changing saved
-data. Results follow project creation order and each project's stored task
-order, showing original titles, owner names, completion, priority, due dates
+data. Directory order offers Original, Priority (High first), Due date (dated
+tasks first, earliest first), and Title (ASCII case folded, Unicode code point
+order). Equal keys keep Original order: project creation order and each
+project's stored task order. Ordering survives directory filters and bulk
+actions without changing project views, exports or remembered positions.
+Results show original titles, owner names, completion, priority, due dates
 and literal notes. Open project navigates to the owner with fresh project-page
 filters; Projects returns to the home page. Each directory opening starts with
-Active scope, All completion/priority filters and empty range/search.
+Active scope, All completion/priority filters, Original order and empty range/search.
 Projects, names, tasks, and archive state persist across server restarts. `GET /health` returns
 `{"status":"ok"}`. Run the integration checks with `npm test`.
