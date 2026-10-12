@@ -64,16 +64,23 @@ async function render() {
         if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; }
         appliedFrom = from; appliedThrough = through; alert.textContent = ''; refreshTasks();
       });
+      const taskSearchForm = document.createElement('form');
+      const taskSearchInput = document.createElement('input'); taskSearchInput.type = 'text'; taskSearchInput.setAttribute('aria-label', 'Task search');
+      const taskSearchButton = element('button', 'Search tasks'); taskSearchButton.type = 'submit';
+      taskSearchForm.append(taskSearchInput, taskSearchButton);
+      let appliedTaskQuery = '';
+      taskSearchForm.addEventListener('submit', event => { event.preventDefault(); appliedTaskQuery = taskSearchInput.value.trim(); refreshTasks(); });
       const list = element('section'); list.setAttribute('aria-label', 'Tasks');
       const allProjects = await request('/api/projects');
       const destinations = allProjects.filter(item => !item.archived && item.id !== project.id);
-      app.append(form, alert, filter, priorityFilter, defaultPriority, dueFrom, dueThrough, applyRange, list);
+      app.append(form, alert, taskSearchForm, filter, priorityFilter, defaultPriority, dueFrom, dueThrough, applyRange, list);
       async function refreshTasks() {
         const tasks = await request(`/api/projects/${project.id}/tasks`);
         list.replaceChildren(...tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
           (priorityFilter.value === 'All' || priorityFilter.value === (task.priority || 'Normal')) &&
-          ((!appliedFrom && !appliedThrough) || (task.dueDate && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough)))
+          ((!appliedFrom && !appliedThrough) || (task.dueDate && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough))) &&
+          asciiLower(task.title).includes(asciiLower(appliedTaskQuery))
         ).map(task => {
           const row = element('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived);
@@ -142,10 +149,15 @@ async function render() {
   const alert = element('p', ''); alert.setAttribute('role', 'alert'); alert.setAttribute('aria-live', 'polite');
   const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Project filter');
   for (const value of ['Active', 'Archived']) { const option = element('option', value); option.value = value; filter.append(option); }
-  const list = element('section', undefined, 'project-list'); list.setAttribute('aria-label', 'Projects'); app.append(form, alert, filter, list);
+  const searchForm = document.createElement('form');
+  const searchInput = document.createElement('input'); searchInput.type = 'text'; searchInput.setAttribute('aria-label', 'Project search');
+  const searchButton = element('button', 'Search projects'); searchButton.type = 'submit'; searchForm.append(searchInput, searchButton);
+  let appliedProjectQuery = '';
+  const list = element('section', undefined, 'project-list'); list.setAttribute('aria-label', 'Projects'); app.append(form, alert, searchForm, filter, list);
+  searchForm.addEventListener('submit', event => { event.preventDefault(); appliedProjectQuery = searchInput.value.trim(); refresh(); });
   async function refresh() {
     const projects = await request('/api/projects');
-    list.replaceChildren(...projects.filter(p => Boolean(p.archived) === (filter.value === 'Archived')).map(project => {
+    list.replaceChildren(...projects.filter(p => Boolean(p.archived) === (filter.value === 'Archived') && asciiLower(p.name).includes(asciiLower(appliedProjectQuery))).map(project => {
       const row = element('div', undefined, 'project-row'); row.dataset.testid = 'project-row';
       row.append(element('span', project.name, 'project-name'));
       const summary = element('span', `${project.completedCount}/${project.totalCount} completed`); summary.dataset.testid = 'project-summary'; row.append(summary);
@@ -164,6 +176,7 @@ async function render() {
   });
   await refresh();
 }
+function asciiLower(value) { return value.replace(/[A-Z]/g, character => String.fromCharCode(character.charCodeAt(0) + 32)); }
 function validDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
