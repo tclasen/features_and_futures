@@ -21,7 +21,12 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 browser script to submit completion changes, priority changes, and filters automatically.
 Project names and task titles are trimmed and HTML-escaped. Projects and tasks
 are ordered by their persistent creation IDs. Each project's tasks can be
-filtered by All (the default), Open, or Completed. The project list defaults to
+filtered by All (the default), Open, or Completed, combined with a Priority filter
+of All (the default), Low, Normal, or High. Both filters must match; changing a
+filter or editing a task preserves the other selection and creation order.
+Edits immediately re-evaluate visible tasks without changing summary counts
+except when completion itself changes. Both filters remain usable while archived.
+The project list defaults to
 Active and can show Archived projects instead. Archive and restore preserve all
 tasks; archived pages allow filtering but reject task changes and renaming. Each
 project row shows completed/total counts across all its tasks. Active project pages
