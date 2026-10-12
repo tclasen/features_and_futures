@@ -58,6 +58,9 @@ const nextTaskPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS po
 const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 // Keep all task-owned fields (including due_date) untouched when changing owner;
 // only ownership and the current project's ordering key are updated here.
+// Ownership/order are the only mutable columns in a move. In particular, do not
+// rebuild a task from client state here: due dates and other task fields must
+// survive moves and process restarts exactly as stored.
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
