@@ -16,6 +16,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,10 +87,18 @@ const server = http.createServer(async (req, res) => {
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const data = JSON.parse(raw || '{}');
-      if (typeof data.archived !== 'boolean') return json(res, 400, { error: 'Invalid archive state' });
-      if (!getProject.get(Number(archiveMatch[1]))) return json(res, 404, { error: 'Project not found' });
-      setArchived.run(data.archived ? 1 : 0, Number(archiveMatch[1]));
-      return json(res, 200, getProject.get(Number(archiveMatch[1])));
+      const id = Number(archiveMatch[1]);
+      const project = getProject.get(id);
+      if (!project) return json(res, 404, { error: 'Project not found' });
+      if (typeof data.name === 'string') {
+        const name = data.name.trim();
+        if (!name) return json(res, 400, { error: 'Project name is required' });
+        if (project.archived) return json(res, 403, { error: 'Archived project' });
+        renameProject.run(name, id);
+      } else if (typeof data.archived === 'boolean') {
+        setArchived.run(data.archived ? 1 : 0, id);
+      } else return json(res, 400, { error: 'Invalid project update' });
+      return json(res, 200, getProject.get(id));
     } catch { return json(res, 400, { error: 'Invalid request' }); }
   }
   const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/?$/);

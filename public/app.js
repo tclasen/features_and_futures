@@ -56,6 +56,9 @@ async function showRoute() {
   document.querySelector('#archived-notice').hidden = !project.archived;
   document.querySelector('#task-title').disabled = Boolean(project.archived);
   document.querySelector('#task-form button').disabled = Boolean(project.archived);
+  document.querySelector('#new-project-name').disabled = Boolean(project.archived);
+  document.querySelector('#rename-form button').disabled = Boolean(project.archived);
+  document.querySelector('#new-project-name').value = project.name;
   activeProjectId = project.id;
   listSection.hidden = true;
   detailSection.hidden = false;
@@ -144,6 +147,24 @@ document.querySelector('#task-form').addEventListener('submit', async event => {
   }
   input.value = '';
   await loadTasks();
+});
+
+document.querySelector('#rename-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = document.querySelector('#rename-error');
+  error.hidden = true;
+  const input = document.querySelector('#new-project-name');
+  const response = await fetch(`/api/projects/${activeProjectId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: input.value })
+  });
+  if (!response.ok) {
+    const result = await response.json();
+    error.textContent = result.error || 'Unable to rename project';
+    error.hidden = false;
+    return;
+  }
+  await showRoute();
 });
 
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
