@@ -44,6 +44,138 @@ async function startServer(databasePath) {
   };
 }
 
+test('directory intersects read-only filters, preserves literal fields and order, and starts fresh on opening', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const snapshot = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return ['projects', 'tasks', 'task_project_positions', 'sqlite_sequence']
+        .map(table => database.prepare(`SELECT * FROM ${table}`).all());
+    } finally { database.close(); }
+  };
+  try {
+    // Upgrade records with no newer fields must participate using public defaults.
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Legacy owner');
+      INSERT INTO tasks (project_id, title) VALUES (1, 'Legacy task');
+    `);
+    database.close();
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async (path = '/directory') => (await fetch(server.address + path)).text();
+    const titles = html => [...html.matchAll(/data-testid="directory-task-title">([^<]*)<\/div>/g)].map(match => match[1]);
+    const imported = async (name, archived, tasks) => {
+      const response = await post('/projects/import', {
+        name, json: JSON.stringify({ format: 'workboard-project', version: 1,
+          project: { name, archived, defaultPriority: 'Low', tasks } }),
+      });
+      assert.equal(response.status, 303);
+    };
+    const task = (title, fields = {}) => ({
+      title, completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false, ...fields,
+    });
+    const notes = '\n  日本語 😀 <script>literal</script> & text\n\tlast  \n';
+    await imported('Owner  <one>', false, [
+      task('Alpha\t  FIRST', { completed: true, priority: 'High', dueDate: '2024-02-29', notes }),
+      task('Alpha deleted', { completed: true, priority: 'High', dueDate: '2024-02-29', deleted: true }),
+      task('Alpha last', { priority: 'Low', dueDate: '2024-03-01' }),
+      task('Undated', { notes: 'Alpha first' }),
+    ]);
+    await imported('Alpha first owner', false, [
+      task('Different'), task('Alpha first later', { priority: 'High', dueDate: '2024-02-29' }),
+    ]);
+    await imported('Archived owner', true, [
+      task('Alpha first archived', { completed: true, priority: 'High', dueDate: '2024-02-29' }),
+      task('Alpha deleted archived', { deleted: true, priority: 'High', dueDate: '2024-02-29', notes }),
+    ]);
+    // A return preserves remembered order even after newer arrivals.
+    await post('/projects/2/tasks/2/move', { destinationProject: '3' });
+    await post('/projects/2/tasks', { title: 'Created later' });
+    await post('/projects/3/tasks/2/move', { destinationProject: '2' });
+    const before = snapshot();
+    const home = await view('/');
+    assert.match(home, /action="\/directory"><button type="submit">Task directory/);
+    const initial = await view();
+    assert.deepEqual(titles(initial), [
+      'Legacy task', 'Alpha\t  FIRST', 'Alpha last', 'Undated', 'Created later', 'Different', 'Alpha first later',
+    ]);
+    assert.equal((initial.match(/data-testid="directory-task-row"/g) ?? []).length, 7);
+    assert.match(initial, /data-testid="directory-project-name">Owner  &lt;one&gt;/);
+    assert.match(initial, /data-testid="directory-task-completion">Completed/);
+    assert.match(initial, /data-testid="directory-task-priority">Normal/);
+    assert.match(initial, /data-testid="directory-task-due-date"><\/div>/);
+    assert.ok(initial.includes('data-testid="directory-task-notes">\n  日本語 😀 &lt;script&gt;literal&lt;/script&gt; &amp; text\n\tlast  \n</div>'));
+    assert.match(initial, /\.directory-field \{ white-space: pre-wrap;/);
+    assert.doesNotMatch(initial, /<textarea|type="checkbox"|>Rename task<|>Move task<|>Delete task<|>Restore task<|>Save notes</);
+    assert.match(initial, /action="\/projects\/2"><button type="submit">Open project/);
+    assert.match(initial, /action="\/" method="get"><button type="submit">Projects/);
+    const query = '?filter=All&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-02-29&search=+ALPHA%09++first+&scope=Active';
+    const filtered = await view('/directory' + query);
+    assert.deepEqual(titles(filtered), ['Alpha\t  FIRST', 'Alpha first later']);
+    assert.deepEqual(titles(await view('/directory' + query.replace('filter=All', 'filter=Completed'))), ['Alpha\t  FIRST']);
+    assert.deepEqual(titles(await view('/directory' + query.replace('filter=All', 'filter=Open'))), ['Alpha first later']);
+    assert.deepEqual(titles(await view('/directory' + query.replace('scope=Active', 'scope=Archived'))), ['Alpha first archived']);
+    assert.deepEqual(titles(await view('/directory?filter=Deleted')), ['Alpha deleted']);
+    assert.deepEqual(titles(await view('/directory?scope=Archived&filter=Deleted&priorityFilter=High&dueFrom=2024-02-29&search=alpha')), ['Alpha deleted archived']);
+    assert.deepEqual(titles(await view('/directory?search=literal')), []);
+    assert.deepEqual(titles(await view('/directory?search=owner')), []);
+    assert.deepEqual(titles(await view('/directory?dueThrough=2024-02-29')), ['Alpha\t  FIRST', 'Alpha first later']);
+    assert.deepEqual(titles(await view('/directory?dueFrom=2024-03-01')), ['Alpha last']);
+    // Every form carries the other applied controls through its next request.
+    for (const form of filtered.matchAll(/<form method="get" action="\/directory">([\s\S]*?)<\/form>/g)) {
+      assert.match(form[1], /name="search" value="ALPHA\t  first"/);
+      assert.match(form[1], /name="dueFrom" value="2024-02-29"/);
+      assert.match(form[1], /name="dueThrough" value="2024-02-29"/);
+    }
+    for (const [fields, message] of [
+      [{ dueFrom: '2023-02-29' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueThrough: '0000-01-01' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueFrom: '2024-03-01', dueThrough: '2024-02-29' }, 'Due from must not be after Due through'],
+    ]) {
+      const response = await post('/directory/due-range' + query, fields);
+      assert.equal(response.status, 400);
+      const html = await response.text();
+      assert.ok(html.includes(`<p role="alert">${message}</p>`));
+      assert.deepEqual(titles(html), titles(filtered));
+      assert.match(html, /id="directory-due-from"[^>]*value="2024-02-29"/);
+    }
+    const applied = await post('/directory/due-range' + query, { dueFrom: ' 2024-02-29 ', dueThrough: '' });
+    assert.equal(applied.status, 303);
+    const location = new URL(applied.headers.get('location'), server.address);
+    assert.equal(location.searchParams.get('priorityFilter'), 'High');
+    assert.equal(location.searchParams.get('search'), 'ALPHA\t  first');
+    assert.equal(location.searchParams.get('scope'), 'Active');
+    assert.equal(location.searchParams.get('dueFrom'), '2024-02-29');
+    assert.deepEqual(titles(await view(location.pathname + location.search)), titles(filtered));
+    const cleared = await post('/directory/due-range' + query, { dueFrom: ' ', dueThrough: ' ' });
+    assert.deepEqual(titles(await view(cleared.headers.get('location'))), titles(filtered));
+    assert.deepEqual(snapshot(), before);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(), initial);
+    assert.equal(await view('/directory' + query), filtered);
+    assert.deepEqual(snapshot(), before);
+    const archived = await view('/projects/4');
+    assert.match(archived, /Archived project/);
+    assert.match(archived, /<button type="submit" disabled>Create task/);
+    assert.match(await view('/projects/2'), /<option selected>All<\/option>/);
+    assert.match(await view('/projects/2'), /id="task-search"[^>]*value=""/);
+    assert.match(await view('/'), /id="project-search"[^>]*value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project download exports portable unfiltered state without changing saved data or page controls', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
   const databasePath = join(directory, 'workboard.sqlite');
