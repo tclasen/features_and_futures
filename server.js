@@ -31,7 +31,8 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
-    due_date TEXT
+    due_date TEXT,
+    position INTEGER NOT NULL DEFAULT 0
   )
 `);
 const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
@@ -40,6 +41,10 @@ if (!taskColumns.some(column => column.name === 'priority')) {
 }
 if (!taskColumns.some(column => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some(column => column.name === 'position')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET position = id');
 }
 
 const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
@@ -51,8 +56,10 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const setProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
+const nextTaskPosition = database.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM tasks WHERE project_id = ?');
+const moveTask = database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -239,9 +246,13 @@ function sendPage(response) {
 
     async function renderTasks() {
       if (!currentProjectId) return;
-      const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks');
-      if (!response.ok) throw new Error('Unable to load tasks');
+      const [response, projectResponse] = await Promise.all([
+        fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks'),
+        fetch('/api/projects')
+      ]);
+      if (!response.ok || !projectResponse.ok) throw new Error('Unable to load project tasks');
       const tasks = await response.json();
+      const eligibleProjects = (await projectResponse.json()).filter(project => !project.archived && String(project.id) !== String(currentProjectId));
       const filter = document.querySelector('#task-filter').value;
       const priorityFilter = document.querySelector('#priority-filter').value;
       taskList.replaceChildren();
@@ -338,7 +349,28 @@ function sendPage(response) {
           dueDate.value = saved.due_date || '';
           await renderTasks();
         });
-        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate);
+        const destination = document.createElement('select');
+        destination.setAttribute('aria-label', 'Destination project');
+        for (const project of eligibleProjects) {
+          const option = document.createElement('option');
+          option.value = project.id;
+          option.textContent = project.name;
+          destination.append(option);
+        }
+        destination.disabled = currentProjectArchived || eligibleProjects.length === 0;
+        const moveButton = document.createElement('button');
+        moveButton.type = 'button';
+        moveButton.textContent = 'Move task';
+        moveButton.disabled = destination.disabled;
+        moveButton.addEventListener('click', async () => {
+          const moved = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks/' + task.id + '/move', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destination_project_id: Number(destination.value) })
+          });
+          if (!moved.ok) throw new Error('Unable to move task');
+          await renderTasks();
+        });
+        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton);
         taskList.append(row);
       }
     }
@@ -546,7 +578,8 @@ const server = createServer(async (request, response) => {
       const body = await readRequestBody(request);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
-      const result = createTask.run(projectId, title, project.default_priority);
+      const position = nextTaskPosition.get(projectId).position;
+      const result = createTask.run(projectId, title, project.default_priority, position);
       sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
@@ -555,6 +588,28 @@ const server = createServer(async (request, response) => {
   const taskRenameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/title$/);
   const taskPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority$/);
   const taskDueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  const taskMoveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (taskMoveMatch && request.method === 'PATCH') {
+    try {
+      const sourceId = Number(taskMoveMatch[1]);
+      const taskId = Number(taskMoveMatch[2]);
+      const source = getProject.get(sourceId);
+      if (!source) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (source.archived) { sendJson(response, 409, { error: 'Archived projects cannot move tasks' }); return; }
+      const body = await readRequestBody(request);
+      const destinationId = Number(body.destination_project_id);
+      if (!Number.isSafeInteger(destinationId) || destinationId <= 0) { sendJson(response, 400, { error: 'Invalid destination project' }); return; }
+      const destination = getProject.get(destinationId);
+      if (!destination) { sendJson(response, 404, { error: 'Destination project not found' }); return; }
+      if (destination.archived || destinationId === sourceId) { sendJson(response, 409, { error: 'Destination must be a different active project' }); return; }
+      const task = getTask.get(taskId, sourceId);
+      if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      const position = nextTaskPosition.get(destinationId).position;
+      moveTask.run(destinationId, position, taskId, sourceId);
+      sendJson(response, 200, { ...task, project_id: destinationId });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
   if (taskDueDateMatch && request.method === 'PATCH') {
     try {
       const projectId = Number(taskDueDateMatch[1]);
