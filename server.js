@@ -28,8 +28,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
-try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch {}
+// Keep additive migrations explicit so every pre-existing database receives the
+// persistence columns before request handlers prepare their statements.
+const taskColumns = new Set(db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name));
+if (!taskColumns.has('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+if (!taskColumns.has('notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
