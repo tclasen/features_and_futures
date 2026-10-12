@@ -1,3 +1,5 @@
+import { normalizeDueRange, matchesDueRange } from './due-date.js';
+
 const app = document.querySelector('#app');
 
 function element(tag, text, attributes = {}) {
@@ -261,7 +263,7 @@ function taskPriorityControl(task, path, archived, onPriorityChange) {
   return control;
 }
 
-function taskDueDateForm(task, path, archived) {
+function taskDueDateForm(task, path, archived, onDueDateChange) {
   const form = element('form', '', { class: 'task-due-date' });
   const inputId = `task-due-date-${task.id}`;
   const input = element('input', '', { id: inputId, name: 'dueDate', type: 'text', placeholder: 'YYYY-MM-DD' });
@@ -284,6 +286,7 @@ function taskDueDateForm(task, path, archived) {
       task.dueDate = saved.dueDate;
       input.value = task.dueDate;
       app.querySelector('[role="alert"]')?.remove();
+      onDueDateChange();
     } catch (error) {
       showError(error.message);
     } finally {
@@ -312,13 +315,31 @@ async function showTasks(projectId, archived) {
   const filters = element('div', '', { class: 'task-filters' });
   filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter,
     element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
+  let dueRange = { from: '', through: '' };
+  const dueRangeForm = element('form', '', { class: 'due-range' });
+  const dueFrom = element('input', '', { id: 'due-from', type: 'text', placeholder: 'YYYY-MM-DD' });
+  const dueThrough = element('input', '', { id: 'due-through', type: 'text', placeholder: 'YYYY-MM-DD' });
+  dueRangeForm.append(element('label', 'Due from', { for: 'due-from' }), dueFrom,
+    element('label', 'Due through', { for: 'due-through' }), dueThrough,
+    element('button', 'Apply due range', { type: 'submit' }));
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const range = normalizeDueRange(dueFrom.value, dueThrough.value);
+    if (range.error) return showError(range.error);
+    dueRange = range;
+    dueFrom.value = range.from;
+    dueThrough.value = range.through;
+    app.querySelector('[role="alert"]')?.remove();
+    renderTasks();
+  });
   const list = element('ul', '', { 'aria-label': 'Tasks', class: 'tasks' });
-  app.append(form, filters, list);
+  app.append(form, filters, dueRangeForm, list);
 
   function renderTasks() {
     const visible = tasks.filter((task) =>
       (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed))
-      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
+      && matchesDueRange(task.dueDate, dueRange));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'task-row' });
       const checkbox = element('input', '', {
@@ -346,7 +367,7 @@ async function showTasks(projectId, archived) {
       });
       const details = element('div', '', { class: 'task-details' });
       details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
-        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived));
+        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived, renderTasks));
       row.append(checkbox, details);
       return row;
     }));

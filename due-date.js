@@ -11,3 +11,21 @@ export function normalizeDueDate(value) {
   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= daysInMonth[month - 1] ? date : null;
 }
+
+export function normalizeDueRange(fromValue, throughValue) {
+  const from = normalizeDueDate(fromValue);
+  const through = normalizeDueDate(throughValue);
+  if (from === null || through === null) {
+    return { error: 'Due range must use valid YYYY-MM-DD dates' };
+  }
+  if (from && through && from > through) {
+    return { error: 'Due from must not be after Due through' };
+  }
+  return { from, through };
+}
+
+export function matchesDueRange(dueDate, { from, through }) {
+  if (!from && !through) return true;
+  // Canonical, fixed-width calendar dates sort chronologically as strings.
+  return Boolean(dueDate) && (!from || dueDate >= from) && (!through || dueDate <= through);
+}

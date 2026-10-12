@@ -66,5 +66,15 @@ Saving dates preserves both filters and completion counts. Archived projects
 disable date editing, and the API rejects it with HTTP 409. The task API exposes
 `dueDate` as a string, using `""` for no date; invalid values return HTTP 400.
 
+Due from and Due through accept optional calendar dates using the same rules.
+Apply due range intersects inclusive boundaries with the completion and priority
+filters, retaining creation order. A blank boundary is unbounded; undated tasks
+match only when both boundaries are blank. Invalid dates or a reversed range show
+an alert and preserve the previous applied range. Editing a boundary takes effect
+only after a successful application. Saved task edits immediately re-evaluate all
+three filters, while renames, creation, and default-priority changes retain them.
+Range filtering remains available in archived projects, never changes saved data
+or summary counts, and resets to empty boundaries when reopening a project.
+
 Run the tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.
