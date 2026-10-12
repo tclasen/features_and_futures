@@ -110,3 +110,85 @@ test('project validation, order, navigation, and restart persistence', async () 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('tasks validate, filter, toggle, stay project-scoped, and persist across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    async function post(path, fields) {
+      return fetch(server.address + path, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function view(path = '/projects/1') {
+      return (await fetch(server.address + path)).text();
+    }
+    const rowCount = html => (html.match(/data-testid="task-row"/g) ?? []).length;
+    await post('/projects', { name: 'First' });
+    await post('/projects', { name: 'Second' });
+    const initial = await view();
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    assert.equal(rowCount(initial), 0);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await post('/projects/1/tasks', { title });
+      assert.equal(invalid.status, 400);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(rowCount(html), 0);
+    }
+    const created = await post('/projects/1/tasks', { title: '  First task  ' });
+    assert.equal(created.status, 303);
+    assert.equal(created.headers.get('location'), '/projects/1?filter=All');
+    await post('/projects/1/tasks', { title: 'Second <task> & "quoted"' });
+    await post('/projects/2/tasks', { title: 'Other project task' });
+    const listing = await view();
+    assert.equal(rowCount(listing), 2);
+    assert.match(listing, /aria-label="Complete First task"/);
+    assert.match(listing, /class="task-title">First task<\/span>/);
+    assert.match(listing, /Complete Second &lt;task&gt; &amp; &quot;quoted&quot;/);
+    assert.doesNotMatch(listing, / checked/);
+    assert.ok(listing.indexOf('First task') < listing.indexOf('Second &lt;task&gt;'));
+    assert.doesNotMatch(listing, /Other project task/);
+    assert.equal(rowCount(await view('/projects/2')), 1);
+    const invalid = await post('/projects/1/tasks', { title: '   ' });
+    assert.equal(rowCount(await invalid.text()), 2);
+
+    const completed = await post('/projects/1/tasks/1?filter=Open', { completed: '1' });
+    assert.equal(completed.headers.get('location'), '/projects/1?filter=Open');
+    const all = await view();
+    assert.match(all, /aria-label="Complete First task" checked/);
+    const open = await view('/projects/1?filter=Open');
+    assert.equal(rowCount(open), 1);
+    assert.doesNotMatch(open, /Complete First task/);
+    assert.match(open, /<option selected>Open<\/option>/);
+    const done = await view('/projects/1?filter=Completed');
+    assert.equal(rowCount(done), 1);
+    assert.match(done, /Complete First task/);
+    assert.doesNotMatch(done, /Complete Second/);
+    assert.equal((await post('/projects/2/tasks/1', {})).status, 404);
+    assert.equal((await post('/projects/999/tasks', { title: 'Missing' })).status, 404);
+
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(), all);
+    assert.equal(await view('/projects/1?filter=Completed'), done);
+    await post('/projects/1/tasks/1?filter=Completed', {});
+    assert.equal(rowCount(await view('/projects/1?filter=Completed')), 0);
+    assert.equal(rowCount(await view('/projects/1?filter=Open')), 2);
+    assert.doesNotMatch(await view(), / checked/);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.doesNotMatch(await view(), / checked/);
+    assert.equal(rowCount(await view('/projects/1?filter=Open')), 2);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
