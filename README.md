@@ -31,7 +31,7 @@ updates the completion checkbox label. Archived tasks must be restored with thei
 project before they can be renamed.
 
 Each task has a Task priority selector with Low, Normal, and High options.
-Existing and new tasks default to Normal. Priorities persist independently across
+Existing tasks default to Normal. Priorities persist independently across
 renames and restarts; archived projects disable priority edits until restored.
 
 Run the integration checks with `npm test`.
@@ -41,3 +41,9 @@ Tasks must match both the completion and priority filters and retain creation
 order. Both selections stay in place during task edits, which immediately update
 the matching rows. Opening a project from the list starts both filters at All.
 Filters remain usable while archived and never change completion summaries.
+
+Each project has a Default task priority selector with Low, Normal, and High
+options, initially Normal. New tasks inherit that project's saved default;
+changing the default leaves existing tasks and both filter selections unchanged.
+Defaults persist independently across renames and restarts. Archived projects
+display their saved default with editing disabled until restored.
