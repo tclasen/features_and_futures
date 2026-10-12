@@ -124,7 +124,7 @@ def main():
              'audit_files': {name: sha(audit / name) for name in ('verified.json', 'events.jsonl', 'usage.jsonl')},
              'manifest_sha256': sha(run / 'manifest.json'), 'checkpoints': checkpoints,
              'native_originals': native, 'deliveries': list(deliveries.values()), 'isolation': isolation,
-             'scope': 'Drained original attempts through partial25, first-request delivery and task-start isolation only; last complete shared round24. No missing counters inferred or comparative finding claimed.'}
+             'scope': f'Drained original attempts through task{through:03d}, first-request delivery and task-start isolation only; recorded complete shared barriers through{common:03d}. Final barrier may be incomplete even when all final checkpoints accepted. No missing counters inferred or comparative finding claimed.'}
     (output / 'verified.json').write_text(json.dumps(proof, indent=2) + '\n')
     print(json.dumps({'verified': True, 'attempts': len(closed), 'isolation_probes': len(isolation), 'evidence': str(output)}))
 

@@ -1,0 +1,328 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: workboard.spec.mjs >> 009 archived tasks are read-only and survive restoration
+- Location: runs/instruction-effects/eval-015/tasks/task-011/suite/workboard.spec.mjs:115:3
+
+# Error details
+
+```
+Test timeout of 20000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- main [ref=e2]:
+  - button "Projects" [ref=e3] [cursor=pointer]
+  - heading "task-011 Archive tasks" [level=1] [ref=e4]
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: New project name
+      - textbox "New project name" [ref=e8]
+    - button "Rename project" [ref=e9] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: Default task priority
+    - combobox "Default task priority" [ref=e12]:
+      - option "Low"
+      - option "Normal" [selected]
+      - option "High"
+  - generic [ref=e13]:
+    - generic [ref=e14]:
+      - generic [ref=e15]: Task title
+      - textbox "Task title" [ref=e16]
+    - button "Create task" [active] [ref=e17] [cursor=pointer]
+  - generic [ref=e18]:
+    - generic [ref=e19]: Task filter
+    - combobox "Task filter" [ref=e20]:
+      - option "All" [selected]
+      - option "Open"
+      - option "Completed"
+  - generic [ref=e21]:
+    - generic [ref=e22]: Priority filter
+    - combobox "Priority filter" [ref=e23]:
+      - option "All" [selected]
+      - option "Low"
+      - option "Normal"
+      - option "High"
+  - generic [ref=e24]:
+    - generic [ref=e25]: Due from
+    - textbox "Due from" [ref=e26]
+    - generic [ref=e27]: Due through
+    - textbox "Due through" [ref=e28]
+    - button "Apply due range" [ref=e29] [cursor=pointer]
+  - generic [ref=e31]:
+    - checkbox "Complete Retained task" [ref=e32]
+    - generic [ref=e33]: Retained task
+    - textbox "New task title" [ref=e34]: Retained task
+    - button "Rename task" [ref=e35] [cursor=pointer]
+    - combobox "Task priority" [ref=e36]:
+      - option "Low"
+      - option "Normal" [selected]
+      - option "High"
+    - textbox "Task due date" [ref=e37]
+    - button "Save due date" [ref=e38] [cursor=pointer]
+    - combobox "Destination project" [ref=e39]:
+      - option "task-001 Alpha create" [selected]
+      - option "task-001 Blank validation sentinel"
+      - option "task-001 Order first"
+      - option "task-001 Order second"
+      - option "task-001 Persistence sentinel"
+      - option "task-002 Alpha create"
+      - option "task-002 Blank validation sentinel"
+      - option "task-002 Order first"
+      - option "task-002 Order second"
+      - option "task-002 Task reload"
+      - option "task-002 Task invalid"
+      - option "task-002 Task owner"
+      - option "task-002 Other project"
+      - option "task-002 Task filters"
+      - option "task-002 Persistence sentinel"
+      - option "task-003 Alpha create"
+      - option "task-003 Blank validation sentinel"
+      - option "task-003 Order first"
+      - option "task-003 Order second"
+      - option "task-003 Task reload"
+      - option "task-003 Task invalid"
+      - option "task-003 Task owner"
+      - option "task-003 Other project"
+      - option "task-003 Task filters"
+      - option "task-003 Archive lifecycle"
+      - option "task-003 Archive tasks"
+      - option "task-003 Summary project"
+      - option "task-004 Alpha create"
+      - option "task-004 Blank validation sentinel"
+      - option "task-004 Order first"
+      - option "task-004 Order second"
+      - option "task-004 Task reload"
+      - option "task-004 Task invalid"
+      - option "task-004 Task owner"
+      - option "task-004 Other project"
+      - option "task-004 Task filters"
+      - option "task-004 Archive lifecycle"
+      - option "task-004 Archive tasks"
+      - option "task-004 Summary project"
+      - option "task-004 Identity updated"
+      - option "task-004 Identity second"
+      - option "task-004 Rename invalid"
+      - option "task-004 Rename archive"
+      - option "task-005 Alpha create"
+      - option "task-005 Blank validation sentinel"
+      - option "task-005 Order first"
+      - option "task-005 Order second"
+      - option "task-005 Task reload"
+      - option "task-005 Task invalid"
+      - option "task-005 Task owner"
+      - option "task-005 Other project"
+      - option "task-005 Task filters"
+      - option "task-005 Archive lifecycle"
+      - option "task-005 Archive tasks"
+      - option "task-005 Summary project"
+      - option "task-005 Identity updated"
+      - option "task-005 Identity second"
+      - option "task-005 Rename invalid"
+      - option "task-005 Rename archive"
+      - option "task-005 Task rename identity"
+      - option "task-005 Task rename invalid"
+      - option "task-005 Task rename archive"
+      - option "task-006 Priority ownership"
+      - option "task-006 Priority other owner"
+      - option "task-006 Priority completion"
+      - option "task-006 Priority archive"
+      - option "task-006 Alpha create"
+      - option "task-006 Blank validation sentinel"
+      - option "task-006 Order first"
+      - option "task-006 Order second"
+      - option "task-006 Task reload"
+      - option "task-006 Task invalid"
+      - option "task-006 Task owner"
+      - option "task-006 Other project"
+      - option "task-006 Task filters"
+      - option "task-006 Archive lifecycle"
+      - option "task-006 Archive tasks"
+      - option "task-006 Summary project"
+      - option "task-006 Identity updated"
+      - option "task-006 Identity second"
+      - option "task-006 Rename invalid"
+      - option "task-006 Rename archive"
+      - option "task-006 Task rename identity"
+      - option "task-006 Task rename invalid"
+      - option "task-006 Task rename archive"
+      - option "task-007 Priority intersection"
+      - option "task-007 Priority live filters"
+      - option "task-007 Priority rename filters"
+      - option "task-007 Archived combined filters"
+      - option "task-007 Priority ownership"
+      - option "task-007 Priority other owner"
+      - option "task-007 Priority completion"
+      - option "task-007 Priority archive"
+      - option "task-007 Alpha create"
+      - option "task-007 Blank validation sentinel"
+      - option "task-007 Order first"
+      - option "task-007 Order second"
+      - option "task-007 Task reload"
+      - option "task-007 Task invalid"
+      - option "task-007 Task owner"
+      - option "task-007 Other project"
+      - option "task-007 Task filters"
+      - option "task-007 Archive lifecycle"
+      - option "task-007 Archive tasks"
+      - option "task-007 Summary project"
+      - option "task-007 Identity updated"
+      - option "task-007 Identity second"
+      - option "task-007 Rename invalid"
+      - option "task-007 Rename archive"
+      - option "task-007 Task rename identity"
+      - option "task-007 Task rename invalid"
+      - option "task-007 Task rename archive"
+      - option "task-008 Defaults independent"
+      - option "task-008 Defaults inheritance"
+      - option "task-008 Defaults renamed"
+      - option "task-008 Priority intersection"
+      - option "task-008 Priority live filters"
+      - option "task-008 Priority rename filters"
+      - option "task-008 Archived combined filters"
+      - option "task-008 Priority ownership"
+      - option "task-008 Priority other owner"
+      - option "task-008 Priority completion"
+      - option "task-008 Priority archive"
+      - option "task-008 Alpha create"
+      - option "task-008 Blank validation sentinel"
+      - option "task-008 Order first"
+      - option "task-008 Order second"
+      - option "task-008 Task reload"
+      - option "task-008 Task invalid"
+      - option "task-008 Task owner"
+      - option "task-008 Other project"
+      - option "task-008 Task filters"
+      - option "task-008 Archive lifecycle"
+      - option "task-008 Archive tasks"
+      - option "task-008 Summary project"
+      - option "task-008 Identity updated"
+      - option "task-008 Identity second"
+      - option "task-008 Rename invalid"
+      - option "task-008 Rename archive"
+      - option "task-008 Task rename identity"
+      - option "task-008 Task rename invalid"
+      - option "task-008 Task rename archive"
+      - option "task-009 Defaults independent"
+      - option "task-009 Defaults inheritance"
+      - option "task-009 Defaults renamed"
+      - option "task-009 Calendar persistence"
+      - option "task-009 Calendar validation"
+      - option "task-009 Calendar independence"
+      - option "task-009 Calendar second owner"
+      - option "task-009 Calendar archival"
+      - option "task-009 Priority intersection"
+      - option "task-009 Priority live filters"
+      - option "task-009 Priority rename filters"
+      - option "task-009 Archived combined filters"
+      - option "task-009 Priority ownership"
+      - option "task-009 Priority other owner"
+      - option "task-009 Priority completion"
+      - option "task-009 Priority archive"
+      - option "task-009 Alpha create"
+      - option "task-009 Blank validation sentinel"
+      - option "task-009 Order first"
+      - option "task-009 Order second"
+      - option "task-009 Task reload"
+      - option "task-009 Task invalid"
+      - option "task-009 Task owner"
+      - option "task-009 Other project"
+      - option "task-009 Task filters"
+      - option "task-009 Archive lifecycle"
+      - option "task-009 Archive tasks"
+      - option "task-009 Summary project"
+      - option "task-009 Identity updated"
+      - option "task-009 Identity second"
+      - option "task-009 Rename invalid"
+      - option "task-009 Rename archive"
+      - option "task-009 Task rename identity"
+      - option "task-009 Task rename invalid"
+      - option "task-009 Task rename archive"
+      - option "task-010 Defaults independent"
+      - option "task-010 Defaults inheritance"
+      - option "task-010 Defaults renamed"
+      - option "task-010 Calendar persistence"
+      - option "task-010 Calendar validation"
+      - option "task-010 Calendar independence"
+      - option "task-010 Calendar second owner"
+      - option "task-010 Calendar archival"
+      - option "task-010 Range boundaries"
+      - option "task-010 Range intersections"
+      - option "task-010 Range validation"
+      - option "task-010 Range archival"
+      - option "task-010 Range owner renamed"
+      - option "task-010 Priority intersection"
+      - option "task-010 Priority live filters"
+      - option "task-010 Priority rename filters"
+      - option "task-010 Archived combined filters"
+      - option "task-010 Priority ownership"
+      - option "task-010 Priority other owner"
+      - option "task-010 Priority completion"
+      - option "task-010 Priority archive"
+      - option "task-010 Alpha create"
+      - option "task-010 Blank validation sentinel"
+      - option "task-010 Order first"
+      - option "task-010 Order second"
+      - option "task-010 Task reload"
+      - option "task-010 Task invalid"
+      - option "task-010 Task owner"
+      - option "task-010 Other project"
+      - option "task-010 Task filters"
+      - option "task-010 Archive lifecycle"
+      - option "task-010 Archive tasks"
+      - option "task-010 Summary project"
+      - option "task-010 Identity updated"
+      - option "task-010 Identity second"
+      - option "task-010 Rename invalid"
+      - option "task-010 Rename archive"
+      - option "task-010 Task rename identity"
+      - option "task-010 Task rename invalid"
+      - option "task-010 Task rename archive"
+      - option "task-011 Defaults independent"
+      - option "task-011 Defaults inheritance"
+      - option "task-011 Defaults renamed"
+      - option "task-011 Calendar persistence"
+      - option "task-011 Calendar validation"
+      - option "task-011 Calendar independence"
+      - option "task-011 Calendar archival"
+      - option "task-011 Range boundaries"
+      - option "task-011 Range intersections"
+      - option "task-011 Range validation"
+      - option "task-011 Range archival"
+      - option "task-011 Range owner renamed"
+      - option "task-011 Transfer target"
+      - option "task-011 Transfer source"
+      - option "task-011 Filtered transfer target"
+      - option "task-011 Filtered transfer source"
+      - option "task-011 Options first"
+      - option "task-011 Options second"
+      - option "task-011 Options owner"
+      - option "task-011 Read-only transfer target"
+      - option "task-011 Read-only transfer owner"
+      - option "task-011 Priority intersection"
+      - option "task-011 Priority live filters"
+      - option "task-011 Priority rename filters"
+      - option "task-011 Archived combined filters"
+      - option "task-011 Priority ownership"
+      - option "task-011 Priority other owner"
+      - option "task-011 Priority completion"
+      - option "task-011 Priority archive"
+      - option "task-011 Alpha create"
+      - option "task-011 Blank validation sentinel"
+      - option "task-011 Order first"
+      - option "task-011 Order second"
+      - option "task-011 Task reload"
+      - option "task-011 Task invalid"
+      - option "task-011 Task owner"
+      - option "task-011 Other project"
+      - option "task-011 Task filters"
+      - option "task-011 Archive lifecycle"
+    - button "Move task" [ref=e40] [cursor=pointer]
+```
