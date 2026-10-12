@@ -124,10 +124,19 @@ const server = createServer(async (request, response) => {
     } catch {
       return sendJson(response, 400, { error: 'Invalid request body' });
     }
-    if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion state is required' });
-    const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
-    if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
-    return sendJson(response, 200, { id: taskId, completed: body.completed });
+    if (typeof body?.completed === 'boolean') {
+      const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, completed: body.completed });
+    }
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const result = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, title });
+    }
+    return sendJson(response, 400, { error: 'Task update is required' });
   }
   if (url.pathname.startsWith('/api/')) return sendJson(response, 404, { error: 'Not found' });
   if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+$/.test(url.pathname))) {
