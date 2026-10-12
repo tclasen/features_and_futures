@@ -78,6 +78,7 @@ test('existing databases migrate; archives, summaries, and restored tasks persis
     assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
     assert.match(initial, /data-testid="project-summary">1\/1 completed/);
     assert.match(initial, />Archive project<\/button>/);
+    assert.match(await view('/projects/1'), /id="task-priority-1"[^>]*>\s*<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     await post('/projects', { name: 'New project' });
     assert.match(await view(), /data-testid="project-summary">0\/0 completed/);
     await post('/projects/1/tasks', { title: 'Open task' });
@@ -135,6 +136,97 @@ test('existing databases migrate; archives, summaries, and restored tasks persis
     assert.match(await view(), /data-testid="project-summary">1\/2 completed/);
     await post('/projects/1/tasks', { title: 'After restore' });
     assert.match(await view(), /data-testid="project-summary">1\/3 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task priorities stay independent and persist through renames, archives, and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priorities-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    async function post(path, fields = {}) {
+      return fetch(server.address + path, {
+        method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+      });
+    }
+    async function view(path = '/projects/1') {
+      return (await fetch(server.address + path)).text();
+    }
+    function priorityOptions(html, id, priority, disabled = false) {
+      const select = html.match(new RegExp(`<select id="task-priority-${id}"[^>]*>([\\s\\S]*?)</select>`));
+      assert.ok(select, `Task ${id} has a priority select`);
+      assert.equal(select[0].includes(' disabled'), disabled);
+      assert.equal(select[1].trim(), ['Low', 'Normal', 'High'].map(option =>
+        `<option${option === priority ? ' selected' : ''}>${option}</option>`).join(''));
+      assert.match(html, new RegExp(`<label for="task-priority-${id}">Task priority</label>`));
+    }
+    await post('/projects', { name: 'First project' });
+    await post('/projects', { name: 'Second project' });
+    await post('/projects/1/tasks', { title: 'First task' });
+    await post('/projects/1/tasks', { title: 'Second task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    await post('/projects/1/tasks/1', { completed: '1' });
+    priorityOptions(await view(), 1, 'Normal');
+    priorityOptions(await view(), 2, 'Normal');
+    const summary = await view('/');
+    const otherProject = await view('/projects/2');
+    const changed = await post('/projects/1/tasks/1/priority?filter=Completed', { priority: 'High' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal((await post('/projects/1/tasks/2/priority?filter=Open', { priority: 'Low' })).status, 303);
+    let detail = await view();
+    priorityOptions(detail, 1, 'High');
+    priorityOptions(detail, 2, 'Low');
+    assert.match(detail, /aria-label="Complete First task" checked/);
+    assert.match(detail, /aria-label="Complete Second task" onchange=/);
+    assert.ok(detail.indexOf('Complete First task') < detail.indexOf('Complete Second task'));
+    assert.equal(await view('/'), summary);
+    assert.equal(await view('/projects/2'), otherProject);
+    priorityOptions(await view('/projects/1?filter=Completed'), 1, 'High');
+    assert.doesNotMatch(await view('/projects/1?filter=Completed'), /task-priority-2/);
+    priorityOptions(await view('/projects/1?filter=Open'), 2, 'Low');
+    assert.doesNotMatch(await view('/projects/1?filter=Open'), /task-priority-1/);
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'High' })).status, 404);
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post('/projects/1/tasks/1/priority', { priority })).status, 400);
+    }
+    assert.equal(await view(), detail);
+    await post('/projects/1/tasks/1/rename', { title: '  Renamed task  ' });
+    detail = await view();
+    priorityOptions(detail, 1, 'High');
+    assert.match(detail, /aria-label="Complete Renamed task" checked/);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(), detail);
+    assert.equal(await view('/'), summary);
+    assert.equal(await view('/projects/2'), otherProject);
+    await post('/projects/1/archive');
+    const archived = await view();
+    priorityOptions(archived, 1, 'High', true);
+    priorityOptions(archived, 2, 'Low', true);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    assert.equal(await view(), archived);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(), archived);
+    await post('/projects/1/restore');
+    assert.equal(await view(), detail);
+    assert.equal(await view('/'), summary);
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    const restored = await view();
+    priorityOptions(restored, 1, 'Normal');
+    priorityOptions(restored, 2, 'Low');
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(), restored);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
