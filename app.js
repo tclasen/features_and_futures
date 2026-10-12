@@ -54,13 +54,24 @@ async function render() {
         try { await request(`/api/projects/${project.id}`, json({ defaultPriority: defaultPriority.value })); }
         catch (error) { alert.textContent = error.message; defaultPriority.value = project.defaultPriority || 'Normal'; }
       });
+      const dueFrom = document.createElement('input'); dueFrom.type = 'text'; dueFrom.setAttribute('aria-label', 'Due from');
+      const dueThrough = document.createElement('input'); dueThrough.type = 'text'; dueThrough.setAttribute('aria-label', 'Due through');
+      const applyRange = element('button', 'Apply due range'); applyRange.type = 'button';
+      let appliedFrom = '', appliedThrough = '';
+      applyRange.addEventListener('click', () => {
+        const from = dueFrom.value.trim(), through = dueThrough.value.trim();
+        if ((from && !validDate(from)) || (through && !validDate(through))) { alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; return; }
+        if (from && through && from > through) { alert.textContent = 'Due from must not be after Due through'; return; }
+        appliedFrom = from; appliedThrough = through; alert.textContent = ''; refreshTasks();
+      });
       const list = element('section'); list.setAttribute('aria-label', 'Tasks');
-      app.append(form, alert, filter, priorityFilter, defaultPriority, list);
+      app.append(form, alert, filter, priorityFilter, defaultPriority, dueFrom, dueThrough, applyRange, list);
       async function refreshTasks() {
         const tasks = await request(`/api/projects/${project.id}/tasks`);
         list.replaceChildren(...tasks.filter(task =>
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
-          (priorityFilter.value === 'All' || priorityFilter.value === (task.priority || 'Normal'))
+          (priorityFilter.value === 'All' || priorityFilter.value === (task.priority || 'Normal')) &&
+          ((!appliedFrom && !appliedThrough) || (task.dueDate && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough)))
         ).map(task => {
           const row = element('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived);
@@ -140,6 +151,14 @@ async function render() {
     catch (error) { alert.textContent = error.message; }
   });
   await refresh();
+}
+function validDate(value) {
+  const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return day >= 1 && day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
 }
 function navigate(path) { history.pushState({}, '', path); render(); }
 window.addEventListener('popstate', render);
