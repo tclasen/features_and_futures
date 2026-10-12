@@ -118,10 +118,11 @@ function dueRange(params) {
   return { from, through };
 }
 
-// Fold ASCII letters only; non-ASCII characters and internal spacing stay significant.
+// Normalize only for matching; stored names and titles remain untouched.
 function matchesSearch(value, query) {
-  const fold = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = (text) => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function buildProjectLocation(id, filter, priority, range, query = '') {

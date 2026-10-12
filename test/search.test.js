@@ -28,7 +28,7 @@ test('search intersects filters, retains state through edits and moves, and rese
     const projects = (html) => [...html.matchAll(/data-testid="project-row">\s*<span>([^<]+)<\/span>/g)].map((m) => m[1]);
     for (const name of ['Alpha  Team', 'ALPHA team', 'Älpha', 'Other']) await post('/projects', { name });
     assert.deepEqual(projects(await get('/?search=%20aLpHa%20')), ['Alpha  Team', 'ALPHA team']);
-    assert.deepEqual(projects(await get('/?search=alpha%20team')), ['ALPHA team']);
+    assert.deepEqual(projects(await get('/?search=alpha%20team')), ['Alpha  Team', 'ALPHA team']);
     assert.deepEqual(projects(await get('/?search=älpha')), []);
     await post('/projects/2/archive', { search: 'alpha' });
     assert.deepEqual(projects(await get('/?search=alpha')), ['Alpha  Team']);
@@ -41,7 +41,7 @@ test('search intersects filters, retains state through edits and moves, and rese
     await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
     await post('/projects/1/tasks/1', { completed: '1' });
     assert.deepEqual(rows(await get('/projects/1?search=%20plan%20')), ['Plan  One', 'PLAN Two', 'ÄPLAN']);
-    assert.deepEqual(rows(await get('/projects/1?search=plan%20one')), []);
+    assert.deepEqual(rows(await get('/projects/1?search=plan%20one')), ['Plan  One']);
     const state = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: 'plan' };
     const location = '/projects/1?' + new URLSearchParams(state);
     assert.deepEqual(rows(await get(location)), ['Plan  One']);

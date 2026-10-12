@@ -16,7 +16,7 @@ Project pages provide inclusive `Due from` / `Due through` filtering, intersecte
 
 Task rows provide `Destination project` and `Move task` controls for moving to another active project. Moves preserve task data. First arrivals append after all established positions; returning tasks recover their remembered position in that project, even when other tasks return in a different order. Source filters stay selected. Archived projects cannot send or receive tasks. Task ownership and per-project ordering persist across restarts.
 
-Project and task search match name/title substrings, ignoring ASCII letter case and trimming surrounding query whitespace only. Search intersects the applicable filters and remains applied through filter changes and edits. Returning to the project list or reopening a project resets that page's search. Archived projects support search without enabling editing.
+Project and task search match name/title substrings, ignoring ASCII letter case, trimming surrounding query whitespace, and treating runs of ASCII spaces and horizontal tabs as one space in both queries and names/titles. This normalization is only for matching; saved names and titles are displayed unchanged. Search intersects the applicable filters and remains applied through filter changes and edits. Returning to the project list or reopening a project resets that page's search. Archived projects support search without enabling editing.
 
 ## Verify
 
