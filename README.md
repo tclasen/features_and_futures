@@ -54,6 +54,14 @@ values display an alert and leave saved data unchanged. Date changes preserve
 both filters and all other task data; renaming preserves dates. Archived projects
 disable date editing, and restoration preserves saved dates.
 
+Project pages also offer Due from and Due through textboxes with Apply due range.
+These use the same calendar-date rules and inclusive boundaries. Blank boundaries
+are unbounded; undated tasks match only when both boundaries are blank. The applied
+range intersects completion and priority filters, and all three filters survive
+edits and re-evaluate task membership immediately. Invalid ranges show an alert
+without changing the applied range. Ranges do not change task data or summary
+counts, remain usable while archived, and reset when opening from the project list.
+
 Run automated HTTP and persistence tests:
 
 ```sh
