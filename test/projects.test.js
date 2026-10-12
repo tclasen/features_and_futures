@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 
 async function startServer(databasePath) {
   const child = spawn(process.execPath, ['server.js'], {
@@ -53,6 +54,10 @@ function taskRows(html) {
     path: match[1].match(/action="(.*?)"/)[1],
     completed: / checked/.test(match[1]),
   }));
+}
+
+function projectSummaries(html) {
+  return [...html.matchAll(/data-testid="project-summary">(.*?)<\/span>/g)].map((match) => match[1]);
 }
 
 function projectRows(html) {
@@ -173,6 +178,75 @@ test('tasks validate, filter, isolate completion updates and persist', { timeout
     assert.equal(unchecked.headers.get('location'), `${first}?filter=Completed`);
     assert.deepEqual(taskRows(await detail(`${first}?filter=Completed`)), []);
     assert.deepEqual(taskRows(await detail()), rows);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('archive and restore preserve tasks, summaries and legacy database IDs', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'board.sqlite');
+  // Simulate a database created before archive support was introduced.
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL
+      REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (id, name) VALUES (7, 'Legacy');
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (9, 7, 'Done', 1), (10, 7, 'Open', 0);
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path = '/') => (await fetch(`${server.baseUrl}${path}`)).text();
+    await create(server.baseUrl, 'New');
+    let html = await get();
+    assert.match(html, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(html, /<option selected>Active<\/option>/);
+    assert.deepEqual(projectSummaries(html), ['1/2 completed', '0/0 completed']);
+    assert.deepEqual(projectRows(html).map((row) => row.path), ['/projects/7', '/projects/8']);
+    assert.match(html, />Archive project<\/button>/);
+    const originalTasks = taskRows(await get('/projects/7'));
+    assert.equal((await post(server.baseUrl, '/projects/999/archive', {})).status, 404);
+    assert.equal((await post(server.baseUrl, '/projects/7/archive', {})).status, 303);
+    assert.deepEqual(projectRows(await get()).map((row) => row.name), ['New']);
+    html = await get('/?filter=Archived');
+    assert.deepEqual(projectRows(html), [{ name: 'Legacy', path: '/projects/7' }]);
+    assert.deepEqual(projectSummaries(html), ['1/2 completed']);
+    assert.match(html, />Restore project<\/button>/);
+    assert.match(html, />Open project<\/button>/);
+    assert.doesNotMatch(html, />Archive project<\/button>/);
+    html = await get('/projects/7');
+    assert.match(html, /<p>Archived project<\/p>/);
+    assert.match(html, /<button type="submit" disabled>Create task<\/button>/);
+    assert.equal((html.match(/ disabled data-auto-submit/g) || []).length, 2);
+    assert.deepEqual(taskRows(html), originalTasks);
+    assert.deepEqual(taskRows(await get('/projects/7?filter=Completed')).map((row) => row.title), ['Done']);
+    assert.deepEqual(taskRows(await get('/projects/7?filter=Open')).map((row) => row.title), ['Open']);
+    assert.equal((await post(server.baseUrl, '/projects/7/tasks', { title: 'Blocked' })).status, 409);
+    assert.equal((await post(server.baseUrl, originalTasks[0].path, {})).status, 409);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(projectSummaries(await get('/?filter=Archived')), ['1/2 completed']);
+    assert.match(await get('/projects/7'), /Archived project/);
+    assert.deepEqual(taskRows(await get('/projects/7')), originalTasks);
+    assert.equal((await post(server.baseUrl, '/projects/7/restore', {})).status, 303);
+    assert.deepEqual(projectRows(await get('/?filter=Archived')), []);
+    html = await get('/projects/7');
+    assert.doesNotMatch(html, /Archived project| disabled/);
+    assert.deepEqual(taskRows(html), originalTasks);
+    await post(server.baseUrl, originalTasks[1].path, { completed: '1' });
+    await post(server.baseUrl, '/projects/7/tasks', { title: 'Third' });
+    assert.deepEqual(projectSummaries(await get()), ['2/3 completed', '0/0 completed']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(projectSummaries(await get()), ['2/3 completed', '0/0 completed']);
+    assert.equal(taskRows(await get('/projects/7')).length, 3);
+    assert.deepEqual(projectRows(await get('/?filter=Archived')), []);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
