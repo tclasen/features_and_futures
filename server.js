@@ -18,7 +18,8 @@ database.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    due_date TEXT
   )
 `);
 
@@ -49,11 +50,28 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
+// Add optional due dates to databases created before Task 009.
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+
+function isValidDueDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -179,6 +197,26 @@ const server = createServer(async (request, response) => {
       } else {
         return sendJson(response, 400, { error: 'A valid completion or priority is required' });
       }
+      if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, findTask.get(taskId, projectId));
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request' });
+    }
+  }
+  const dueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  if (request.method === 'POST' && dueDateMatch) {
+    const projectId = Number(dueDateMatch[1]);
+    const taskId = Number(dueDateMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
+    try {
+      const payload = await readJson(request);
+      const dueDate = typeof payload.due_date === 'string' ? payload.due_date.trim() : '';
+      if (dueDate && !isValidDueDate(dueDate)) {
+        return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+      }
+      const result = updateTaskDueDate.run(dueDate || null, taskId, projectId);
       if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, findTask.get(taskId, projectId));
     } catch {
