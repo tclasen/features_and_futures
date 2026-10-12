@@ -212,6 +212,7 @@ function sendPage(response) {
     let appliedDueThrough = '';
     let appliedProjectQuery = '';
     let appliedTaskQuery = '';
+    let projectListRenderId = 0;
 
     function asciiLower(value) {
       return value.replace(/[A-Z]/g, character => character.toLowerCase());
@@ -228,13 +229,16 @@ function sendPage(response) {
     }
 
     async function showList() {
+      const renderId = ++projectListRenderId;
       listView.hidden = false;
       detailView.hidden = true;
       error.hidden = true;
-      projectList.replaceChildren();
       document.querySelector('#project-search').value = appliedProjectQuery;
       const selectedState = document.querySelector('#project-filter').value;
-      for (const project of await loadProjects()) {
+      const projects = await loadProjects();
+      if (renderId !== projectListRenderId || detailView.hidden === false) return;
+      projectList.replaceChildren();
+      for (const project of projects) {
         if (Boolean(project.archived) !== (selectedState === 'Archived')) continue;
         if (!normalizeSearchText(project.name).includes(normalizeSearchText(appliedProjectQuery))) continue;
         const row = document.createElement('li');
