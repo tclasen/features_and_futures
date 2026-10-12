@@ -320,9 +320,12 @@ function renderTasks() {
         error.hidden = false;
         return;
       }
-      task.dueDate = (await response.json()).dueDate;
-      dueDate.value = task.dueDate || '';
-      renderTasks();
+      const saved = await response.json();
+      task.dueDate = saved.dueDate || '';
+      dueDate.value = task.dueDate;
+      // Re-read the server's ordered task records after saving so the rendered
+      // row reflects the persisted value (including after task moves/restores).
+      await loadTasks();
     });
     const notes = document.createElement('textarea');
     notes.setAttribute('aria-label', 'Task notes');
