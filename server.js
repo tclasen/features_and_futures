@@ -67,6 +67,7 @@ function sendPage(response) {
 </head>
 <body>
   <main>
+    <p id="error" role="alert" hidden></p>
     <section id="project-list">
       <h1>Workboard</h1>
       <form id="create-form">
@@ -74,7 +75,6 @@ function sendPage(response) {
         <input id="project-name" name="name" type="text" autocomplete="off">
         <button type="submit">Create project</button>
       </form>
-      <p id="error" role="alert" hidden></p>
       <ul id="projects" aria-label="Projects"></ul>
     </section>
     <section id="detail" hidden>
