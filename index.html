@@ -314,14 +314,66 @@
       }
       priorityFilterField.append(priorityFilterLabel, priorityFilter);
       app.append(priorityFilterField);
+      const dueRangeField = document.createElement('div');
+      dueRangeField.className = 'filter';
+      const dueFromLabel = document.createElement('label');
+      dueFromLabel.htmlFor = 'due-from';
+      dueFromLabel.textContent = 'Due from';
+      const dueFrom = document.createElement('input');
+      dueFrom.id = 'due-from';
+      dueFrom.type = 'text';
+      const dueThroughLabel = document.createElement('label');
+      dueThroughLabel.htmlFor = 'due-through';
+      dueThroughLabel.textContent = 'Due through';
+      const dueThrough = document.createElement('input');
+      dueThrough.id = 'due-through';
+      dueThrough.type = 'text';
+      const applyDueRange = document.createElement('button');
+      applyDueRange.type = 'button';
+      applyDueRange.textContent = 'Apply due range';
+      dueRangeField.append(dueFromLabel, dueFrom, dueThroughLabel, dueThrough, applyDueRange);
+      app.append(dueRangeField);
       const list = document.createElement('div');
       app.append(list);
       let tasks = await requestTasks(project.id);
+      let appliedDueFrom = '';
+      let appliedDueThrough = '';
+      const isValidDate = (value) => {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!match) return false;
+        const year = Number(match[1]);
+        const month = Number(match[2]);
+        const day = Number(match[3]);
+        const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+      };
+      applyDueRange.addEventListener('click', () => {
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          alert.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through';
+          alert.hidden = false;
+          return;
+        }
+        appliedDueFrom = from;
+        appliedDueThrough = through;
+        alert.hidden = true;
+        renderTasks();
+      });
       const renderTasks = () => {
         list.replaceChildren();
         const visible = tasks.filter((task) =>
           (filter.value === 'All' || (filter.value === 'Completed') === task.completed)
           && (priorityFilter.value === 'All' || priorityFilter.value === task.priority)
+          && (!appliedDueFrom && !appliedDueThrough || Boolean(task.due_date)
+            && (!appliedDueFrom || task.due_date >= appliedDueFrom)
+            && (!appliedDueThrough || task.due_date <= appliedDueThrough))
         );
         for (const task of visible) {
           const row = document.createElement('section');
@@ -402,6 +454,7 @@
               tasks = tasks.map((item) => item.id === task.id ? { ...item, due_date: updated.due_date } : item);
               dueDate.value = updated.due_date || '';
               alert.hidden = true;
+              renderTasks();
             } catch (error) {
               alert.textContent = error.message;
               alert.hidden = false;
