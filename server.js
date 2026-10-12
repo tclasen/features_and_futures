@@ -120,11 +120,30 @@ const server = createServer(async (req, res) => {
       if (!title) return send(res, 400, { error: 'Task title is required' });
       const priority = db.prepare('SELECT default_priority FROM projects WHERE id = ?').get(projectId).default_priority;
       const task = { id: randomUUID(), projectId, title, completed: 0, priority };
-      db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, Date.now(), task.priority);
+      const createdAt = Math.max(Date.now(), db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value);
+      db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, createdAt, task.priority);
       return send(res, 201, task);
     }
   }
   const taskCompletion = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)$/);
+  const taskMove = url.pathname.match(/^\/api\/projects\/([^/]+)\/tasks\/([^/]+)\/move$/);
+  if (req.method === 'PATCH' && taskMove) {
+    let sourceId, taskId;
+    try { sourceId = decodeURIComponent(taskMove[1]); taskId = decodeURIComponent(taskMove[2]); } catch { return send(res, 400, { error: 'Invalid task id' }); }
+    let payload;
+    try { let body = ''; for await (const chunk of req) body += chunk; payload = JSON.parse(body); } catch { return send(res, 400, { error: 'Invalid request' }); }
+    const source = db.prepare('SELECT archived FROM projects WHERE id = ?').get(sourceId);
+    if (!source) return send(res, 404, { error: 'Project not found' });
+    if (source.archived) return send(res, 409, { error: 'Archived projects are read only' });
+    const destinationId = payload.destinationProjectId;
+    const destination = typeof destinationId === 'string' && db.prepare('SELECT archived FROM projects WHERE id = ?').get(destinationId);
+    if (!destination || destination.archived || destinationId === sourceId) return send(res, 400, { error: 'Invalid destination project' });
+    const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
+    if (!task) return send(res, 404, { error: 'Task not found' });
+    const nextOrder = Math.max(Date.now(), db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value);
+    db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    return send(res, 200, { id: taskId, projectId: destinationId });
+  }
   if (req.method === 'PATCH' && taskCompletion) {
     let projectId, taskId;
     try { projectId = decodeURIComponent(taskCompletion[1]); taskId = decodeURIComponent(taskCompletion[2]); } catch { return send(res, 400, { error: 'Invalid task id' }); }

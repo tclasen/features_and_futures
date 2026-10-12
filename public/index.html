@@ -48,6 +48,7 @@
           project = (await response.json()).find(item => item.id === decodeURIComponent(match[1]));
         } catch {}
         if (!project) { history.replaceState({}, '', '/'); return render(); }
+        const destinationProjects = (await (await fetch('/api/projects')).json()).filter(item => !item.archived && item.id !== project.id);
         app.innerHTML = `<button id="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>
           ${project.archived ? '<p>Archived project</p>' : ''}
           <form id="rename-form" novalidate>
@@ -134,7 +135,7 @@
             (!appliedDueFrom || task.dueDate >= appliedDueFrom) &&
             (!appliedDueThrough || task.dueDate <= appliedDueThrough)
           );
-          tasks.innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-id="${escapeHtml(task.id)}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><label><span class="sr-only">Task priority</span><select aria-label="Task priority" data-id="${escapeHtml(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><form class="rename-task" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><form class="due-date-form" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="Task due date" value="${escapeHtml(task.dueDate || '')}" placeholder="YYYY-MM-DD" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><p class="task-rename-alert" role="alert" hidden></p></div>`).join('');
+          tasks.innerHTML = visible.map(task => `<div class="task-row" data-testid="task-row"><input type="checkbox" data-id="${escapeHtml(task.id)}" aria-label="Complete ${escapeHtml(task.title)}" ${task.completed ? 'checked' : ''} ${project.archived ? 'disabled' : ''}><span class="task-name">${escapeHtml(task.title)}</span><label><span class="sr-only">Task priority</span><select aria-label="Task priority" data-id="${escapeHtml(task.id)}" ${project.archived ? 'disabled' : ''}><option ${task.priority === 'Low' ? 'selected' : ''}>Low</option><option ${task.priority === 'Normal' ? 'selected' : ''}>Normal</option><option ${task.priority === 'High' ? 'selected' : ''}>High</option></select></label><form class="rename-task" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="New task title" autocomplete="off" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Rename task</button></form><form class="due-date-form" data-id="${escapeHtml(task.id)}" novalidate><input type="text" aria-label="Task due date" value="${escapeHtml(task.dueDate || '')}" placeholder="YYYY-MM-DD" ${project.archived ? 'disabled' : ''}><button type="submit" ${project.archived ? 'disabled' : ''}>Save due date</button></form><form class="move-task" data-id="${escapeHtml(task.id)}"><label><span class="sr-only">Destination project</span><select aria-label="Destination project" ${project.archived || !destinationProjects.length ? 'disabled' : ''}>${destinationProjects.map(destination => `<option value="${escapeHtml(destination.id)}">${escapeHtml(destination.name)}</option>`).join('')}</select></label><button type="submit" ${project.archived || !destinationProjects.length ? 'disabled' : ''}>Move task</button></form><p class="task-rename-alert" role="alert" hidden></p></div>`).join('');
           tasks.querySelectorAll('select[aria-label="Task priority"]').forEach(select => select.addEventListener('change', async () => {
             await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(select.dataset.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ priority: select.value }) });
             await refreshTasks();
@@ -162,6 +163,12 @@
             if (!response.ok) { alert.textContent = 'Due date must be a valid YYYY-MM-DD date'; alert.hidden = false; input.focus(); return; }
             alert.hidden = true;
             await refreshTasks();
+          }));
+          tasks.querySelectorAll('.move-task').forEach(form => form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const destinationProjectId = form.querySelector('select').value;
+            const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks/${encodeURIComponent(form.dataset.id)}/move`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ destinationProjectId }) });
+            if (response.ok) await refreshTasks();
           }));
         }
         filter.addEventListener('change', refreshTasks);
