@@ -33,6 +33,11 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 const taskColumns = new Set(db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name));
 if (!taskColumns.has('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 if (!taskColumns.has('notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+// Re-read schema after additive migrations before preparing persistence queries.
+const migratedTaskColumns = new Set(db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name));
+if (!migratedTaskColumns.has('due_date') || !migratedTaskColumns.has('notes')) {
+  throw new Error('Task persistence schema migration failed');
+}
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
 db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
