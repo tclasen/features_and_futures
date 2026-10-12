@@ -23,8 +23,10 @@ Project names and task titles are trimmed and HTML-escaped. Projects and tasks
 are ordered by their persistent creation IDs. Each project's tasks can be
 filtered by All (the default), Open, or Completed. The project list defaults to
 Active and can show Archived projects instead. Archive and restore preserve all
-tasks; archived pages allow filtering but reject task changes. Each project row
-shows completed/total counts across all its tasks.
+tasks; archived pages allow filtering but reject task changes and renaming. Each
+project row shows completed/total counts across all its tasks. Active project pages
+allow renaming with a trimmed, nonblank name. Renaming preserves the project URL,
+creation order, tasks, and completion states; names persist across restarts.
 
 Run automated HTTP and persistence tests:
 

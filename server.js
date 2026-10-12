@@ -77,6 +77,7 @@ export function createApplication(dbPath) {
     WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
   const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 
   function projectList(error = '', name = '', filter = 'Active') {
@@ -111,6 +112,12 @@ export function createApplication(dbPath) {
       <form method="get" action="/"><button type="submit">Projects</button></form>
       ${project.archived ? '<p>Archived project</p>' : ''}
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
+      <form class="create" method="post" action="/projects/${project.id}/rename">
+        <input type="hidden" name="filter" value="${filter}">
+        <label for="new-project-name">New project name</label>
+        <input id="new-project-name" name="name" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </form>
       <form class="create" method="post" action="/projects/${project.id}/tasks">
         <input type="hidden" name="filter" value="${filter}">
         <label for="task-title">Task title</label>
@@ -192,6 +199,27 @@ export function createApplication(dbPath) {
           return;
         }
         sendHtml(200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/rename$/.test(pathname)) {
+        const id = Number(pathname.split('/')[2]);
+        const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+        if (!project) {
+          sendHtml(404, page('Not found', '<h1>Project not found</h1>'));
+          return;
+        }
+        const body = await readForm(request);
+        const filter = taskFilter(body.get('filter'));
+        if (project.archived) {
+          sendHtml(403, projectPage(project, filter, 'Archived projects cannot be changed'));
+          return;
+        }
+        const name = (body.get('name') ?? '').trim();
+        if (!name) {
+          sendHtml(400, projectPage(project, filter, 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, id);
+        response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
+        response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/completion)?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
