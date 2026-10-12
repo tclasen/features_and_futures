@@ -108,7 +108,7 @@ const server = http.createServer(async (req, res) => {
       const validDate = value => {
         if (value === '') return true;
         if (typeof value !== 'string') return false;
-        const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(value);
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
         if (!m) return false;
         const y = +m[1], mo = +m[2], d = +m[3], leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
         return y >= 1 && mo >= 1 && mo <= 12 && d >= 1 && d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
