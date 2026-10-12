@@ -47,3 +47,11 @@ L060 clarification and restoration verification:22new ledger names comprise12ret
 L060 resource ledger reconciliation: inventory-only polling omitted 20 historical native names; original ledger retained and tracker002 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 Checkpoint015 exact publication verified:202source checkpoints and404original refs, full secret scan, prior remote heads unchanged, snapshot removed. Queued task017 recurrence and measured acceptance appended once; causal timing-race resolution remains unestablished. Later observations/source-bound next-prefix selection are retained outside the scanned target.
+
+L060 resource ledger reconciliation: inventory-only polling omitted 43 historical native names; original ledger retained and tracker002 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 failed-launch cleanup verified: two task016b010 stopped apps lacked removal. Original source/history/working tree, private app files and recovered SQLite backups independently restore; exact sandboxes stopped/rm--force and inventory absence verified. Future launch-exception cleanup control deferred; frozen native instrumentation and original assessments unchanged.
+
+L060 resource ledger reconciliation: inventory-only polling omitted 1 historical native names; original ledger retained and tracker002 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 recovered task016 b010 startup logs: both failed launches report SQLite `no such column: t.deleted` preparing listProjects. This supersedes only the earlier pending-log assessment; exact migration cause remains unexamined. PM stop-only cleanup is independently verified and distinct. No builder source, feedback, acceptance or instrumentation change. Evidence: preflight/failed-launch-retirement001 and record-recovered-launch-logs001.py.
