@@ -26,6 +26,9 @@ async function render() {
       const heading = element('h1', project.name);
       app.append(heading);
       if (project.archived) app.append(element('p', 'Archived project'));
+      const download = element('button', 'Download project'); download.type = 'button';
+      download.addEventListener('click', () => { window.location.href = `/api/projects/${project.id}/export`; });
+      app.append(download);
       const renameForm = document.createElement('form');
       const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New project name'); renameInput.disabled = Boolean(project.archived);
       const renameButton = element('button', 'Rename project'); renameButton.type = 'submit'; renameButton.disabled = Boolean(project.archived);
