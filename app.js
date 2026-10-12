@@ -24,6 +24,55 @@ async function render() {
       back.type = 'button';
       back.addEventListener('click', () => navigate('/'));
       app.append(back, element('h1', project.name));
+      const form = document.createElement('form');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.setAttribute('aria-label', 'Task title');
+      const submit = element('button', 'Create task');
+      submit.type = 'submit';
+      form.append(input, submit);
+      const alert = element('p', '');
+      alert.setAttribute('role', 'alert');
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Task filter');
+      for (const value of ['All', 'Open', 'Completed']) {
+        const option = element('option', value);
+        option.value = value;
+        filter.append(option);
+      }
+      const list = element('section');
+      list.setAttribute('aria-label', 'Tasks');
+      app.append(form, alert, filter, list);
+      async function refreshTasks() {
+        const tasks = await request(`/api/projects/${project.id}/tasks`);
+        list.replaceChildren(...tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)).map(task => {
+          const row = element('div');
+          row.dataset.testid = 'task-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = Boolean(task.completed);
+          checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+          checkbox.addEventListener('change', async () => {
+            await request(`/api/projects/${project.id}/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed: checkbox.checked }) });
+            await refreshTasks();
+          });
+          row.append(checkbox, element('span', task.title));
+          return row;
+        }));
+      }
+      filter.addEventListener('change', refreshTasks);
+      form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const title = input.value.trim();
+        if (!title) { alert.textContent = 'Task title is required'; input.focus(); return; }
+        try {
+          await request(`/api/projects/${project.id}/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+          alert.textContent = '';
+          input.value = '';
+          await refreshTasks();
+        } catch (error) { alert.textContent = error.message; }
+      });
+      await refreshTasks();
     } catch {
       app.append(element('h1', 'Project not found'));
       const back = element('button', 'Projects', 'back');
