@@ -13,6 +13,8 @@ SQLite database location with environment variables:
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
+Open `/` to create and open projects. Each project page lets you create tasks,
+toggle completion, and filter by All, Open, or Completed. Projects and tasks
+persist in the configured SQLite database. `GET /health` returns `{"status":"ok"}`.
 
 Run the integration checks with `npm test`.
