@@ -253,7 +253,41 @@ async function renderTasks(project) {
         }
       });
       priorityControls.append(priorityLabel, priority);
-      row.append(title, checkbox, priorityControls, renameForm);
+      const dueForm = document.createElement('form');
+      const dueLabel = document.createElement('label');
+      dueLabel.htmlFor = `task-due-date-${task.id}`;
+      dueLabel.textContent = 'Task due date';
+      const dueControls = document.createElement('div');
+      dueControls.className = 'create-controls';
+      const dueInput = document.createElement('input');
+      dueInput.id = dueLabel.htmlFor;
+      dueInput.type = 'text';
+      dueInput.name = 'due_date';
+      dueInput.autocomplete = 'off';
+      dueInput.value = task.due_date;
+      dueInput.disabled = project.archived;
+      const dueButton = document.createElement('button');
+      dueButton.type = 'submit';
+      dueButton.textContent = 'Save due date';
+      dueButton.disabled = project.archived;
+      dueForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (dueButton.disabled) return;
+        app.querySelector('[role="alert"]')?.remove();
+        dueButton.disabled = true;
+        try {
+          const saved = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due_date: dueInput.value }),
+          });
+          Object.assign(task, saved);
+          dueInput.value = task.due_date;
+        } catch (error) { showError(error); }
+        finally { dueButton.disabled = project.archived; }
+      });
+      dueControls.append(dueInput, dueButton);
+      dueForm.append(dueLabel, dueControls);
+      row.append(title, checkbox, priorityControls, renameForm, dueForm);
       list.append(row);
     }
   }

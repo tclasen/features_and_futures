@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 
-test('existing tasks migrate to Normal without changing their data', async () => {
+test('existing tasks migrate to Normal and empty due dates without changing their data', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
   const databasePath = join(directory, 'legacy.sqlite');
   const legacy = new DatabaseSync(databasePath);
@@ -41,8 +41,8 @@ test('existing tasks migrate to Normal without changing their data', async () =>
     const [code] = await once(child, 'exit');
     assert.equal(code, 0, diagnostics);
     assert.deepEqual(JSON.parse(output), [
-      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal' },
-      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal' },
+      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal', due_date: '' },
+      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal', due_date: '' },
     ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -332,6 +332,52 @@ test('projects, tasks, archives, renames, priorities, and summaries persist with
     await start();
     assert.deepEqual(await projects(), expected);
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask, inherited, afterRestore]);
+    // Due dates validate calendar days and change only the addressed task.
+    const saveDate = (projectId, taskId, due_date) => fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ due_date }),
+    });
+    assert.equal(firstTask.due_date, '');
+    assert.equal(afterRestore.due_date, '');
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28', '  2026-10-12 \n']) {
+      const saved = await saveDate(first.id, firstTask.id, date);
+      assert.equal(saved.status, 200);
+      firstTask.due_date = date.trim();
+      assert.deepEqual(await saved.json(), firstTask);
+    }
+    for (const invalid of ['0000-01-01', '10000-01-01', '1900-02-29', '2100-02-29', '2025-02-29', '2024-02-30', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00', '2026-01-32', '2026-1-01', '26-01-01', '2026-01-01T00:00:00Z', 'invalid', null, 1]) {
+      const response = await saveDate(first.id, firstTask.id, invalid);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await response.json(), { error: 'Due date must be a valid YYYY-MM-DD date' });
+      assert.deepEqual(await tasks(first.id), [firstTask, secondTask, inherited, afterRestore]);
+    }
+    assert.equal((await saveDate(second.id, firstTask.id, '2026-12-01')).status, 404);
+    assert.equal((await saveDate(first.id, 99999, '2026-12-01')).status, 404);
+    assert.equal((await saveDate(first.id, secondTask.id, '2027-01-02')).status, 200);
+    secondTask.due_date = '2027-01-02';
+    const renamedDatedTask = await renameTask(first.id, firstTask.id, 'Dated task');
+    firstTask.title = 'Dated task';
+    assert.deepEqual(await renamedDatedTask.json(), firstTask);
+    assert.deepEqual(await projects(), expected);
+    assert.deepEqual(await tasks(second.id), [otherTask, independent]);
+    assert.equal((await archiveProject(first.id, true)).status, 200);
+    first.archived = true;
+    assert.equal((await saveDate(first.id, firstTask.id, '')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, inherited, afterRestore]);
+    assert.deepEqual(await projects(), expected);
+    assert.equal((await archiveProject(first.id, false)).status, 200);
+    first.archived = false;
+    for (const empty of ['', '  \t\n']) {
+      const saved = await saveDate(first.id, firstTask.id, empty);
+      firstTask.due_date = '';
+      assert.equal(saved.status, 200);
+      assert.deepEqual(await saved.json(), firstTask);
+    }
+    await stop();
+    await start();
+    assert.deepEqual(await tasks(first.id), [firstTask, secondTask, inherited, afterRestore]);
+    assert.deepEqual(await projects(), expected);
     assert.equal((await fetch(`${base}/api/projects/99999`)).status, 404);
   } finally {
     await stop();

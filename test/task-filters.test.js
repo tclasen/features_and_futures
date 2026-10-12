@@ -63,8 +63,8 @@ class Element {
 async function projectPage(archived = false) {
   const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
-    { id: index * 2 + 1, title: `${priority} open`, completed: false, priority },
-    { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority },
+    { id: index * 2 + 1, title: `${priority} open`, completed: false, priority, due_date: '' },
+    { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority, due_date: '' },
   ]);
   const app = new Element('main');
   const document = { querySelector: () => app, createElement: (tag) => new Element(tag) };
@@ -80,6 +80,12 @@ async function projectPage(archived = false) {
       }
       const task = tasks.find((task) => task.id === Number(path.split('/').at(-1)));
       if (change.title !== undefined) change.title = change.title.trim();
+      if (change.due_date !== undefined) {
+        if (change.due_date === 'invalid') {
+          return { ok: false, json: async () => ({ error: 'Due date must be a valid YYYY-MM-DD date' }) };
+        }
+        change.due_date = change.due_date.trim();
+      }
       writes.push(change);
       Object.assign(task, change);
       return { ok: true, json: async () => structuredClone(task) };
@@ -174,7 +180,7 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(app.querySelector('#empty-tasks').hidden, false);
   assert.equal(completion.value, 'open');
   assert.equal(priority.value, 'Low');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Low open', completed: false, priority: 'High', due_date: '' });
   await select(priority, 'High');
   assert.deepEqual(titles(), ['Low open', 'High open']);
   const checkbox = rows()[0].querySelector('input');
@@ -192,6 +198,54 @@ test('task edits re-evaluate both filters and renaming preserves selections and 
   assert.equal(rows()[0].querySelector('input').attributes['aria-label'], 'Complete Renamed task');
   assert.equal(completion.value, 'completed');
   assert.equal(priority.value, 'High');
-  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High' });
+  assert.deepEqual(tasks[0], { id: 1, title: 'Renamed task', completed: true, priority: 'High', due_date: '' });
   assert.deepEqual(page.writes, [{ priority: 'High' }, { completed: true }, { title: 'Renamed task' }]);
+});
+
+test('due date controls save, clear, and report errors without changing filters or task membership', async () => {
+  const { app, select, completion, priority, rows, titles, tasks, project } = await projectPage();
+  await select(completion, 'completed');
+  await select(priority, 'Low');
+  const row = rows()[0];
+  const dueForm = row.querySelectorAll('form')[1];
+  const input = dueForm.querySelector('input');
+  assert.equal(input.type, 'text');
+  assert.equal(input.value, '');
+  assert.equal(dueForm.querySelector('label').textContent, 'Task due date');
+  assert.equal(dueForm.querySelector('label').htmlFor, input.id);
+  assert.equal(dueForm.querySelector('button').textContent, 'Save due date');
+  const before = structuredClone(tasks[1]);
+  input.value = '  0001-01-01  ';
+  await dueForm.fire('submit');
+  assert.equal(input.value, '0001-01-01');
+  assert.deepEqual(tasks[1], { ...before, due_date: '0001-01-01' });
+  input.value = 'invalid';
+  await dueForm.fire('submit');
+  assert.equal(app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
+  assert.equal(tasks[1].due_date, '0001-01-01');
+  const rename = row.querySelector('form');
+  rename.querySelector('input').value = 'Renamed dated task';
+  await rename.fire('submit');
+  assert.equal(tasks[1].due_date, '0001-01-01');
+  input.value = '  \t\n';
+  await dueForm.fire('submit');
+  assert.equal(input.value, '');
+  assert.equal(tasks[1].due_date, '');
+  assert.equal(app.querySelector('[role="alert"]'), null);
+  assert.equal(completion.value, 'completed');
+  assert.equal(priority.value, 'Low');
+  assert.deepEqual(titles(), ['Renamed dated task']);
+  assert.equal(project.completed, 3);
+  assert.equal(project.total, 6);
+});
+
+test('archived task due dates disable both controls and prevent saves', async () => {
+  const { rows, writes } = await projectPage(true);
+  for (const row of rows()) {
+    const form = row.querySelectorAll('form')[1];
+    assert.equal(form.querySelector('input').disabled, true);
+    assert.equal(form.querySelector('button').disabled, true);
+    await form.fire('submit');
+  }
+  assert.deepEqual(writes, []);
 });

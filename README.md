@@ -33,6 +33,11 @@ changing it leaves existing tasks and both filters unchanged. Defaults persist
 independently for each project and are disabled during archival.
 Renaming preserves completion and
 priority; archived projects disable task renaming and priority changes.
+Each task also has an optional Task due date and Save due date button. Dates use
+real Gregorian calendar days in YYYY-MM-DD format (years 0001–9999), without
+timezone conversion. Saving blank text clears the date; invalid dates show an
+alert and preserve the saved value. Due dates persist independently, and archived
+projects disable their date controls until restoration.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
 
