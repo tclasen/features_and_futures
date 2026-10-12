@@ -235,8 +235,13 @@ const server = http.createServer(async (req, res) => {
         }
         // SQLite may report zero changed rows for a no-op update. Check ownership
         // separately so saving the already-current date remains a successful edit.
-        if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
+        const existingTask = getTask.get(taskId);
+        if (!existingTask || existingTask.projectId !== projectId) return json(res, 404, { error: 'Task not found' });
         updateDueDate.run(canonical, taskId, projectId);
+        const savedTask = getTask.get(taskId);
+        if (savedTask.projectId !== projectId || savedTask.dueDate !== canonical) {
+          throw new Error('Due date was not persisted');
+        }
         // Read back from SQLite rather than echoing the request: subsequent reloads
         // and process restarts use this persisted value as the source of truth.
       } else if (typeof data.notes === 'string') {
