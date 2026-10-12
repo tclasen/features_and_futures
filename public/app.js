@@ -131,6 +131,11 @@ async function renderProject(id) {
   for (const value of ['All', 'Open', 'Completed']) filter.append(element('option', value, { value }));
   filterLabel.append(filter);
   app.append(filterLabel);
+  const priorityFilterLabel = element('label', 'Priority filter');
+  const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
+  priorityFilterLabel.append(priorityFilter);
+  app.append(priorityFilterLabel);
   const list = element('section', undefined, { 'aria-label': 'Tasks' });
   app.append(list);
 
@@ -141,6 +146,7 @@ async function renderProject(id) {
     list.replaceChildren();
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'project-row' });
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -181,12 +187,14 @@ async function renderProject(id) {
           method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ priority: priority.value })
         });
         if (!update.ok) showError('Could not update task priority');
+        else await renderTasks();
       });
       row.append(priority);
       list.append(row);
     }
   };
   filter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
+  priorityFilter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const title = input.value.trim();
