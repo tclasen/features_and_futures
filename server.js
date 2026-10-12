@@ -14,10 +14,22 @@ database.exec(`
     name TEXT NOT NULL
   )
 `);
+database.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0
+  )
+`);
 
 const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
 const getProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, statusCode, value) {
   response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -46,6 +58,9 @@ function sendPage(response) {
     [hidden] { display: none !important; }
     #projects { display: grid; gap: 10px; padding: 0; list-style: none; }
     [data-testid="project-row"] { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 16px; border: 1px solid #d6dde7; border-radius: 6px; background: white; }
+    #tasks { display: grid; gap: 10px; padding: 0; list-style: none; }
+    [data-testid="task-row"] { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #d6dde7; border-radius: 6px; background: white; }
+    [data-testid="task-row"] input { width: auto; }
     #detail { margin-bottom: 20px; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } input { width: 100%; } button { align-self: start; } }
   </style>
@@ -65,6 +80,16 @@ function sendPage(response) {
     <section id="detail" hidden>
       <button id="back" type="button">Projects</button>
       <h1 id="project-title"></h1>
+      <form id="task-form">
+        <label for="task-title">Task title</label>
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit">Create task</button>
+      </form>
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option>All</option><option>Open</option><option>Completed</option>
+      </select>
+      <ul id="tasks" aria-label="Tasks"></ul>
     </section>
   </main>
   <script>
@@ -72,6 +97,8 @@ function sendPage(response) {
     const detailView = document.querySelector('#detail');
     const projectList = document.querySelector('#projects');
     const error = document.querySelector('#error');
+    const taskList = document.querySelector('#tasks');
+    let currentProjectId = null;
 
     async function loadProjects() {
       const response = await fetch('/api/projects');
@@ -82,6 +109,7 @@ function sendPage(response) {
     async function showList() {
       listView.hidden = false;
       detailView.hidden = true;
+      error.hidden = true;
       projectList.replaceChildren();
       for (const project of await loadProjects()) {
         const row = document.createElement('li');
@@ -101,10 +129,63 @@ function sendPage(response) {
       const response = await fetch('/api/projects/' + encodeURIComponent(id));
       if (!response.ok) { window.location.replace('/'); return; }
       const project = await response.json();
+      currentProjectId = id;
       listView.hidden = true;
       detailView.hidden = false;
       document.querySelector('#project-title').textContent = project.name;
+      error.hidden = true;
+      await renderTasks();
     }
+
+    async function renderTasks() {
+      if (!currentProjectId) return;
+      const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks');
+      if (!response.ok) throw new Error('Unable to load tasks');
+      const tasks = await response.json();
+      const filter = document.querySelector('#task-filter').value;
+      taskList.replaceChildren();
+      for (const task of tasks) {
+        if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
+        const row = document.createElement('li');
+        row.dataset.testid = 'task-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(task.completed);
+        checkbox.setAttribute('aria-label', 'Complete ' + task.title);
+        checkbox.addEventListener('change', async () => {
+          const updated = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks/' + task.id, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked })
+          });
+          if (!updated.ok) throw new Error('Unable to update task');
+          await renderTasks();
+        });
+        const title = document.createElement('span');
+        title.textContent = task.title;
+        row.append(checkbox, title);
+        taskList.append(row);
+      }
+    }
+
+    document.querySelector('#task-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.querySelector('#task-title');
+      const title = input.value.trim();
+      if (!title) {
+        error.textContent = 'Task title is required';
+        error.hidden = false;
+        return;
+      }
+      error.hidden = true;
+      const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+      if (!response.ok) throw new Error('Unable to create task');
+      input.value = '';
+      await renderTasks();
+    });
+    document.querySelector('#task-filter').addEventListener('change', renderTasks);
 
     document.querySelector('#create-form').addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -171,6 +252,39 @@ const server = createServer(async (request, response) => {
     const project = getProject.get(Number(projectMatch[1]));
     if (!project) sendJson(response, 404, { error: 'Project not found' });
     else sendJson(response, 200, project);
+    return;
+  }
+  const tasksMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasksMatch && request.method === 'GET') {
+    const projectId = Number(tasksMatch[1]);
+    if (!getProject.get(projectId)) sendJson(response, 404, { error: 'Project not found' });
+    else sendJson(response, 200, listTasks.all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
+    return;
+  }
+  if (tasksMatch && request.method === 'POST') {
+    try {
+      const projectId = Number(tasksMatch[1]);
+      if (!getProject.get(projectId)) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      const body = await readRequestBody(request);
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
+      const result = createTask.run(projectId, title);
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
+  const taskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
+  if (taskMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(taskMatch[1]);
+      const taskId = Number(taskMatch[2]);
+      const body = await readRequestBody(request);
+      if (typeof body.completed !== 'boolean') { sendJson(response, 400, { error: 'completed must be a boolean' }); return; }
+      const task = getTask.get(taskId, projectId);
+      if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+      sendJson(response, 200, { ...task, completed: body.completed });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
   if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
