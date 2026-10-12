@@ -1,0 +1,68 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { once } from 'node:events';
+
+test('projects validate, navigate, and survive a server restart', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  const port = 18080;
+  const base = `http://127.0.0.1:${port}`;
+  let child;
+  async function start() {
+    child = spawn(process.execPath, ['server.js'], {
+      env: { ...process.env, PORT: String(port), DB_PATH: join(dir, 'projects.sqlite') },
+      stdio: 'ignore'
+    });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (child.exitCode !== null) throw new Error('Server exited before ready');
+      try {
+        const response = await fetch(`${base}/health`);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { status: 'ok' });
+        return;
+      } catch { await new Promise(resolve => setTimeout(resolve, 25)); }
+    }
+    throw new Error('Server did not become ready');
+  }
+  async function stop() {
+    if (child && child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+  }
+  const create = name => fetch(`${base}/projects`, {
+    method: 'POST', body: new URLSearchParams({ name }), redirect: 'manual'
+  });
+  try {
+    await start();
+    const initial = await (await fetch(base)).text();
+    assert.match(initial, /<h1>Workboard<\/h1>/);
+    assert.match(initial, /<label for="project-name">Project name<\/label>/);
+    const invalid = await create('   ');
+    assert.equal(invalid.status, 422);
+    const invalidPage = await invalid.text();
+    assert.match(invalidPage, /role="alert">Project name is required/);
+    assert.doesNotMatch(invalidPage, /data-testid="project-row"/);
+    assert.equal((await create('  First project  ')).status, 303);
+    assert.equal((await create('<Second>')).status, 303);
+    const listing = await (await fetch(base)).text();
+    assert.equal((listing.match(/data-testid="project-row"/g) || []).length, 2);
+    assert.ok(listing.indexOf('First project') < listing.indexOf('&lt;Second&gt;'));
+    assert.match(listing, /action="\/projects\/1"/);
+    const detail = await (await fetch(`${base}/projects/1`)).text();
+    assert.match(detail, /<h1>First project<\/h1>/);
+    assert.match(detail, /<button type="submit">Projects<\/button>/);
+    assert.equal((await fetch(`${base}/projects/999`)).status, 404);
+    await stop();
+    await start();
+    assert.equal(await (await fetch(base)).text(), listing);
+    assert.equal(await (await fetch(`${base}/projects/1`)).text(), detail);
+  } finally {
+    await stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
