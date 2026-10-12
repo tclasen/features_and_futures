@@ -35,6 +35,8 @@ async function renderList() {
   const importButton = element('button', 'Import project', { type: 'submit' });
   importForm.append(jsonInput, importedName, importButton);
   app.append(importForm);
+  const directoryLink = element('a', 'Task directory', { href: '/directory' });
+  app.append(directoryLink);
   importForm.addEventListener('submit', async event => {
     event.preventDefault();
     let document;
@@ -384,6 +386,56 @@ function isValidDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+async function renderDirectory() {
+  app.replaceChildren(element('h1', 'Task directory'));
+  const back = element('button', 'Projects', { type: 'button' });
+  back.addEventListener('click', () => { window.location.href = '/'; });
+  app.append(back);
+  const scope = element('select', undefined, { 'aria-label': 'Project scope' });
+  for (const value of ['Active', 'Archived']) scope.append(element('option', value, { value }));
+  const taskFilter = element('select', undefined, { 'aria-label': 'Task filter' });
+  for (const value of ['All', 'Open', 'Completed', 'Deleted']) taskFilter.append(element('option', value, { value }));
+  const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
+  for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
+  const searchForm = element('form');
+  const search = element('input', undefined, { type: 'text', 'aria-label': 'Directory search' });
+  searchForm.append(search, element('button', 'Search directory', { type: 'submit' }));
+  const from = element('input', undefined, { type: 'text', 'aria-label': 'Due from' });
+  const through = element('input', undefined, { type: 'text', 'aria-label': 'Due through' });
+  const rangeForm = element('form');
+  rangeForm.append(from, through, element('button', 'Apply due range', { type: 'submit' }));
+  const list = element('section', undefined, { 'aria-label': 'Directory tasks' });
+  app.append(scope, taskFilter, priorityFilter, searchForm, rangeForm, list);
+  let query = '', low = '', high = '';
+  const render = async () => {
+    const response = await fetch('/api/directory');
+    const rows = await response.json(); list.replaceChildren();
+    for (const task of rows) {
+      if ((scope.value === 'Active' && task.archived) || (scope.value === 'Archived' && !task.archived)) continue;
+      if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
+      if (taskFilter.value === 'Open' && task.completed || taskFilter.value === 'Completed' && !task.completed) continue;
+      if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if (!searchMatches(task.title, query)) continue;
+      if ((low || high) && (!task.dueDate || low && task.dueDate < low || high && task.dueDate > high)) continue;
+      const row = element('div', undefined, { 'data-testid': 'directory-task-row' });
+      row.append(element('span', task.title, { 'data-testid': 'directory-task-title' }), element('span', task.projectName, { 'data-testid': 'directory-project-name' }));
+      row.append(element('span', task.completed ? 'Completed' : 'Open', { 'data-testid': 'directory-task-completion' }), element('span', task.priority, { 'data-testid': 'directory-task-priority' }), element('span', task.dueDate, { 'data-testid': 'directory-task-due-date' }), element('span', task.notes, { 'data-testid': 'directory-task-notes' }));
+      const open = element('button', 'Open project', { type: 'button' });
+      open.addEventListener('click', () => { window.location.href = `/projects/${task.projectId}`; }); row.append(open); list.append(row);
+    }
+  };
+  for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', () => render().catch(() => showError('Could not load directory')));
+  searchForm.addEventListener('submit', event => { event.preventDefault(); query = search.value.trim(); render(); });
+  rangeForm.addEventListener('submit', event => {
+    event.preventDefault(); const a = from.value.trim(), b = through.value.trim();
+    if (a && !isValidDate(a) || b && !isValidDate(b)) return showError('Due range must use valid YYYY-MM-DD dates');
+    if (a && b && a > b) return showError('Due from must not be after Due through');
+    low = a; high = b; render();
+  });
+  await render();
+}
+
 const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
 if (match) renderProject(decodeURIComponent(match[1])).catch(() => showError('Could not load project'));
+else if (window.location.pathname === '/directory') renderDirectory().catch(() => showError('Could not load directory'));
 else renderList().catch(() => showError('Could not load projects'));

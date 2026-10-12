@@ -186,6 +186,13 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     return sendJson(response, 200, { status: 'ok' });
   }
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = db.prepare(`SELECT p.id AS projectId, p.name AS projectName, p.archived,
+      t.id AS taskId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      ORDER BY p.id, t.sort_order, t.id`).all();
+    return sendJson(response, 200, rows.map(row => ({ ...row, archived: Boolean(row.archived), completed: Boolean(row.completed), deleted: Boolean(row.deleted), dueDate: row.dueDate || '', notes: row.notes || '' })));
+  }
   const exportRoute = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
   if (exportRoute && request.method === 'GET') {
     const projectId = Number(exportRoute[1]);
@@ -284,7 +291,7 @@ const server = createServer(async (request, response) => {
     const result = db.prepare('INSERT INTO projects (name) VALUES (?)').run(name);
     return sendJson(response, 201, { id: Number(result.lastInsertRowid), name });
   }
-  if (request.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/projects/'))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || url.pathname.startsWith('/projects/'))) {
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     return response.end(indexHtml);
   }
