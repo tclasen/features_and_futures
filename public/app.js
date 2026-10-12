@@ -95,6 +95,16 @@ function navigate(path, replace = false) {
   showRoute();
 }
 
+document.querySelector('#import-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const error = document.querySelector('#import-error');
+  error.hidden = true;
+  const response = await fetch('/api/projects/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ document: document.querySelector('#project-json').value, name: document.querySelector('#imported-project-name').value }) });
+  if (!response.ok) { error.textContent = (await response.json()).error || 'Invalid project JSON'; error.hidden = false; return; }
+  const project = await response.json();
+  navigate(`/projects/${project.id}`);
+});
+
 document.querySelector('#create-form').addEventListener('submit', async event => {
   event.preventDefault();
   errorMessage.hidden = true;
