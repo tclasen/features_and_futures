@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #202b3c; background: #f5f7fa; }
+    body { max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+    h1 { margin-top: 0; }
+    form, .project-row { display: flex; gap: 12px; align-items: center; }
+    form { margin: 24px 0; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    input { box-sizing: border-box; min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid #aeb9c8; border-radius: 5px; font: inherit; }
+    form > div { flex: 1; }
+    button { padding: 10px 14px; border: 0; border-radius: 5px; background: #2459a6; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #84b6ff; outline-offset: 2px; }
+    .project-row { justify-content: space-between; margin: 10px 0; padding: 14px 16px; background: white; border: 1px solid #dce2ea; border-radius: 6px; }
+    .alert { color: #a32323; margin: 12px 0; }
+    .back { margin-bottom: 24px; }
+    @media (max-width: 500px) { body { padding: 28px 16px; } form { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    const app = document.querySelector('#app');
+    const requestProjects = async (options) => {
+      const response = await fetch('/api/projects', options);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
+
+    function renderList(projects) {
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Workboard';
+      app.append(heading);
+      const form = document.createElement('form');
+      const field = document.createElement('div');
+      const label = document.createElement('label');
+      label.htmlFor = 'project-name';
+      label.textContent = 'Project name';
+      const input = document.createElement('input');
+      input.id = 'project-name';
+      input.name = 'name';
+      input.type = 'text';
+      field.append(label, input);
+      const submit = document.createElement('button');
+      submit.type = 'submit';
+      submit.textContent = 'Create project';
+      form.append(field, submit);
+      const alert = document.createElement('p');
+      alert.className = 'alert';
+      alert.setAttribute('role', 'alert');
+      alert.hidden = true;
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+          await requestProjects({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: input.value }) });
+          renderList(await requestProjects());
+        } catch (error) {
+          alert.textContent = error.message;
+          alert.hidden = false;
+        }
+      });
+      app.append(form, alert);
+      for (const project of projects) {
+        const row = document.createElement('section');
+        row.dataset.testid = 'project-row';
+        row.className = 'project-row';
+        const name = document.createElement('span');
+        name.textContent = project.name;
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.textContent = 'Open project';
+        open.addEventListener('click', () => {
+          history.pushState({}, '', `/projects/${project.id}`);
+          render();
+        });
+        row.append(name, open);
+        app.append(row);
+      }
+    }
+
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/(\d+)$/);
+      if (!match) return renderList(await requestProjects());
+      const projects = await requestProjects();
+      const project = projects.find((item) => String(item.id) === match[1]);
+      app.replaceChildren();
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.className = 'back';
+      back.textContent = 'Projects';
+      back.addEventListener('click', () => {
+        history.pushState({}, '', '/');
+        render();
+      });
+      app.append(back);
+      const heading = document.createElement('h1');
+      heading.textContent = project ? project.name : 'Project not found';
+      app.append(heading);
+    }
+
+    addEventListener('popstate', () => render());
+    render().catch((error) => { app.textContent = error.message; });
+  </script>
+</body>
+</html>
