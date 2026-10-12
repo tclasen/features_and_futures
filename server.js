@@ -38,6 +38,9 @@ const migratedTaskColumns = new Set(db.prepare('PRAGMA table_info(tasks)').all()
 if (!migratedTaskColumns.has('due_date') || !migratedTaskColumns.has('notes')) {
   throw new Error('Task persistence schema migration failed');
 }
+for (const column of ['due_date', 'notes', 'deleted', 'priority', 'sort_order']) {
+  if (!migratedTaskColumns.has(column)) throw new Error(`Task schema is missing ${column}`);
+}
 if (!new Set(db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name)).has('deleted')) db.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
