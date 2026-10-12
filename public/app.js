@@ -73,6 +73,7 @@ async function showRoute() {
     document.querySelector('#due-through').value = '';
   }
   document.querySelector('#detail-name').textContent = project.name;
+  document.querySelector('#download-project').href = `/api/projects/${project.id}/export`;
   document.querySelector('#archived-notice').hidden = !project.archived;
   document.querySelector('#task-title').disabled = Boolean(project.archived);
   document.querySelector('#task-form button').disabled = Boolean(project.archived);

@@ -207,6 +207,30 @@ const server = http.createServer(async (req, res) => {
   }
 
   const projectMatch = url.pathname.match(/^\/projects\/(\d+)\/?$/);
+  const exportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export\/?$/);
+  if (req.method === 'GET' && exportMatch) {
+    const projectId = Number(exportMatch[1]);
+    const project = getProject.get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    const tasks = listTasks.all(projectId).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: (task.notes || '').replace(/\\r\\n?/g, '\\n'),
+      deleted: Boolean(task.deleted)
+    }));
+    const document = { format: 'workboard-project', version: 1, project: {
+      name: project.name, archived: Boolean(project.archived),
+      defaultPriority: project.defaultPriority || 'Normal', tasks
+    } };
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.end(JSON.stringify(document));
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
     if (!project) return send(res, 404, 'Not found', 'text/plain; charset=utf-8');
