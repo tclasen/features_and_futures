@@ -78,3 +78,10 @@ Invalid documents and blank override names leave all data unchanged and retain t
 Import tests cover required fields and types, Gregorian dates, late-task validation failures,
 archived/deleted behavior, independent identities, restoration and return order, empty projects,
 and restart persistence.
+The home page's `Task directory` opens a read-only cross-project view. Project scope,
+live/deleted completion filter, priority, inclusive due range and normalized title search
+intersect without modifying stored data. Results follow project creation order and remembered
+task order, display literal notes, and link to the owner's project. Each opening resets
+filters and search. Directory tests cover archived/deleted tasks, filter intersection,
+invalid-range preservation, plain-text display, absence of editing controls, unchanged
+database state, movement/return order and restart persistence.
