@@ -1389,3 +1389,132 @@ test('task search retains intersecting filters through edits, movement, errors, 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('notes preserve literal multiline text, filters, ownership, return order and archive restrictions', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    await createProject(server.baseUrl, 'Source');
+    await createProject(server.baseUrl, 'Destination');
+    for (const title of ['Match first', 'Other', 'Match last']) {
+      await postForm(server.baseUrl, '/projects/1/tasks', { title });
+    }
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '2026-10-12' });
+    const originalRows = taskRows(await read());
+    for (const row of originalRows) assert.match(row, /name="notes"><\/textarea>/);
+    const filters = {
+      filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-01',
+      dueThrough: '2026-10-31', search: 'match',
+    };
+    const path = `/projects/1?${new URLSearchParams(filters)}`;
+    const notes = '\n  café 日本語 😀\n</textarea><script>alert("x")</script> & \'literal\'\n\t  ';
+    const encodedNotes = '&#10;  café 日本語 😀&#10;&lt;/textarea&gt;&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;literal&#39;&#10;\t  ';
+    const save = async (project, task, value, selected = {}) => postForm(
+      server.baseUrl, `/projects/${project}/tasks/${task}/notes`, { ...selected, notes: value },
+    );
+    const saved = await save(1, 1, notes, filters);
+    assert.equal(saved.status, 303);
+    assert.equal(saved.headers.get('location'), path);
+    const html = await read(path);
+    const filteredRows = taskRows(html);
+    assert.equal(filteredRows.length, 1);
+    assert.ok(filteredRows[0].includes(`name="notes">${encodedNotes}</textarea>`));
+    assert.match(filteredRows[0], /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(filteredRows[0], />Save notes<\/button>/);
+    for (const [name, value] of Object.entries(filters)) {
+      assert.ok(filteredRows[0].includes(`name="${name}" value="${value}"`));
+    }
+    assert.match(html, /id="due-from"[^>]*value="2026-10-01"/);
+    assert.match(html, /id="task-search"[^>]*value="match"/);
+    assert.match(html, /id="task-filter"[^>]*><option>All<\/option><option>Open<\/option><option selected>Completed/);
+    assert.match(html, /id="priority-filter"[^>]*>.*<option selected>High/s);
+    assert.deepEqual(taskRows(await read()).slice(1), originalRows.slice(1));
+    assert.equal(taskRows(await read('/projects/1?search=caf%C3%A9')).length, 0);
+    assert.equal((await save(2, 1, 'Wrong owner')).status, 404);
+    assert.equal((await save(1, 999, 'Missing')).status, 404);
+    await postForm(server.baseUrl, '/projects/1/tasks/1/rename', { title: 'Match revised' });
+    await postForm(server.baseUrl, '/projects/1/rename', { name: 'Renamed source' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Destination first' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/move', { destinationProject: '2', ...filters });
+    assert.equal(taskRows(await read(path)).length, 0);
+    assert.ok(taskRows(await read('/projects/2'))[1].includes(encodedNotes));
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.ok(taskRows(await read('/projects/2'))[1].includes(encodedNotes));
+    await postForm(server.baseUrl, '/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(taskTitles(await read()), ['Match revised', 'Other', 'Match last']);
+    assert.match(taskRows(await read())[0], /aria-label="Complete Match revised" checked/);
+    assert.match(taskRows(await read())[0], /name="dueDate" type="text" value="2026-10-12"/);
+    assert.match(rows(await read('/'))[0], /1\/3 completed/);
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    const archived = await read(path);
+    assert.ok(archived.includes(`name="notes" disabled>${encodedNotes}</textarea>`));
+    assert.match(archived, /disabled>Save notes<\/button>/);
+    assert.equal((await save(1, 1, 'Forbidden', filters)).status, 403);
+    assert.equal(await read(path), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read(path), archived);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assert.ok((await read(path)).includes(`name="notes">${encodedNotes}</textarea>`));
+    assert.equal((await save(1, 1, ' \t\n ', filters)).status, 303);
+    assert.ok((await read(path)).includes('name="notes"> \t&#10; </textarea>'));
+    assert.equal((await save(1, 1, '', filters)).status, 303);
+    const cleared = taskRows(await read(path));
+    assert.match(cleared[0], /name="notes"><\/textarea>/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read(path)), cleared);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('notes upgrade initializes only notes and preserves all legacy data and position history', { timeout: 15000 }, async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-upgrade-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+        due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+      CREATE TABLE task_project_positions (task_id INTEGER NOT NULL REFERENCES tasks(id),
+        project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL,
+        PRIMARY KEY (task_id, project_id));
+      INSERT INTO projects VALUES (1, 'Archived  source', 1, 'Low'), (2, 'Destination', 0, 'High');
+      INSERT INTO tasks VALUES (7, 1, 'Legacy  task', 1, 'High', '0001-01-01', 4),
+        (3, 2, 'Moved task', 0, 'Low', '', 8);
+      INSERT INTO task_project_positions VALUES (7, 1, 4), (3, 1, 2), (3, 2, 8);`);
+    const beforeTasks = database.prepare('SELECT * FROM tasks ORDER BY id').all();
+    const beforeProjects = database.prepare('SELECT * FROM projects ORDER BY id').all();
+    const beforePositions = database.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all();
+    database.close();
+    server = await startServer(databasePath);
+    assert.equal((await fetch(server.baseUrl + '/health')).status, 200);
+    await server.stop();
+    server = undefined;
+    const upgraded = new DatabaseSync(databasePath);
+    try {
+      const tasks = upgraded.prepare('SELECT * FROM tasks ORDER BY id').all();
+      assert.ok(tasks.every((task) => task.notes === ''));
+      assert.deepEqual(tasks.map(({ notes, ...task }) => task), beforeTasks.map((task) => ({ ...task })));
+      assert.deepEqual(upgraded.prepare('SELECT * FROM projects ORDER BY id').all(), beforeProjects);
+      assert.deepEqual(upgraded.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(), beforePositions);
+    } finally {
+      upgraded.close();
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -63,10 +63,11 @@ function page(title, content) {
   label { display: block; font-weight: 600; margin-bottom: 8px; }
   .fields { display: flex; gap: 12px; flex-wrap: wrap; }
   input[type="text"] { flex: 1; min-width: 180px; padding: 12px; border: 1px solid #8290a0; border-radius: 6px; font: inherit; }
+  textarea { width: 100%; min-height: 100px; padding: 12px; border: 1px solid #8290a0; border-radius: 6px; font: inherit; }
   input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
   select { padding: 10px; font: inherit; }
   .filter { margin-top: 24px; }
-  button:disabled, input:disabled, select:disabled { cursor: default; opacity: 0.6; }
+  button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: default; opacity: 0.6; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   button { padding: 12px 18px; border: 1px solid #2056ad; border-radius: 6px; background: #2056ad; color: white; font: inherit; cursor: pointer; }
   :focus-visible { outline: 3px solid #d38b13; outline-offset: 3px; }
@@ -134,6 +135,10 @@ export function createApp(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
     database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
+  // Notes preserve literal text; upgrades initialize only this new field.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
   // IDs retain task identity; positions track order within the current project.
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
     database.exec(`BEGIN;
@@ -153,7 +158,7 @@ export function createApp(databasePath) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date FROM tasks
+  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date, notes FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?)
       AND (? = 'All' OR priority = ?)
       AND (? = '' OR (due_date != '' AND due_date >= ?))
@@ -163,9 +168,12 @@ export function createApp(databasePath) {
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+  const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
   function taskRow(task, project, destinations, filters, renameError, dueDateError) {
     const disabled = project.archived ? ' disabled' : '';
+    // Encode line breaks so HTML parsing preserves even a leading textarea newline.
+    const notesText = escapeHtml(task.notes).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
     return `<li data-testid="task-row"><span class="name">${escapeHtml(task.title)}</span>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">${hiddenTaskFilters(filters)}<input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${disabled} onchange="this.form.requestSubmit()"><noscript><button type="submit"${disabled}>Save completion</button></noscript></form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
@@ -185,6 +193,12 @@ ${hiddenTaskFilters(filters)}
 <label for="task-due-date-${task.id}">Task due date</label>
 <div class="fields"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${disabled}${dueDateError ? ` aria-describedby="task-due-date-error-${task.id}" aria-invalid="true"` : ''}><button type="submit"${disabled}>Save due date</button></div>
 ${dueDateError ? `<p id="task-due-date-error-${task.id}" role="alert">${escapeHtml(dueDateError)}</p>` : ''}
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+${hiddenTaskFilters(filters)}
+<label for="task-notes-${task.id}">Task notes</label>
+<textarea id="task-notes-${task.id}" name="notes"${disabled}>${notesText}</textarea>
+<button type="submit"${disabled}>Save notes</button>
 </form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
 ${hiddenTaskFilters(filters)}
@@ -291,7 +305,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|move))?|\/(archive|restore|rename|default-priority|due-range))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move))?|\/(archive|restore|rename|default-priority|due-range))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -405,6 +419,8 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
               return;
             }
             taskOrdering.move(taskId, id, destinationId);
+          } else if (projectRoute[3] === 'notes') {
+            updateTaskNotes.run(form.get('notes') ?? '', taskId, id);
           } else if (projectRoute[3] === 'due-date') {
             const dueDate = normalizeDueDate(form.get('dueDate') ?? '');
             if (dueDate === null) {
