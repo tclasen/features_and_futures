@@ -152,8 +152,8 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-function asciiLower(value) {
-  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, letter => letter.toLowerCase());
 }
 
 function readSearch(params) {
@@ -166,7 +166,7 @@ function searchField(search) {
 
 function projectList(error = '', filter = 'Active', search = '') {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
-    .filter(project => asciiLower(project.name).includes(asciiLower(search)));
+    .filter(project => normalizeSearch(project.name).includes(normalizeSearch(search)));
   return page('Projects', `
     <h1>Workboard</h1>
     <form class="create" method="post" action="/projects">
@@ -249,7 +249,7 @@ function projectPage(project, filter = 'All', error = '', renameError = '', task
   const eligibleDestinations = destinations.all(project.id);
   const moveDisabled = project.archived || !eligibleDestinations.length;
   const tasks = listTasks.all(project.id).filter(task =>
-    asciiLower(task.title).includes(asciiLower(search)) &&
+    normalizeSearch(task.title).includes(normalizeSearch(search)) &&
     (filter === 'All' || Boolean(task.completed) === (filter === 'Completed')) &&
     (priority === 'All' || task.priority === priority) &&
     ((!range.from && !range.through) || (task.due_date &&

@@ -74,7 +74,9 @@ current task order on upgrade. Newly created tasks follow all established
 positions, including positions belonging to tasks currently in another project.
 
 Project search and Task search apply trimmed substring queries, ignoring ASCII
-letter case while preserving internal whitespace. Project search intersects the
+letter case and treating each run of ASCII spaces and tabs as one space in both
+queries and names/titles. Stored names and titles keep their original whitespace
+and case. Project search intersects the
 Active/Archived filter. Task search intersects completion, priority and applied
 due range; edits retain every applied filter and immediately update matching
 rows. Searching never changes saved data or summary counts. Archived pages still

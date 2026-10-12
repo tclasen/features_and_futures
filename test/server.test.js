@@ -1158,7 +1158,7 @@ test('inclusive due ranges intersect filters, survive edits, reject invalid rang
   }
 });
 
-test('project search trims only outer whitespace, folds ASCII case, and intersects archive state', async () => {
+test('project search normalizes spaces, folds ASCII case, and intersects archive state', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-project-search-'));
   let server;
   try {
@@ -1180,7 +1180,7 @@ test('project search trims only outer whitespace, folds ASCII case, and intersec
     assert.match(initial, /id="project-search"[^>]*value=""/);
     assert.deepEqual(names(await get('/?search=%20aLpHa%20')), ['Alpha  Board', 'beta ALPHA', '&lt;Alpha &amp; &quot;Board&quot;&gt;']);
     assert.deepEqual(names(await get('/?search=alpha%20%20b')), ['Alpha  Board']);
-    assert.deepEqual(names(await get('/?search=alpha%20b')), []);
+    assert.deepEqual(names(await get('/?search=alpha%20b')), ['Alpha  Board']);
     assert.deepEqual(names(await get('/?search=älpha')), []);
     assert.deepEqual(names(await get('/?search=ÄLPHA')), ['Älpha']);
     assert.deepEqual(names(await get('/?search=%20%09%20')), names(initial));
@@ -1233,7 +1233,7 @@ test('task search intersects all filters and survives edits, movement, validatio
     assert.match(initial, /id="task-search"[^>]*value=""/);
     assert.deepEqual(ids(await get('/projects/1?search=%20aLpHa%20')), [1, 2, 5]);
     assert.deepEqual(ids(await get('/projects/1?search=alpha%20%20o')), [1]);
-    assert.deepEqual(ids(await get('/projects/1?search=alpha%20o')), []);
+    assert.deepEqual(ids(await get('/projects/1?search=alpha%20o')), [1]);
     assert.deepEqual(ids(await get('/projects/1?search=älpha')), []);
     assert.deepEqual(ids(await get('/projects/1?search=ÄLPHA')), [4]);
     assert.deepEqual(ids(await get('/projects/1?search=%20%09')), [1, 2, 3, 4, 5]);
@@ -1312,6 +1312,70 @@ test('task search intersects all filters and survives edits, movement, validatio
     assert.deepEqual(ids(await get(path.replace('search=alpha', 'search='))), [1, 3]);
     await post('/projects/1/restore');
     assert.equal(await get(path), filtered);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('space and tab search normalization preserves original saved names and titles', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const dbPath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const names = html => [...html.matchAll(/class="project-name">([^<]*)<\/span>/g)].map(match => match[1]);
+    const ids = html => [...html.matchAll(/id="task-(\d+)" type="checkbox"/g)].map(match => Number(match[1]));
+    const originals = ['MiXeD  \t \t Board', 'mixed\tboard', 'mixed board', 'mixed\nboard', 'mixed\u00a0board'];
+    for (const name of originals) {
+      await post('/projects', { name });
+      await post('/projects/1/tasks', { title: name });
+    }
+    await post('/projects/1/tasks/1', { completed: '1' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    const initial = await get('/projects/1');
+    const summary = await get('/');
+    for (const query of ['mixed board', 'MIXED\tBOARD', ' \t Mixed \t  \t board \n', 'xed\t \t b']) {
+      const search = new URLSearchParams({ search: query });
+      assert.deepEqual(names(await get(`/?${search}`)), originals.slice(0, 3));
+      const tasks = await get(`/projects/1?${search}`);
+      assert.deepEqual(ids(tasks), [1, 2, 3]);
+      assert.ok(tasks.includes('aria-label="Complete MiXeD  \t \t Board" checked'));
+    }
+    // Newlines and non-ASCII whitespace inside a name are not collapsed.
+    for (const index of [3, 4]) {
+      const search = new URLSearchParams({ search: originals[index] });
+      assert.deepEqual(names(await get(`/?${search}`)), [originals[index]]);
+      assert.deepEqual(ids(await get(`/projects/1?${search}`)), [index + 1]);
+    }
+    const filteredPath = `/projects/1?${new URLSearchParams({ search: 'mixed\t  board', filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29' })}`;
+    const filtered = await get(filteredPath);
+    assert.deepEqual(ids(filtered), [1]);
+    assert.equal(await get('/projects/1'), initial);
+    assert.equal(await get('/'), summary);
+    await server.stop();
+    server = await start(dbPath);
+    assert.equal(await get('/projects/1'), initial);
+    assert.equal(await get('/'), summary);
+    assert.equal(await get(filteredPath), filtered);
+    await post('/projects/1/archive');
+    assert.deepEqual(names(await get('/?filter=Archived&search=mixed%20board')), [originals[0]]);
+    assert.deepEqual(ids(await get(filteredPath)), [1]);
+    assert.match(await get(filteredPath), /id="task-1"[^>]*disabled/);
+    await post('/projects/1/restore');
+    assert.equal(await get(filteredPath), filtered);
+    const saved = new DatabaseSync(dbPath);
+    try {
+      assert.deepEqual(saved.prepare('SELECT name FROM projects ORDER BY id').all().map(row => row.name), originals);
+      assert.deepEqual(saved.prepare('SELECT title FROM tasks ORDER BY id').all().map(row => row.title), originals);
+    } finally {
+      saved.close();
+    }
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
