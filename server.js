@@ -19,7 +19,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    due_date TEXT
+    due_date TEXT,
+    notes TEXT NOT NULL DEFAULT ''
   )
 `);
 
@@ -71,11 +72,15 @@ const updateProjectDefaultPriority = database.prepare('UPDATE projects SET defau
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 
-const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
-const findTask = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -263,6 +268,23 @@ const server = createServer(async (request, response) => {
         return sendJson(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
       }
       const result = updateTaskDueDate.run(dueDate || null, taskId, projectId);
+      if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, findTask.get(taskId, projectId));
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request' });
+    }
+  }
+  const taskNotesMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/notes$/);
+  if (request.method === 'POST' && taskNotesMatch) {
+    const projectId = Number(taskNotesMatch[1]);
+    const taskId = Number(taskNotesMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
+    try {
+      const payload = await readJson(request);
+      if (typeof payload.notes !== 'string') return sendJson(response, 400, { error: 'Task notes must be text' });
+      const result = updateTaskNotes.run(payload.notes, taskId, projectId);
       if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, findTask.get(taskId, projectId));
     } catch {

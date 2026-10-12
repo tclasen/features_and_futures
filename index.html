@@ -13,6 +13,7 @@
     form { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
     label { display: grid; gap: 7px; flex: 1; min-width: 200px; font-weight: 600; }
     input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid #aab5c4; border-radius: 6px; font: inherit; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 5em; padding: 10px 12px; border: 1px solid #aab5c4; border-radius: 6px; font: inherit; }
     button { padding: 10px 15px; border: 0; border-radius: 6px; background: #245fce; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #194da9; }
     .project-list { display: grid; gap: 10px; margin-top: 22px; }
@@ -168,6 +169,10 @@
               <label>Task due date<input type="text" name="due_date" value="${escapeText(task.due_date || '')}" placeholder="YYYY-MM-DD"${archived ? ' disabled' : ''}></label>
               <button type="submit"${archived ? ' disabled' : ''}>Save due date</button>
             </form>
+            <form data-task-notes="${task.id}">
+              <label>Task notes<textarea name="notes"${archived ? ' disabled' : ''}>${escapeText(task.notes || '')}</textarea></label>
+              <button type="submit"${archived ? ' disabled' : ''}>Save notes</button>
+            </form>
             <label>Destination project<select data-destination="${task.id}"${archived || destinations.length === 0 ? ' disabled' : ''}>
               ${destinations.map((project) => `<option value="${project.id}">${escapeText(project.name)}</option>`).join('')}
             </select></label>
@@ -231,6 +236,25 @@
         renderTasks();
       });
       list.addEventListener('submit', async (event) => {
+        const notesForm = event.target.closest('form[data-task-notes]');
+        if (notesForm) {
+          event.preventDefault();
+          const response = await fetch(`/api/projects/${projectId}/tasks/${notesForm.dataset.taskNotes}/notes`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notesForm.elements.notes.value }),
+          });
+          if (!response.ok) {
+            const result = await response.json();
+            alert.textContent = result.error || 'Unable to save notes';
+            alert.hidden = false;
+            return;
+          }
+          const updated = await response.json();
+          tasks = tasks.map((task) => task.id === updated.id ? updated : task);
+          alert.hidden = true;
+          renderTasks();
+          return;
+        }
         const dueDateForm = event.target.closest('form[data-due-date]');
         if (dueDateForm) {
           event.preventDefault();
