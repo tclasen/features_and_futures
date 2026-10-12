@@ -9,7 +9,7 @@ npm start
 The server binds to `0.0.0.0`, using `PORT` (default `8080`) and SQLite at
 `DB_PATH` (default `./data/workboard.sqlite`). Parent directories are created
 on startup. Keep that database file to preserve projects, archive states, tasks,
-and completion states across restarts. Existing databases are migrated automatically.
+completion states, and task priorities across restarts. Existing databases are migrated automatically.
 
 Example:
 
@@ -18,7 +18,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
 `GET /health` returns `{"status":"ok"}`. The UI uses HTML forms with a small
-browser script to submit completion changes and task filters automatically.
+browser script to submit completion changes, priority changes, and filters automatically.
 Project names and task titles are trimmed and HTML-escaped. Projects and tasks
 are ordered by their persistent creation IDs. Each project's tasks can be
 filtered by All (the default), Open, or Completed. The project list defaults to
@@ -31,7 +31,10 @@ Each task row also supports renaming to a trimmed, nonblank title. Task renaming
 preserves ownership, creation order, completion state, filter membership, and
 project summaries. The completion checkbox label follows the saved title.
 Archived projects disable task rename controls and reject rename requests;
-restoration enables them again.
+restoration enables them again. Each task has an independent Low, Normal, or High
+priority, defaulting to Normal for both new and migrated tasks. Priority changes
+preserve all other task data and summaries, persist across restarts, and are
+blocked while the project is archived.
 
 Run automated HTTP and persistence tests:
 

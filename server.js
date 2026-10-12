@@ -68,10 +68,16 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
     db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
   }
-  const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+  // Backfill older tasks with the same default used for new tasks.
+  if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+  }
+  const priorities = ['Low', 'Normal', 'High'];
+  const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+  const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
     COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -138,6 +144,13 @@ export function createApplication(dbPath) {
           <input type="checkbox" name="completed" value="1" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-auto-submit>
         </form>
         <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} data-auto-submit>
+            ${priorities.map(value => `<option${task.priority === value ? ' selected' : ''}>${value}</option>`).join('')}
+          </select>
+        </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">
           <label for="new-task-title-${task.id}">New task title</label>
@@ -227,7 +240,7 @@ export function createApplication(dbPath) {
         renameProject.run(name, id);
         response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
         response.end();
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename))?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
         const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -248,6 +261,17 @@ export function createApplication(dbPath) {
             return;
           }
           insertTask.run(projectId, title);
+        } else if (parts[5] === 'priority') {
+          const taskId = Number(parts[4]);
+          const priority = body.get('priority');
+          if (!priorities.includes(priority)) {
+            sendHtml(400, projectPage(project, filter, 'Invalid task priority'));
+            return;
+          }
+          if (!Number.isSafeInteger(taskId) || !setTaskPriority.run(priority, taskId, projectId).changes) {
+            sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
         } else if (parts[5] === 'rename') {
           const taskId = Number(parts[4]);
           const title = (body.get('title') ?? '').trim();
