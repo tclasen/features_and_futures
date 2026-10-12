@@ -10,6 +10,9 @@ const taskAlert = document.querySelector('#task-alert');
 const tasksNode = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const priorityFilter = document.querySelector('#priority-filter');
+const dueRangeForm = document.querySelector('#due-range-form');
+const dueFromInput = document.querySelector('#due-from');
+const dueThroughInput = document.querySelector('#due-through');
 const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
@@ -18,6 +21,8 @@ const defaultPriority = document.querySelector('#default-priority');
 let activeProjectId = null;
 let currentTasks = [];
 let activeProjectArchived = false;
+let appliedDueFrom = '';
+let appliedDueThrough = '';
 
 async function request(path, options) {
   const response = await fetch(path, options);
@@ -84,6 +89,7 @@ async function openProject(id) {
   const project = await request(`/api/projects/${encodeURIComponent(id)}`);
   taskFilter.value = 'All';
   priorityFilter.value = 'All';
+  resetDueRange();
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
   setProjectArchived(project.archived);
@@ -112,7 +118,10 @@ function drawTasks() {
   const selectedPriority = priorityFilter.value;
   const visible = currentTasks.filter(task =>
     (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
-    (selectedPriority === 'All' || (task.priority || 'Normal') === selectedPriority)
+    (selectedPriority === 'All' || (task.priority || 'Normal') === selectedPriority) &&
+    (!appliedDueFrom && !appliedDueThrough || Boolean(task.dueDate)) &&
+    (!appliedDueFrom || (task.dueDate || '') >= appliedDueFrom) &&
+    (!appliedDueThrough || (task.dueDate || '') <= appliedDueThrough)
   );
   if (!visible.length) {
     const empty = document.createElement('div');
@@ -218,6 +227,7 @@ function drawTasks() {
         task.dueDate = updated.dueDate || null;
         dueDateInput.value = task.dueDate || '';
         taskAlert.hidden = true;
+        drawTasks();
       } catch (error) {
         taskAlert.textContent = error.message;
         taskAlert.hidden = false;
@@ -248,6 +258,9 @@ async function renderRoute() {
     const project = await request(`/api/projects/${encodeURIComponent(decodeURIComponent(match[1]))}`);
     document.querySelector('#detail-name').textContent = project.name;
     activeProjectId = project.id;
+    taskFilter.value = 'All';
+    priorityFilter.value = 'All';
+    resetDueRange();
     setProjectArchived(project.archived);
     defaultPriority.value = project.defaultPriority || 'Normal';
     defaultPriority.dataset.saved = defaultPriority.value;
@@ -313,6 +326,41 @@ taskForm.addEventListener('submit', async event => {
 });
 taskFilter.addEventListener('change', drawTasks);
 priorityFilter.addEventListener('change', drawTasks);
+function resetDueRange() {
+  appliedDueFrom = '';
+  appliedDueThrough = '';
+  dueFromInput.value = '';
+  dueThroughInput.value = '';
+}
+function validCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+}
+dueRangeForm.addEventListener('submit', event => {
+  event.preventDefault();
+  const from = dueFromInput.value.trim();
+  const through = dueThroughInput.value.trim();
+  taskAlert.hidden = true;
+  if ((from && !validCalendarDate(from)) || (through && !validCalendarDate(through))) {
+    taskAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+    taskAlert.hidden = false;
+    return;
+  }
+  if (from && through && from > through) {
+    taskAlert.textContent = 'Due from must not be after Due through';
+    taskAlert.hidden = false;
+    return;
+  }
+  appliedDueFrom = from;
+  appliedDueThrough = through;
+  dueFromInput.value = from;
+  dueThroughInput.value = through;
+  drawTasks();
+});
 defaultPriority.addEventListener('change', async () => {
   const previous = defaultPriority.dataset.saved || 'Normal';
   const selected = defaultPriority.value;
