@@ -20,7 +20,8 @@ database.exec(`
     title TEXT NOT NULL,
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     due_date TEXT,
-    notes TEXT NOT NULL DEFAULT ''
+    notes TEXT NOT NULL DEFAULT '',
+    deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
   )
 `);
 
@@ -58,8 +59,8 @@ if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
 
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived,
-    COUNT(t.id) AS total_count,
-    COALESCE(SUM(t.completed), 0) AS completed_count
+    COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS total_count,
+    COALESCE(SUM(CASE WHEN t.deleted = 0 THEN t.completed ELSE 0 END), 0) AS completed_count
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
 `);
@@ -75,11 +76,15 @@ if (!taskColumns.some((column) => column.name === 'due_date')) {
 if (!taskColumns.some((column) => column.name === 'notes')) {
   database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
 
-const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes
+const setTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
+const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
-const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -309,6 +314,17 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 400, { error: 'Invalid request' });
     }
   }
+  const taskDeletionMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/(delete|restore)$/);
+  if (request.method === 'POST' && taskDeletionMatch) {
+    const projectId = Number(taskDeletionMatch[1]);
+    const taskId = Number(taskDeletionMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
+    const result = setTaskDeleted.run(taskDeletionMatch[3] === 'delete' ? 1 : 0, taskId, projectId);
+    if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
+    return sendJson(response, 200, findTask.get(taskId, projectId));
+  }
   const moveTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
   if (request.method === 'POST' && moveTaskMatch) {
     const sourceProjectId = Number(moveTaskMatch[1]);
@@ -320,6 +336,8 @@ const server = createServer(async (request, response) => {
       const payload = await readJson(request);
       const destinationProjectId = Number(payload.destination_project_id);
       const destination = findProject.get(destinationProjectId);
+      const task = findTask.get(taskId, sourceProjectId);
+      if (task?.deleted) return sendJson(response, 400, { error: 'Deleted tasks cannot be moved' });
       if (!destination || destination.archived || destinationProjectId === sourceProjectId) {
         return sendJson(response, 400, { error: 'A different active destination project is required' });
       }

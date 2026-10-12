@@ -74,7 +74,7 @@
     <p id="task-alert" class="alert" role="alert" hidden></p>
     <label for="task-filter" style="margin-top: 20px">Task filter</label>
     <select id="task-filter">
-      <option>All</option><option>Open</option><option>Completed</option>
+      <option>All</option><option>Open</option><option>Completed</option><option>Deleted</option>
     </select>
     <form id="task-search-form" class="task-controls">
       <label for="task-search">Task search</label>
@@ -138,9 +138,10 @@
       };
       const renderTasks = () => {
         const visibleTasks = tasks.filter((task) => {
-          const matchesCompletion = filter.value === 'All'
-            || (filter.value === 'Open' && !task.completed)
-            || (filter.value === 'Completed' && task.completed);
+          const matchesCompletion = (filter.value === 'Deleted' && task.deleted)
+            || (filter.value !== 'Deleted' && !task.deleted && (filter.value === 'All'
+              || (filter.value === 'Open' && !task.completed)
+              || (filter.value === 'Completed' && task.completed)));
           const matchesPriority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
           const hasRange = appliedRange.from || appliedRange.through;
           const matchesDate = !hasRange || (task.due_date
@@ -152,31 +153,35 @@
         });
         list.innerHTML = visibleTasks.map((task) => {
           const destinations = activeProjects.filter((project) => project.id !== projectId);
+          const locked = archived || Boolean(task.deleted);
+          const taskAction = task.deleted ? 'restore' : 'delete';
+          const taskActionLabel = task.deleted ? 'Restore task' : 'Delete task';
           return `
           <div class="task-row${task.completed ? ' completed' : ''}" data-testid="task-row">
-            <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}"${task.completed ? ' checked' : ''}${archived ? ' disabled' : ''}>
+            <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}"${task.completed ? ' checked' : ''}${locked ? ' disabled' : ''}>
             <span class="task-title">${escapeText(task.title)}</span>
             <form data-rename-task="${task.id}">
-              <label>New task title<input type="text" name="title" value="${escapeText(task.title)}"${archived ? ' disabled' : ''}></label>
-              <button type="submit"${archived ? ' disabled' : ''}>Rename task</button>
+              <label>New task title<input type="text" name="title" value="${escapeText(task.title)}"${locked ? ' disabled' : ''}></label>
+              <button type="submit"${locked ? ' disabled' : ''}>Rename task</button>
             </form>
-            <label>Task priority<select data-task-priority="${task.id}"${archived ? ' disabled' : ''}>
+            <label>Task priority<select data-task-priority="${task.id}"${locked ? ' disabled' : ''}>
               <option${task.priority === 'Low' ? ' selected' : ''}>Low</option>
               <option${task.priority === 'Normal' ? ' selected' : ''}>Normal</option>
               <option${task.priority === 'High' ? ' selected' : ''}>High</option>
             </select></label>
             <form data-due-date="${task.id}">
-              <label>Task due date<input type="text" name="due_date" value="${escapeText(task.due_date || '')}" placeholder="YYYY-MM-DD"${archived ? ' disabled' : ''}></label>
-              <button type="submit"${archived ? ' disabled' : ''}>Save due date</button>
+              <label>Task due date<input type="text" name="due_date" value="${escapeText(task.due_date || '')}" placeholder="YYYY-MM-DD"${locked ? ' disabled' : ''}></label>
+              <button type="submit"${locked ? ' disabled' : ''}>Save due date</button>
             </form>
             <form data-task-notes="${task.id}">
-              <label>Task notes<textarea name="notes"${archived ? ' disabled' : ''}>${escapeText(task.notes || '')}</textarea></label>
-              <button type="submit"${archived ? ' disabled' : ''}>Save notes</button>
+              <label>Task notes<textarea name="notes"${locked ? ' disabled' : ''}>${escapeText(task.notes || '')}</textarea></label>
+              <button type="submit"${locked ? ' disabled' : ''}>Save notes</button>
             </form>
-            <label>Destination project<select data-destination="${task.id}"${archived || destinations.length === 0 ? ' disabled' : ''}>
+            <label>Destination project<select data-destination="${task.id}"${locked || destinations.length === 0 ? ' disabled' : ''}>
               ${destinations.map((project) => `<option value="${project.id}">${escapeText(project.name)}</option>`).join('')}
             </select></label>
-            <button type="button" data-move-task="${task.id}"${archived || destinations.length === 0 ? ' disabled' : ''}>Move task</button>
+            <button type="button" data-move-task="${task.id}"${locked || destinations.length === 0 ? ' disabled' : ''}>Move task</button>
+            <button type="button" data-task-lifecycle="${task.id}" data-action="${taskAction}"${archived ? ' disabled' : ''}>${taskActionLabel}</button>
           </div>`;
         }).join('');
       };
@@ -368,6 +373,22 @@
         }
       });
       list.addEventListener('click', async (event) => {
+        const lifecycleButton = event.target.closest('button[data-task-lifecycle]');
+        if (lifecycleButton) {
+          const taskId = lifecycleButton.dataset.taskLifecycle;
+          const action = lifecycleButton.dataset.action;
+          const response = await fetch(`/api/projects/${projectId}/tasks/${taskId}/${action}`, { method: 'POST' });
+          if (response.ok) {
+            const updated = await response.json();
+            tasks = tasks.map((task) => task.id === updated.id ? updated : task);
+            renderTasks();
+          } else {
+            const result = await response.json();
+            alert.textContent = result.error || `Unable to ${action} task`;
+            alert.hidden = false;
+          }
+          return;
+        }
         const button = event.target.closest('button[data-move-task]');
         if (!button) return;
         const taskId = button.dataset.moveTask;
