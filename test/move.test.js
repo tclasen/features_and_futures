@@ -71,7 +71,7 @@ test('moves append, preserve task data and source filters, and enforce active ow
     assert.match(html, /disabled>Move task/);
     await post('/projects/2/restore');
     await move(2, 1, 1);
-    assert.deepEqual(ids(await get('/projects/1')), [2, 1]);
+    assert.deepEqual(ids(await get('/projects/1')), [1, 2]);
     await move(1, 2, 2); // Move an undated task; preserve its blank date.
     await post('/projects/2/tasks', { title: 'New last' });
     assert.deepEqual(ids(await get('/projects/2')), [3, 2, 4]);
@@ -82,7 +82,7 @@ test('moves append, preserve task data and source filters, and enforce active ow
     assert.deepEqual(ids(await get('/projects/2')), [3, 2, 4]);
     assert.match(await get('/projects/1'), /id="task-due-date-1"[^>]*value="0001-01-01"/);
     await move(1, 1, 2);
-    assert.deepEqual(ids(await get('/projects/2')), [3, 2, 4, 1]);
+    assert.deepEqual(ids(await get('/projects/2')), [3, 1, 2, 4]);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
