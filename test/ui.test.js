@@ -5,9 +5,10 @@ import { runInNewContext } from 'node:vm';
 import { normalizeDueRange, matchesDueRange } from '../due-date.js';
 import { matchesSearch } from '../search.js';
 import { matchesTaskFilters } from '../task-filters.js';
+import { orderDirectoryTasks } from '../directory-order.js';
 
 const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
-  .replace(/^import .* from '\.\/(?:due-date|search|task-filters)\.js';\n/gm, '');
+  .replace(/^import .* from '\.\/(?:due-date|search|task-filters|directory-order)\.js';\n/gm, '');
 
 // Exercise the browser script without external dependencies. This small DOM
 // supports its labels, rows, and events; it does not verify browser layout.
@@ -295,7 +296,7 @@ async function page(pathname, respond, destinations = [{ id: 999, name: 'Other',
       ? destinations : await respond(path, options);
     return { ok: true, json: async () => body };
   };
-  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange, matchesSearch, matchesTaskFilters });
+  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange, matchesSearch, matchesTaskFilters, orderDirectoryTasks });
   return {
     app, window, calls,
     byId: (id) => find(app, (node) => node.attributes.id === id)[0],
@@ -1405,6 +1406,8 @@ test('directory bulk actions retain intersecting filters, disable ineligible act
   await ui.byId('priority-filter').fire('change');
   await applyDueRange(ui, '2024-02-29', '2024-02-29');
   await applySearch(ui, 'directory', ' MATCH\t task ');
+  ui.byId('directory-order').value = 'Title';
+  await ui.byId('directory-order').fire('change');
   assert.equal(ui.button('Reopen visible tasks').disabled, true);
   const complete = ui.button('Complete visible tasks').fire('click');
   assert.equal(ui.button('Complete visible tasks').disabled, true);
@@ -1418,6 +1421,7 @@ test('directory bulk actions retain intersecting filters, disable ineligible act
   assert.equal(ui.byId('priority-filter').value, 'High');
   assert.equal(ui.byId('due-from').value, '2024-02-29');
   assert.equal(ui.byId('directory-search').value, 'MATCH\t task');
+  assert.equal(ui.byId('directory-order').value, 'Title');
   ui.byId('task-filter').value = 'Completed';
   await ui.byId('task-filter').fire('change');
   assert.equal(ui.rows('directory-task').length, 2);
@@ -1426,6 +1430,7 @@ test('directory bulk actions retain intersecting filters, disable ineligible act
   resolveWrite();
   await reopen;
   assert.equal(ui.rows('directory-task').length, 0);
+  assert.equal(ui.byId('directory-order').value, 'Title');
   assert.deepEqual(empty(), ['No matching tasks']);
   for (const [id, value] of [['task-filter', 'Deleted'], ['project-scope', 'Archived']]) {
     ui.byId(id).value = value;
@@ -1448,7 +1453,7 @@ test('directory initial loading suppresses empty results until the request resol
     return { ok: true, json: async () => [] };
   };
   const loading = runInNewContext(`(async () => {\n${source}\n})()`,
-    { document, window, fetch, normalizeDueRange, matchesSearch, matchesTaskFilters });
+    { document, window, fetch, normalizeDueRange, matchesSearch, matchesTaskFilters, orderDirectoryTasks });
   assert.equal(find(app, (node) => node.attributes.role === 'status').length, 0);
   for (const label of ['Complete visible tasks', 'Reopen visible tasks']) {
     assert.equal(find(app, (node) => node.tag === 'button' && node.textContent === label)[0].disabled, true);
@@ -1457,4 +1462,67 @@ test('directory initial loading suppresses empty results until the request resol
   await loading;
   assert.deepEqual(find(app, (node) => node.attributes.role === 'status').map((node) => node.textContent), ['No matching tasks']);
   assert.equal(app.attributes['aria-busy'], 'false');
+});
+
+test('directory order spans owners, retains filters and resets on each opening without writes', async () => {
+  const tasks = [
+    { id: 1, projectId: 1, title: 'Zulu', completed: false, priority: 'Low', dueDate: '', archived: false, deleted: false },
+    { id: 2, projectId: 1, title: 'Beta', completed: true, priority: 'High', dueDate: '2024-03-01', archived: false, deleted: false },
+    { id: 3, projectId: 2, title: 'alpha', completed: false, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: false },
+    { id: 4, projectId: 2, title: 'ALPHA', completed: true, priority: 'Normal', dueDate: '2024-03-01', archived: false, deleted: false },
+    { id: 5, projectId: 3, title: 'Zulu deleted', priority: 'Low', dueDate: '', archived: true, deleted: true },
+    { id: 6, projectId: 4, title: 'Alpha deleted', priority: 'High', dueDate: '2024-02-29', archived: true, deleted: true },
+  ];
+  const respond = () => structuredClone(tasks);
+  const ui = await page('/task-directory', respond);
+  const titles = () => ui.rows('directory-task').map((row) =>
+    find(row, (node) => node.attributes['data-testid'] === 'directory-task-title')[0].textContent);
+  const order = ui.byId('directory-order');
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'directory-order')[0].textContent, 'Directory order');
+  assert.deepEqual(order.children.map((option) => option.textContent), ['Original', 'Priority', 'Due date', 'Title']);
+  assert.equal(order.value, 'Original');
+  for (const [value, expected] of [
+    ['Priority', ['Beta', 'alpha', 'ALPHA', 'Zulu']],
+    ['Due date', ['alpha', 'Beta', 'ALPHA', 'Zulu']],
+    ['Title', ['alpha', 'ALPHA', 'Beta', 'Zulu']],
+    ['Original', ['Zulu', 'Beta', 'alpha', 'ALPHA']],
+  ]) {
+    order.value = value;
+    await order.fire('change');
+    assert.deepEqual(titles(), expected);
+  }
+  order.value = 'Title';
+  await order.fire('change');
+  await applySearch(ui, 'directory', 'ALPHA');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  ui.byId('task-filter').value = 'Open';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  assert.deepEqual(titles(), ['alpha']);
+  order.value = 'Due date';
+  await order.fire('change');
+  for (const [id, value] of [['task-filter', 'Open'], ['priority-filter', 'High'],
+    ['directory-search', 'ALPHA'], ['due-from', '2024-02-29'], ['due-through', '2024-03-01']]) {
+    assert.equal(ui.byId(id).value, value);
+  }
+  ui.byId('project-scope').value = 'Archived';
+  await ui.byId('project-scope').fire('change');
+  ui.byId('task-filter').value = 'Deleted';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(titles(), ['Alpha deleted']);
+  assert.equal(order.value, 'Due date');
+  await applySearch(ui, 'directory', '');
+  await applyDueRange(ui, '', '');
+  ui.byId('priority-filter').value = 'All';
+  await ui.byId('priority-filter').fire('change');
+  order.value = 'Title';
+  await order.fire('change');
+  assert.deepEqual(titles(), ['Alpha deleted', 'Zulu deleted']);
+  order.value = 'Original';
+  await order.fire('change');
+  assert.deepEqual(titles(), ['Zulu deleted', 'Alpha deleted']);
+  assert.equal(ui.calls.length, 1);
+  const reopened = await page('/task-directory', respond);
+  assert.equal(reopened.byId('directory-order').value, 'Original');
 });

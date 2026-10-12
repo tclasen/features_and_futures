@@ -178,3 +178,12 @@ The server validates filters and resolves eligible tasks in one transaction,
 returning refreshed directory data. Archived/Deleted requests return HTTP 409;
 invalid filters return HTTP 400. Bulk completion survives server restarts and
 does not change remembered task positions or any fields other than completion.
+
+Directory order offers Original, Priority, Due date, and Title, initially Original
+on each opening. Priority sorts High, Normal, Low; Due date sorts calendar dates
+ascending with undated tasks last. Title compares literal titles in Unicode code
+point order after folding only ASCII uppercase letters. All ties retain Original
+project/task order. Ordering spans the full matching directory, including archived
+and deleted views, and stays selected during filtering, searches, ranges, and bulk
+actions. It changes only presentation: project task lists, exports, stored fields,
+and remembered move positions retain their existing order.

@@ -1,6 +1,7 @@
 import { normalizeDueRange } from './due-date.js';
 import { matchesSearch } from './search.js';
 import { matchesTaskFilters } from './task-filters.js';
+import { orderDirectoryTasks } from './directory-order.js';
 
 const app = document.querySelector('#app');
 
@@ -81,6 +82,7 @@ async function showDirectory() {
   const scope = filterSelect('project-scope', 'Project scope', ['Active', 'Archived'], controls, render);
   const completion = filterSelect('task-filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted'], controls, render);
   const priority = filterSelect('priority-filter', 'Priority filter', ['All', 'Low', 'Normal', 'High'], controls, render);
+  const order = filterSelect('directory-order', 'Directory order', ['Original', 'Priority', 'Due date', 'Title'], controls, render);
   const rangeForm = dueRangeControls((range) => { dueRange = range; render(); });
   const search = searchForm('directory-search', 'Directory search', 'Search directory', (value) => {
     query = value;
@@ -124,7 +126,7 @@ async function showDirectory() {
   }
 
   function render() {
-    const visible = visibleTasks();
+    const visible = orderDirectoryTasks(visibleTasks(), order.value);
     const readOnly = loading || scope.value === 'Archived' || completion.value === 'Deleted';
     complete.disabled = readOnly || !visible.some((task) => !task.completed);
     reopen.disabled = readOnly || !visible.some((task) => task.completed);

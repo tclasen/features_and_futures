@@ -188,6 +188,7 @@ const assets = new Map([
   ['/due-date.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./due-date.js', import.meta.url))]],
   ['/search.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./search.js', import.meta.url))]],
   ['/task-filters.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./task-filters.js', import.meta.url))]],
+  ['/directory-order.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./directory-order.js', import.meta.url))]],
   ['/styles.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/styles.css', import.meta.url))]],
 ]);
 
