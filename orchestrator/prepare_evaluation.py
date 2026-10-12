@@ -17,11 +17,14 @@ BUILDERS_ROOT=Path('/Users/Shared/projects/features-and-futures-builders')
 
 def verify_prepared_stream(source, run, revision, exact=False):
     """Allow only the declared fresh observer revision; repeats remain exact."""
-    if exact or revision not in ('research-v014', 'research-v015'):
+    if exact or revision not in ('research-v014', 'research-v015', 'research-v016'):
         return verify_replay(source, run)
     from .task_stream import suite_for_stage, stream_input_hash
     from .restore_readiness import verify_restore_only_delta
-    if revision == 'research-v015':
+    if revision == 'research-v016':
+        from .action_role_readiness import verify_restore_summary_action_delta
+        verify_delta = verify_restore_summary_action_delta
+    elif revision == 'research-v015':
         from .summary_readiness import verify_restore_and_summary_delta
         verify_delta = verify_restore_and_summary_delta
     else:
@@ -43,9 +46,11 @@ def verify_prepared_stream(source, run, revision, exact=False):
         changed = verify_delta(suite_for_stage(source, stage),
                                suite_for_stage(run, stage))
         changes.append({'stage': stage, 'changed_suite_files': changed})
-    return {'verified': True, 'mode': ('declared-prospective-restore-and-summary-readiness'
-                                      if revision == 'research-v015'
-                                      else 'declared-prospective-restore-readiness'),
+    return {'verified': True, 'mode': {
+                'research-v014': 'declared-prospective-restore-readiness',
+                'research-v015': 'declared-prospective-restore-and-summary-readiness',
+                'research-v016': 'declared-prospective-restore-summary-action-roles',
+            }[revision],
             'checkpoints': len(left), 'changes': changes,
             'source_input_sha256': stream_input_hash(source),
             'prepared_input_sha256': stream_input_hash(run)}
@@ -67,7 +72,7 @@ def research_inputs(original, revision=None, replay=False):
         from .bounded_confirmation import METHOD
         research['analysis_method']=METHOD
         execution['provider_incident_policy']=POLICY
-        if selected in ('research-v007', 'research-v008', 'research-v009', 'research-v010', 'research-v011', 'research-v012', 'research-v013', 'research-v014', 'research-v015'):
+        if selected in ('research-v007', 'research-v008', 'research-v009', 'research-v010', 'research-v011', 'research-v012', 'research-v013', 'research-v014', 'research-v015', 'research-v016'):
             execution['inference_observation_lifecycle']=OBSERVATION_LIFECYCLE
         try:validate_policy({'experiment_revision':selected,'execution':execution,'research':research},definition)
         except ValueError as error:raise InfrastructureError(str(error)) from error
@@ -169,7 +174,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         if 'suite_files' in task:
             for name in ('round.json','requirements.md'):shutil.copy2(source/'tasks'/task['task_id']/name,target/name)
             shutil.copytree(source/'tasks'/task['task_id']/'suite',target/'suite')
-    if selected in ('research-v014', 'research-v015') and not confirmation and not recovery:
+    if selected in ('research-v014', 'research-v015', 'research-v016') and not confirmation and not recovery:
         # Install the preregistered observer while this fresh preparation is
         # unstarted, before hashing its manifest. Original source runs stay intact.
         changes = []
@@ -214,7 +219,7 @@ def prepare(run_id, source_id, confirmation=False, recovery=False, revision=None
         manifest['pricing']=price_snapshot(run/'pricing',models={b['model'] for b in original['runtime']['builder_configurations']})
         write_json(run/'definitions/pricing-mappings.json',manifest['pricing'])
     manifest['provenance']['definition_hashes']=file_hashes(run/'definitions')
-    if selected in ('research-v014', 'research-v015') and not confirmation and not recovery:
+    if selected in ('research-v014', 'research-v015', 'research-v016') and not confirmation and not recovery:
         base_suite_hash = digest_json(file_hashes(run/'definitions/project/acceptance'))
         for task in manifest['tasks']:
             task['suite_hash'] = base_suite_hash

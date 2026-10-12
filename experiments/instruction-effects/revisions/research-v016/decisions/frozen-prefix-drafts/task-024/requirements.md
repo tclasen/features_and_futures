@@ -1,0 +1,9 @@
+## Requirement024: delete and restore visible directory tasks across their original owners
+
+Dependencies: all requirements through023remain cumulative. Add `Delete visible tasks` and `Restore visible tasks` buttons to Task directory. Delete marks every currently matching live task deleted when Project scope is Active and Task filter is All, Open or Completed. Restore clears deletion for every currently matching deleted task when Project scope is Active and Task filter is Deleted. Actions use all current priority, date and title-search intersections across represented projects.
+
+Delete is disabled in Archived scope, in Deleted filter, or when no live task matches. Restore is disabled in Archived scope, in every live-task filter, or when no deleted task matches. An action re-evaluates the same directory controls and ordering. Update task rows, represented-owner rows and their totals, global totals, bulk eligibility and resolved empty announcement from that current result. A matching task removed by the action may leave its owner absent from the represented-owner list.
+
+Preserve every task title, completion, priority, due date, literal notes, original owner identity, stored task order and remembered destination positions. Keep project names, archive flags and default priorities unchanged. A bulk deletion/restoration never affects nonmatching tasks or archived projects. Duplicate project names continue to represent independent identities. Earlier project live-task summaries continue to exclude deleted tasks and update after both actions.
+
+Deleted tasks remain editable only through restoration under the already required rules. Restoring tasks keeps their original reserved positions, including later moves away from and back to their owners. All previous exports, imports, individual deletion/restoration, completion bulk actions and process-restart persistence requirements remain cumulative.
