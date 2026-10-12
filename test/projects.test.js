@@ -409,15 +409,15 @@ test('projects, tasks, archives, renames, priorities, and summaries persist with
     await start();
     assert.deepEqual(await tasks(second.id), [otherTask, independent, secondTask]);
     assert.deepEqual(await projects(), expected);
-    // A second move appends again, preserving a blank date and the task's priority.
+    // First arrival appends; returning tasks recover their remembered position.
     assert.equal((await move(first.id, firstTask.id, second.id)).status, 200);
     assert.deepEqual(await tasks(second.id), [otherTask, independent, secondTask, firstTask]);
     assert.equal((await move(second.id, secondTask.id, first.id)).status, 200);
     const newTask = await (await createTask(first.id, 'Created after move')).json();
-    assert.deepEqual(await tasks(first.id), [inherited, afterRestore, secondTask, newTask]);
+    assert.deepEqual(await tasks(first.id), [secondTask, inherited, afterRestore, newTask]);
     await stop();
     await start();
-    assert.deepEqual(await tasks(first.id), [inherited, afterRestore, secondTask, newTask]);
+    assert.deepEqual(await tasks(first.id), [secondTask, inherited, afterRestore, newTask]);
     assert.deepEqual(await tasks(second.id), [otherTask, independent, firstTask]);
   } finally {
     await stop();
