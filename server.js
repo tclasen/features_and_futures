@@ -31,9 +31,22 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 try { db.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0'); } catch {}
 db.exec('UPDATE tasks SET sort_order = id WHERE sort_order = 0');
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY sort_order, id');
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, sort_order FROM tasks`);
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+  FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position, t.id`);
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
+const addTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
+const nextTaskPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
+const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -87,7 +100,9 @@ const server = http.createServer(async (req, res) => {
         if (!title) return json(res, 400, { error: 'Task title is required' });
         const project = getProject.get(projectId);
         const result = createTask.run(projectId, title, project.defaultPriority || 'Normal', projectId);
-        return json(res, 201, getTask.get(Number(result.lastInsertRowid)));
+        const taskId = Number(result.lastInsertRowid);
+        addTaskPosition.run(taskId, projectId, nextTaskPosition.get(projectId).position);
+        return json(res, 201, getTask.get(taskId));
       } catch {
         return json(res, 400, { error: 'Invalid request' });
       }
@@ -131,8 +146,14 @@ const server = http.createServer(async (req, res) => {
       if (Number.isInteger(data.destinationProjectId)) {
         const destination = getProject.get(data.destinationProjectId);
         if (!destination || destination.archived || destination.id === projectId) return json(res, 400, { error: 'Invalid destination project' });
-        const result = moveTask.run(destination.id, destination.id, taskId, projectId);
-        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+        const position = getTaskPosition.get(taskId, destination.id)?.position ?? nextTaskPosition.get(destination.id).position;
+        db.exec('BEGIN');
+        try {
+          const result = moveTask.run(destination.id, position, taskId, projectId);
+          if (!result.changes) { db.exec('ROLLBACK'); return json(res, 404, { error: 'Task not found' }); }
+          if (!getTaskPosition.get(taskId, destination.id)) addTaskPosition.run(taskId, destination.id, position);
+          db.exec('COMMIT');
+        } catch (error) { db.exec('ROLLBACK'); throw error; }
       } else if (typeof data.dueDate === 'string') {
         const trimmed = data.dueDate.trim();
         let canonical = null;
