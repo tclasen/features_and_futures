@@ -71,11 +71,11 @@ test('moving appends, preserves task data and filters, validates ownership and s
     await post('/projects/2/tasks', { title: 'Later' });
     assert.deepEqual(titles(await html('/projects/2')), ['Existing', 'First', 'Later']);
     assert.equal((await move(2, 1, 1)).status, 303);
-    assert.deepEqual(titles(await html('/projects/1')), ['Remaining', 'First']);
+    assert.deepEqual(titles(await html('/projects/1')), ['First', 'Remaining']);
     // Blank dates and subsequent creations also retain their proper order.
     assert.equal((await move(2, 3, 1)).status, 303);
     await post('/projects/1/tasks', { title: 'Last' });
-    assert.deepEqual(titles(await html('/projects/1')), ['Remaining', 'First', 'Existing', 'Last']);
+    assert.deepEqual(titles(await html('/projects/1')), ['First', 'Remaining', 'Existing', 'Last']);
     assert.match(await html('/projects/1'), /id="task-due-date-3" name="dueDate" value=""/);
     await post('/projects/1/archive');
     const archived = await html('/projects/1');

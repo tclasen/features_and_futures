@@ -90,18 +90,44 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
     db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
   }
-  // Separate identity from project-local order so moved tasks append on arrival.
+  // Keep the legacy order column to migrate existing databases without reordering.
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'task_order')) {
     db.exec('ALTER TABLE tasks ADD COLUMN task_order INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET task_order = id');
   }
+  // Positions remain reserved even while a task belongs to another project.
+  db.exec(`CREATE TABLE IF NOT EXISTS task_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+    CREATE INDEX IF NOT EXISTS task_positions_project_order ON task_positions(project_id, position);
+    INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+      SELECT id, project_id, task_order FROM tasks;`);
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY task_order, id');
-  const insertTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, task_order)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(task_order), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  const listTasks = db.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date
+    FROM tasks t JOIN task_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+    WHERE t.project_id = ? ORDER BY p.position, t.id`);
+  const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
+  const rememberPosition = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
+    SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?
+    ON CONFLICT(task_id, project_id) DO NOTHING`);
   const destinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-  const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-    task_order = (SELECT COALESCE(MAX(task_order), 0) + 1 FROM tasks WHERE project_id = ?)
-    WHERE id = ? AND project_id = ?`);
+  const moveTask = db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?');
+
+  // Ownership and position writes must either both commit or both roll back.
+  function transaction(operation) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = operation();
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -396,7 +422,10 @@ export function createApplication(dbPath) {
             sendHtml(400, renderProject('Task title is required'));
             return;
           }
-          insertTask.run(projectId, title, project.default_priority, projectId);
+          transaction(() => {
+            const { lastInsertRowid } = insertTask.run(projectId, title, project.default_priority);
+            rememberPosition.run(lastInsertRowid, projectId, projectId);
+          });
         } else if (parts[5] === 'move') {
           const taskId = Number(parts[4]);
           const destinationId = Number(body.get('destinationId'));
@@ -405,8 +434,12 @@ export function createApplication(dbPath) {
             sendHtml(400, renderProject('Destination must be another active project'));
             return;
           }
-          // A single statement both transfers ownership and assigns append order.
-          if (!Number.isSafeInteger(taskId) || !moveTask.run(destinationId, destinationId, taskId, projectId).changes) {
+          const moved = Number.isSafeInteger(taskId) && transaction(() => {
+            const { changes } = moveTask.run(destinationId, taskId, projectId);
+            if (changes) rememberPosition.run(taskId, destinationId, destinationId);
+            return changes;
+          });
+          if (!moved) {
             sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
             return;
           }
