@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { normalizeDueDate } from './due-date.js';
+import { normalizeDueDate, normalizeDueRange } from './due-date.js';
+import { matchesTaskFilters } from './task-filters.js';
 import { projectExport } from './project-export.js';
 import { parseProjectImport } from './project-import.js';
 
@@ -177,11 +178,16 @@ function taskData(task) {
   return { ...task, completed: Boolean(task.completed), deleted: Boolean(task.deleted) };
 }
 
+function directoryData() {
+  return listDirectoryTasks.all().map((task) => ({ ...taskData(task), archived: Boolean(task.archived) }));
+}
+
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/due-date.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./due-date.js', import.meta.url))]],
   ['/search.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./search.js', import.meta.url))]],
+  ['/task-filters.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./task-filters.js', import.meta.url))]],
   ['/styles.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/styles.css', import.meta.url))]],
 ]);
 
@@ -208,9 +214,39 @@ const server = createServer(async (request, response) => {
       return json(response, 200, { status: 'ok' });
     }
     if (pathname === '/api/task-directory' && request.method === 'GET') {
-      return json(response, 200, listDirectoryTasks.all().map((task) => ({
-        ...taskData(task), archived: Boolean(task.archived),
-      })));
+      return json(response, 200, directoryData());
+    }
+    if (pathname === '/api/task-directory/completion' && request.method === 'POST') {
+      let body;
+      try {
+        body = await readJson(request);
+      } catch {
+        return json(response, 400, { error: 'Invalid JSON request' });
+      }
+      if (typeof body?.completed !== 'boolean'
+        || !['Active', 'Archived'].includes(body.scope)
+        || !['All', 'Open', 'Completed', 'Deleted'].includes(body.completion)
+        || !['All', 'Low', 'Normal', 'High'].includes(body.priority)
+        || typeof body.query !== 'string') {
+        return json(response, 400, { error: 'Invalid directory filters' });
+      }
+      const range = normalizeDueRange(body.dueRange?.from, body.dueRange?.through);
+      if (range.error) return json(response, 400, { error: range.error });
+      if (body.scope === 'Archived' || body.completion === 'Deleted') {
+        return json(response, 409, { error: 'Only live tasks in active projects can be changed' });
+      }
+      // Resolve matching ownership and state after input has been read, and write
+      // in one transaction. Clients cannot include archived/deleted task IDs.
+      const tasks = inTransaction(() => {
+        for (const task of directoryData()) {
+          if (!task.archived && !task.deleted && task.completed !== body.completed
+            && matchesTaskFilters(task, body.completion, body.priority, range, body.query)) {
+            updateTask.run(Number(body.completed), task.projectId, task.id);
+          }
+        }
+        return directoryData();
+      });
+      return json(response, 200, tasks);
     }
     if (pathname === '/api/projects' && request.method === 'GET') {
       return json(response, 200, listProjects.all().map(projectData));

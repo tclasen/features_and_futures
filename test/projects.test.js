@@ -1295,3 +1295,68 @@ test('directory reads current ownership and saved order including imported, dele
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory bulk completion is bounded by saved filters and preserves fields, positions and summaries through restart', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-bulk-test-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(`${server.url}${path}`, { method,
+        ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const projects = [];
+    for (const name of ['First', 'Second', 'Archive']) {
+      projects.push(await api('/api/projects', 'POST', { name }, 201));
+    }
+    const taskPath = (project, task) => `/api/projects/${project.id}/tasks/${task.id}`;
+    const created = [];
+    for (const [index, title] of [[0, 'MATCH\t task'], [1, 'Match  task'], [0, 'Other'], [0, 'Match task'], [0, 'Match task'], [0, 'Match task'], [2, 'Match task']]) {
+      const project = projects[index];
+      const task = await api(`/api/projects/${project.id}/tasks`, 'POST', { title }, 201);
+      for (const body of [{ priority: 'High' }, { dueDate: '2024-02-29' }, { notes: '  literal <b>\n日本語  ' }]) {
+        await api(taskPath(project, task), 'PATCH', body);
+      }
+      created.push({ project, task });
+    }
+    await api(taskPath(created[3].project, created[3].task), 'PATCH', { priority: 'Low' });
+    await api(taskPath(created[4].project, created[4].task), 'PATCH', { dueDate: '' });
+    await api(taskPath(created[5].project, created[5].task), 'PATCH', { deleted: true });
+    await api(`/api/projects/${projects[2].id}`, 'PATCH', { archived: true });
+    const before = await api('/api/task-directory');
+    const filters = { scope: 'Active', completion: 'Open', priority: 'High',
+      dueRange: { from: '2024-02-29', through: '2024-02-29' }, query: ' match \t task ' };
+    const after = await api('/api/task-directory/completion', 'POST', { ...filters, completed: true });
+    assert.deepEqual(after, before.map((task) => ({ ...task, completed: [created[0].task.id, created[1].task.id].includes(task.id) })));
+    const summaries = await api('/api/projects');
+    assert.deepEqual(summaries.map((project) => [project.completedCount, project.totalCount]), [[1, 4], [1, 1], [0, 1]]);
+    for (const invalid of [
+      { scope: 'Archived' }, { completion: 'Deleted' }, { priority: 'Invalid' }, { completed: 'true' },
+      { dueRange: { from: '1900-02-29', through: '' } },
+      { dueRange: { from: '2024-03-01', through: '2024-02-29' } },
+    ]) {
+      await api('/api/task-directory/completion', 'POST', { ...filters, completed: true, ...invalid },
+        invalid.scope || invalid.completion ? 409 : 400);
+      assert.deepEqual(await api('/api/task-directory'), after);
+    }
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await api('/api/task-directory'), after);
+    const first = created[0];
+    await api(taskPath(first.project, first.task), 'PATCH', { destinationProjectId: projects[1].id });
+    await api(taskPath(projects[1], first.task), 'PATCH', { destinationProjectId: first.project.id });
+    assert.deepEqual(await api('/api/task-directory'), after);
+    const reopened = await api('/api/task-directory/completion', 'POST', { ...filters, completion: 'Completed', completed: false });
+    assert.deepEqual(reopened, before);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await api('/api/task-directory'), before);
+    assert.deepEqual(await api('/health'), { status: 'ok' });
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

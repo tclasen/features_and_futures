@@ -155,8 +155,8 @@ leave all saved data unchanged. `POST /api/projects/import` accepts
 project with HTTP 201, or HTTP 400 with `Invalid project JSON` or
 `Project name is required`.
 
-Task directory on the home page opens `/task-directory`, a read-only cross-project
-view. Project scope selects Active or Archived owners; Task filter, Priority
+Task directory on the home page opens `/task-directory`, a cross-project
+view with read-only rows and bulk completion controls. Project scope selects Active or Archived owners; Task filter, Priority
 filter, inclusive due range, and Directory search intersect without changing any
 saved data. Search matches task titles only with the same whitespace and ASCII
 case rules as project pages. Each opening resets all controls to their defaults.
@@ -165,3 +165,16 @@ and literal multiline notes; Open project opens the owner with default filters.
 Live and deleted tasks retain project creation order and saved task order.
 `GET /api/task-directory` returns all currently owned tasks, including archived
 and deleted records, with `projectId`, `projectName`, and Boolean `archived`.
+
+Complete visible tasks and Reopen visible tasks update only live tasks owned by
+active projects matching all currently applied directory filters. Each action
+preserves the controls and all other saved fields, and refreshes matching rows.
+Controls are disabled for Archived scope, Deleted filtering, or when no matching
+task needs that completion change. Empty resolved results show No matching tasks;
+this message is suppressed while initial results or bulk updates are loading.
+`POST /api/task-directory/completion` accepts Boolean `completed`, `scope`,
+`completion`, `priority`, `dueRange` (`from` and `through`), and title-search `query`.
+The server validates filters and resolves eligible tasks in one transaction,
+returning refreshed directory data. Archived/Deleted requests return HTTP 409;
+invalid filters return HTTP 400. Bulk completion survives server restarts and
+does not change remembered task positions or any fields other than completion.

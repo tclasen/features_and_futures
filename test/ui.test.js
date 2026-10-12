@@ -4,9 +4,10 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { normalizeDueRange, matchesDueRange } from '../due-date.js';
 import { matchesSearch } from '../search.js';
+import { matchesTaskFilters } from '../task-filters.js';
 
 const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
-  .replace(/^import .* from '\.\/(?:due-date|search)\.js';\n/gm, '');
+  .replace(/^import .* from '\.\/(?:due-date|search|task-filters)\.js';\n/gm, '');
 
 // Exercise the browser script without external dependencies. This small DOM
 // supports its labels, rows, and events; it does not verify browser layout.
@@ -35,7 +36,7 @@ class Element {
     }
   }
   replaceChildren(...children) { this.text = ''; this.children = []; this.append(...children); }
-  remove() { this.parent.children = this.parent.children.filter((child) => child !== this); }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this); }
   focus() {}
   addEventListener(event, handler) { this.listeners.set(event, handler); }
   async fire(event) {
@@ -294,7 +295,7 @@ async function page(pathname, respond, destinations = [{ id: 999, name: 'Other',
       ? destinations : await respond(path, options);
     return { ok: true, json: async () => body };
   };
-  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange, matchesSearch });
+  await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange, matchesSearch, matchesTaskFilters });
   return {
     app, window, calls,
     byId: (id) => find(app, (node) => node.attributes.id === id)[0],
@@ -1372,4 +1373,88 @@ test('directory intersects read-only filters, preserves literal fields, validate
   const home = await page('/', () => []);
   await home.button('Task directory').fire('click');
   assert.equal(home.window.location.href, '/task-directory');
+});
+
+test('directory bulk actions retain intersecting filters, disable ineligible actions, and defer empty announcements', async () => {
+  const tasks = [
+    { id: 1, title: 'Match  task', completed: false, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: false },
+    { id: 2, title: 'Match task', completed: true, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: false },
+    { id: 3, title: 'Match task', completed: false, priority: 'Low', dueDate: '2024-02-29', archived: false, deleted: false },
+    { id: 4, title: 'Match task', completed: false, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: true },
+    { id: 5, title: 'Match task', completed: false, priority: 'High', dueDate: '2024-02-29', archived: true, deleted: false },
+  ];
+  let resolveWrite;
+  const ui = await page('/task-directory', async (path, options) => {
+    if (!options) return structuredClone(tasks);
+    assert.equal(path, '/api/task-directory/completion');
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body, { completed: body.completed, scope: 'Active', completion: body.completed ? 'Open' : 'Completed',
+      priority: 'High', dueRange: { from: '2024-02-29', through: '2024-02-29' }, query: 'MATCH\t task' });
+    await new Promise((resolve) => { resolveWrite = resolve; });
+    for (const task of tasks) {
+      if (!task.archived && matchesTaskFilters(task, body.completion, body.priority, body.dueRange, body.query)) {
+        task.completed = body.completed;
+      }
+    }
+    return structuredClone(tasks);
+  });
+  const empty = () => find(ui.app, (node) => node.attributes.role === 'status').map((node) => node.textContent);
+  ui.byId('task-filter').value = 'Open';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-02-29');
+  await applySearch(ui, 'directory', ' MATCH\t task ');
+  assert.equal(ui.button('Reopen visible tasks').disabled, true);
+  const complete = ui.button('Complete visible tasks').fire('click');
+  assert.equal(ui.button('Complete visible tasks').disabled, true);
+  assert.equal(ui.app.attributes['aria-busy'], 'true');
+  assert.deepEqual(empty(), []);
+  resolveWrite();
+  await complete;
+  assert.equal(ui.rows('directory-task').length, 0);
+  assert.deepEqual(empty(), ['No matching tasks']);
+  assert.equal(ui.byId('task-filter').value, 'Open');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2024-02-29');
+  assert.equal(ui.byId('directory-search').value, 'MATCH\t task');
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  assert.equal(ui.rows('directory-task').length, 2);
+  assert.deepEqual(empty(), []);
+  const reopen = ui.button('Reopen visible tasks').fire('click');
+  resolveWrite();
+  await reopen;
+  assert.equal(ui.rows('directory-task').length, 0);
+  assert.deepEqual(empty(), ['No matching tasks']);
+  for (const [id, value] of [['task-filter', 'Deleted'], ['project-scope', 'Archived']]) {
+    ui.byId(id).value = value;
+    await ui.byId(id).fire('change');
+    assert.equal(ui.button('Complete visible tasks').disabled, true);
+    assert.equal(ui.button('Reopen visible tasks').disabled, true);
+  }
+  assert.equal(tasks[2].completed, false);
+  assert.equal(tasks[3].completed, false);
+  assert.equal(tasks[4].completed, false);
+});
+
+test('directory initial loading suppresses empty results until the request resolves', async () => {
+  const app = new Element('main');
+  const window = { location: { pathname: '/task-directory' } };
+  const document = { createElement: (tag) => new Element(tag), querySelector: () => app };
+  let resolveResults;
+  const fetch = async () => {
+    await new Promise((resolve) => { resolveResults = resolve; });
+    return { ok: true, json: async () => [] };
+  };
+  const loading = runInNewContext(`(async () => {\n${source}\n})()`,
+    { document, window, fetch, normalizeDueRange, matchesSearch, matchesTaskFilters });
+  assert.equal(find(app, (node) => node.attributes.role === 'status').length, 0);
+  for (const label of ['Complete visible tasks', 'Reopen visible tasks']) {
+    assert.equal(find(app, (node) => node.tag === 'button' && node.textContent === label)[0].disabled, true);
+  }
+  resolveResults();
+  await loading;
+  assert.deepEqual(find(app, (node) => node.attributes.role === 'status').map((node) => node.textContent), ['No matching tasks']);
+  assert.equal(app.attributes['aria-busy'], 'false');
 });

@@ -1,5 +1,6 @@
-import { normalizeDueRange, matchesDueRange } from './due-date.js';
+import { normalizeDueRange } from './due-date.js';
 import { matchesSearch } from './search.js';
+import { matchesTaskFilters } from './task-filters.js';
 
 const app = document.querySelector('#app');
 
@@ -59,14 +60,6 @@ function dueRangeControls(onApply) {
   return dueRangeForm;
 }
 
-function matchesTaskFilters(task, completion, priority, dueRange, query) {
-  return (completion === 'Deleted' ? task.deleted : !task.deleted
-    && (completion === 'All' || (completion === 'Completed' ? task.completed : !task.completed)))
-    && (priority === 'All' || task.priority === priority)
-    && matchesDueRange(task.dueDate, dueRange)
-    && matchesSearch(task.title, query);
-}
-
 function filterSelect(id, label, options, controls, onChange) {
   const select = element('select', '', { id });
   for (const option of options) select.append(element('option', option, { value: option }));
@@ -83,6 +76,7 @@ async function showDirectory() {
   let tasks = [];
   let dueRange = { from: '', through: '' };
   let query = '';
+  let loading = true;
   const controls = element('div', '', { class: 'task-filters' });
   const scope = filterSelect('project-scope', 'Project scope', ['Active', 'Archived'], controls, render);
   const completion = filterSelect('task-filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted'], controls, render);
@@ -93,11 +87,49 @@ async function showDirectory() {
     render();
   });
   const list = element('ul', '', { class: 'directory-tasks', 'aria-label': 'Directory tasks' });
-  app.append(controls, rangeForm, search, list);
+  const actions = element('div', '', { class: 'directory-actions' });
+  const complete = element('button', 'Complete visible tasks', { type: 'button' });
+  const reopen = element('button', 'Reopen visible tasks', { type: 'button' });
+  complete.addEventListener('click', () => bulkCompletion(true));
+  reopen.addEventListener('click', () => bulkCompletion(false));
+  actions.append(complete, reopen);
+  const empty = element('p', 'No matching tasks', { role: 'status' });
+  app.append(controls, rangeForm, search, actions, list);
+
+  function visibleTasks() {
+    return tasks.filter((task) => task.archived === (scope.value === 'Archived')
+      && matchesTaskFilters(task, completion.value, priority.value, dueRange, query));
+  }
+
+  async function bulkCompletion(completed) {
+    if ((completed ? complete : reopen).disabled) return;
+    loading = true;
+    app.setAttribute('aria-busy', 'true');
+    render();
+    try {
+      tasks = await request('/api/task-directory/completion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed, scope: scope.value, completion: completion.value,
+          priority: priority.value, dueRange, query }),
+      });
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      loading = false;
+      app.setAttribute('aria-busy', 'false');
+      render();
+    }
+  }
 
   function render() {
-    const visible = tasks.filter((task) => task.archived === (scope.value === 'Archived')
-      && matchesTaskFilters(task, completion.value, priority.value, dueRange, query));
+    const visible = visibleTasks();
+    const readOnly = loading || scope.value === 'Archived' || completion.value === 'Deleted';
+    complete.disabled = readOnly || !visible.some((task) => !task.completed);
+    reopen.disabled = readOnly || !visible.some((task) => task.completed);
+    empty.remove();
+    if (!loading && visible.length === 0) app.append(empty);
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'directory-task-row' });
       for (const [field, value] of [
@@ -116,8 +148,10 @@ async function showDirectory() {
     }));
   }
 
+  render();
   try {
     tasks = await request('/api/task-directory');
+    loading = false;
     render();
   } finally {
     app.setAttribute('aria-busy', 'false');
