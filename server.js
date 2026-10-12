@@ -324,6 +324,8 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    // Stop accepting requests and close keep-alive sockets so shutdown cannot
+    // hang before SQLite's synchronous journal is flushed.
     server.close(() => {
       try {
         db.exec('PRAGMA wal_checkpoint(FULL)');
@@ -332,5 +334,6 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
         process.exit(0);
       }
     });
+    server.closeAllConnections();
   });
 }
