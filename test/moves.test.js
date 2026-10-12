@@ -86,14 +86,40 @@ test('moves append, preserve task data and filters, enforce active ownership and
     assert.match(html, /aria-label="Complete Moved" checked/);
     assert.match(html, /value="2024-02-29"/);
     await post('/projects/2/tasks/1/move', { destination: '1' });
-    assert.deepEqual(rows(await get('/projects/1')), ['Remaining', 'New source task', 'Moved']);
+    assert.deepEqual(rows(await get('/projects/1')), ['Moved', 'Remaining', 'New source task']);
     await post('/projects/2/tasks/3/move', { destination: '1' });
     html = await get('/projects/1');
-    assert.deepEqual(rows(html), ['Remaining', 'New source task', 'Moved', 'Older destination task']);
+    assert.deepEqual(rows(html), ['Moved', 'Remaining', 'New source task', 'Older destination task']);
     assert.match(html, /id="task-due-date-3" name="dueDate" type="text" value=""/);
     await stop();
     await start();
-    assert.deepEqual(rows(await get('/projects/1')), ['Remaining', 'New source task', 'Moved', 'Older destination task']);
+    assert.deepEqual(rows(await get('/projects/1')), ['Moved', 'Remaining', 'New source task', 'Older destination task']);
+    // Return two tasks in the opposite order to their established destination slots.
+    await post('/projects/1/tasks/1/rename', { title: 'Updated moved task' });
+    await post('/projects/2/rename', { name: 'Destination renamed again' });
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/1/tasks/3/move', { destination: '2' });
+    assert.deepEqual(rows(await get('/projects/2')), ['Older destination task', 'Updated moved task', 'New destination task']);
+    // Emptying a project must not reuse the positions reserved by absent tasks.
+    await post('/projects/2/tasks/3/move', { destination: '1' });
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    await post('/projects/2/tasks/5/move', { destination: '1' });
+    await post('/projects/2/tasks', { title: 'Created while others away' });
+    await post('/projects/2/archive');
+    assert.equal((await post('/projects/1/tasks/1/move', { destination: '2' })).status, 400);
+    await stop();
+    await start();
+    await post('/projects/2/restore');
+    await post('/projects/1/tasks/5/move', { destination: '2' });
+    await post('/projects/1/tasks/1/move', { destination: '2' });
+    await post('/projects/1/tasks/3/move', { destination: '2' });
+    html = await get('/projects/2');
+    assert.deepEqual(rows(html), ['Older destination task', 'Updated moved task', 'New destination task', 'Created while others away']);
+    assert.match(html, /aria-label="Complete Updated moved task" checked/);
+    assert.match(html, /value="2024-02-29"/);
+    await stop();
+    await start();
+    assert.deepEqual(rows(await get('/projects/2')), ['Older destination task', 'Updated moved task', 'New destination task', 'Created while others away']);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });

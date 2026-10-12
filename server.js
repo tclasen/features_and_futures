@@ -34,6 +34,19 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+// Keep established slots even while their tasks belong to another project.
+// Seed existing databases without changing their current task order.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id),
+    UNIQUE (project_id, position)
+  );
+  INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 const priorities = ['Low', 'Normal', 'High'];
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
@@ -48,11 +61,26 @@ const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
+  VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const destinationsFor = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
+const rememberCreatedTask = db.prepare(`INSERT INTO task_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks WHERE id = ?`);
+const rememberDestination = db.prepare(`INSERT OR IGNORE INTO task_positions (task_id, project_id, position)
+  VALUES (?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const moveTask = db.prepare(`UPDATE tasks SET project_id = ?,
-  position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  position = (SELECT position FROM task_positions WHERE task_id = ? AND project_id = ?)
   WHERE id = ? AND project_id = ?`);
+
+function transaction(action) {
+  db.exec('BEGIN');
+  try {
+    action();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -426,7 +454,10 @@ const server = http.createServer(async (request, response) => {
           html(response, 400, projectPage(project, filter, 'Choose an active destination project', selectedPriority));
           return;
         }
-        moveTask.run(destinationId, destinationId, Number(taskId), id);
+        transaction(() => {
+          rememberDestination.run(Number(taskId), destinationId, destinationId);
+          moveTask.run(destinationId, Number(taskId), destinationId, Number(taskId), id);
+        });
       } else if (action === 'due-date') {
         if (!findTask.get(Number(taskId), id)) {
           html(response, 404, page('Not found', '<h1>Task not found</h1>'));
@@ -472,7 +503,10 @@ const server = http.createServer(async (request, response) => {
           html(response, 400, projectPage(project, filter, 'Task title is required', selectedPriority));
           return;
         }
-        createTask.run(id, title, project.default_priority, id);
+        transaction(() => {
+          const result = createTask.run(id, title, project.default_priority, id);
+          rememberCreatedTask.run(result.lastInsertRowid);
+        });
       }
       response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority) });
       response.end();
