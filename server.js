@@ -37,7 +37,8 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_prio
   GROUP BY p.id ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY task_order, id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, task_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(task_order) + 1 FROM tasks WHERE project_id = ?), 0))');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, task_order = COALESCE((SELECT MAX(task_order) + 1 FROM tasks WHERE project_id = ?), 0) WHERE id = ? AND project_id = ?');
+const nextTaskOrder = db.prepare('SELECT COALESCE(MAX(task_order) + 1, 0) AS nextOrder FROM tasks WHERE project_id = ?');
+const moveTask = db.prepare('UPDATE tasks SET project_id = ?, task_order = ? WHERE id = ? AND project_id = ?');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -112,11 +113,14 @@ const server = createServer(async (req, res) => {
       if (owner.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
       const taskId = Number(taskUpdateMatch[2]);
       let result;
+      let responseProjectId = Number(taskUpdateMatch[1]);
       if (Number.isInteger(body.destinationProjectId)) {
         const destinationId = body.destinationProjectId;
         const destination = getProject.get(destinationId);
         if (!destination || destination.archived || destinationId === Number(taskUpdateMatch[1])) return send(400, JSON.stringify({ error: 'Invalid destination project' }));
-        result = moveTask.run(destinationId, destinationId, taskId, Number(taskUpdateMatch[1]));
+        const nextOrder = nextTaskOrder.get(destinationId).nextOrder;
+        result = moveTask.run(destinationId, nextOrder, taskId, Number(taskUpdateMatch[1]));
+        responseProjectId = destinationId;
       } else if (typeof body.completed === 'boolean') {
         result = updateTask.run(body.completed ? 1 : 0, taskId, Number(taskUpdateMatch[1]));
       } else if (typeof body.priority === 'string' && ['Low', 'Normal', 'High'].includes(body.priority)) {
@@ -133,7 +137,7 @@ const server = createServer(async (req, res) => {
       } else {
         return send(400, JSON.stringify({ error: 'Invalid task update' }));
       }
-      return result.changes ? send(200, JSON.stringify(getTask.get(taskId, Number(taskUpdateMatch[1])))) : send(404, JSON.stringify({ error: 'Not found' }));
+      return result.changes ? send(200, JSON.stringify(getTask.get(taskId, responseProjectId))) : send(404, JSON.stringify({ error: 'Not found' }));
     } catch {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
     }
