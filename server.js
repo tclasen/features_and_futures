@@ -61,6 +61,21 @@ const server = http.createServer(async (req, res) => {
       return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
     }
   }
+  const projectExport = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (projectExport && req.method === 'GET') {
+    const id = Number(projectExport[1]);
+    const project = db.prepare('SELECT name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?').get(id);
+    if (!project) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+    const tasks = db.prepare(`SELECT t.title, t.completed, t.priority, COALESCE(t.due_date, '') AS dueDate, t.notes, t.deleted
+      FROM tasks t JOIN task_positions tp ON tp.task_id = t.id AND tp.project_id = t.project_id
+      WHERE t.project_id = ? ORDER BY tp.position, t.id`).all(id).map(task => ({
+        title: task.title, completed: Boolean(task.completed), priority: task.priority || 'Normal',
+        dueDate: task.dueDate || '', notes: (task.notes || '').replace(/\\r\\n?/g, '\\n'), deleted: Boolean(task.deleted)
+      }));
+    const document = { format: 'workboard-project', version: 1, project: { name: project.name, archived: Boolean(project.archived), defaultPriority: project.defaultPriority || 'Normal', tasks } };
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="workboard-project.json"', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(document));
+  }
   const tasks = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (tasks && req.method === 'GET') {
     const projectId = Number(tasks[1]);
