@@ -9,3 +9,5 @@ Corrected future candidate uses future031040-role-preparation002 with10identical
 Corrected future owner focused003independently passes16positivecases and16genuinefaultvariants, zero skips/flakes. Combined focused role gates total132checks (48exports+52directory+32futureowners); broad full030/040remaining. Original faulty001/002andcanceledpartialtrace limitations retained.
 
 Early link-only async baseline independently verifies99cumulative30cases and2process-local probes,0skips/flakes. This additional early check does not replace complete16variant030or10variant040gates and is not an actual restart.
+
+L060future PM fixture cancellation control verified in2direct process checks and2actual reusable-runner paths (normal/cancel). New trusted fixtures use pm-sealed-fixture-runner001 with exact owned-group quiescence before sealing; independently detached processes require separate tracking. Current live sources unchanged. Old3transient trace files remain unavailable and are not reconstructed. No builder execution/measurement change.
