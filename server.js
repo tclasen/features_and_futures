@@ -149,6 +149,13 @@ function sendPage(response) {
       </select>
       <label for="default-task-priority">Default task priority</label>
       <select id="default-task-priority"><option>Low</option><option>Normal</option><option>High</option></select>
+      <form id="due-range-form">
+        <label for="due-from">Due from</label>
+        <input id="due-from" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+        <label for="due-through">Due through</label>
+        <input id="due-through" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+        <button type="submit">Apply due range</button>
+      </form>
       <ul id="tasks" aria-label="Tasks"></ul>
     </section>
   </main>
@@ -160,6 +167,8 @@ function sendPage(response) {
     const taskList = document.querySelector('#tasks');
     let currentProjectId = null;
     let currentProjectArchived = false;
+    let appliedDueFrom = '';
+    let appliedDueThrough = '';
 
     async function loadProjects() {
       const response = await fetch('/api/projects');
@@ -208,6 +217,10 @@ function sendPage(response) {
       if (!response.ok) { window.location.replace('/'); return; }
       const project = await response.json();
       currentProjectId = id;
+      appliedDueFrom = '';
+      appliedDueThrough = '';
+      document.querySelector('#due-from').value = '';
+      document.querySelector('#due-through').value = '';
       listView.hidden = true;
       detailView.hidden = false;
       document.querySelector('#project-title').textContent = project.name;
@@ -235,6 +248,9 @@ function sendPage(response) {
       for (const task of tasks) {
         if (filter === 'Open' && task.completed || filter === 'Completed' && !task.completed) continue;
         if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
+        if ((appliedDueFrom || appliedDueThrough) && !task.due_date) continue;
+        if (task.due_date && appliedDueFrom && task.due_date < appliedDueFrom) continue;
+        if (task.due_date && appliedDueThrough && task.due_date > appliedDueThrough) continue;
         const row = document.createElement('li');
         row.dataset.testid = 'task-row';
         const checkbox = document.createElement('input');
@@ -320,6 +336,7 @@ function sendPage(response) {
           error.hidden = true;
           const saved = await updated.json();
           dueDate.value = saved.due_date || '';
+          await renderTasks();
         });
         row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate);
         taskList.append(row);
@@ -364,6 +381,25 @@ function sendPage(response) {
     });
     document.querySelector('#task-filter').addEventListener('change', renderTasks);
     document.querySelector('#priority-filter').addEventListener('change', renderTasks);
+    document.querySelector('#due-range-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const from = document.querySelector('#due-from').value.trim();
+      const through = document.querySelector('#due-through').value.trim();
+      if ((from && !isValidCalendarDate(from)) || (through && !isValidCalendarDate(through))) {
+        error.textContent = 'Due range must use valid YYYY-MM-DD dates';
+        error.hidden = false;
+        return;
+      }
+      if (from && through && from > through) {
+        error.textContent = 'Due from must not be after Due through';
+        error.hidden = false;
+        return;
+      }
+      appliedDueFrom = from;
+      appliedDueThrough = through;
+      error.hidden = true;
+      await renderTasks();
+    });
     document.querySelector('#default-task-priority').addEventListener('change', async (event) => {
       const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/default-priority', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -372,6 +408,18 @@ function sendPage(response) {
       if (!response.ok) throw new Error('Unable to update default task priority');
     });
     document.querySelector('#project-filter').addEventListener('change', showList);
+
+    function isValidCalendarDate(value) {
+      const match = value.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+      if (!match) return false;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (year < 1 || month < 1 || month > 12) return false;
+      const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+      const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+      return day >= 1 && day <= days[month - 1];
+    }
 
     document.querySelector('#create-form').addEventListener('submit', async (event) => {
       event.preventDefault();
