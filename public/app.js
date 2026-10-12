@@ -64,6 +64,9 @@ async function showRoute() {
   document.querySelector('#new-project-name').disabled = Boolean(project.archived);
   document.querySelector('#rename-form button').disabled = Boolean(project.archived);
   document.querySelector('#new-project-name').value = project.name;
+  const defaultPriority = document.querySelector('#default-task-priority');
+  defaultPriority.value = project.defaultPriority || 'Normal';
+  defaultPriority.disabled = Boolean(project.archived);
   activeProjectId = project.id;
   listSection.hidden = true;
   detailSection.hidden = false;
@@ -182,6 +185,13 @@ function renderTasks() {
   }
 }
 
+document.querySelector('#default-task-priority').addEventListener('change', async event => {
+  const response = await fetch(`/api/projects/${activeProjectId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultPriority: event.target.value })
+  });
+  if (!response.ok) await showRoute();
+});
 document.querySelector('#task-filter').addEventListener('change', renderTasks);
 document.querySelector('#priority-filter').addEventListener('change', renderTasks);
 document.querySelector('#project-filter').addEventListener('change', loadProjects);

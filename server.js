@@ -14,7 +14,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   archived INTEGER NOT NULL DEFAULT 0
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -28,12 +29,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ? AND ? IN ('Low', 'Normal', 'High')");
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const setDefaultPriority = db.prepare("UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0 AND ? IN ('Low', 'Normal', 'High')");
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
   FROM projects p ORDER BY p.id`);
@@ -78,7 +80,8 @@ const server = http.createServer(async (req, res) => {
         const data = JSON.parse(raw || '{}');
         const title = typeof data.title === 'string' ? data.title.trim() : '';
         if (!title) return json(res, 400, { error: 'Task title is required' });
-        const result = createTask.run(projectId, title);
+        const project = getProject.get(projectId);
+        const result = createTask.run(projectId, title, project.defaultPriority || 'Normal');
         return json(res, 201, getTask.get(Number(result.lastInsertRowid)));
       } catch {
         return json(res, 400, { error: 'Invalid request' });
@@ -94,7 +97,11 @@ const server = http.createServer(async (req, res) => {
       const id = Number(archiveMatch[1]);
       const project = getProject.get(id);
       if (!project) return json(res, 404, { error: 'Project not found' });
-      if (typeof data.name === 'string') {
+      if (typeof data.defaultPriority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(data.defaultPriority)) return json(res, 400, { error: 'Invalid priority' });
+        if (project.archived) return json(res, 403, { error: 'Archived project' });
+        setDefaultPriority.run(data.defaultPriority, id, data.defaultPriority);
+      } else if (typeof data.name === 'string') {
         const name = data.name.trim();
         if (!name) return json(res, 400, { error: 'Project name is required' });
         if (project.archived) return json(res, 403, { error: 'Archived project' });
