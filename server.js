@@ -59,10 +59,22 @@ const server = createServer(async (request, response) => {
     const projectId = Number(projectArchive[1]);
     let body;
     try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
-    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
-    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
-    if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
-    return sendJson(response, 200, { id: projectId, archived: body.archived });
+    if (typeof body?.archived === 'boolean') {
+      const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+      return sendJson(response, 200, { id: projectId, archived: body.archived });
+    }
+    if (typeof body?.name === 'string') {
+      const name = body.name.trim();
+      if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+      const result = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectId);
+      if (!result.changes) {
+        const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+        return sendJson(response, project ? 400 : 404, { error: project ? 'Archived projects cannot be changed' : 'Project not found' });
+      }
+      return sendJson(response, 200, { id: projectId, name });
+    }
+    return sendJson(response, 400, { error: 'Project update is required' });
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     let body;
