@@ -65,3 +65,8 @@ restoration preserves all saved fields and returns them to those positions. Arch
 projects allow reading deleted tasks but not deleting or restoring them. Tests cover
 migration to live tasks, filter preservation, summary changes, disabled controls,
 server-side edit protection, restoration order, movement and restart persistence.
+Every project page offers `Download project`, including archived projects. It downloads
+`workboard-project.json` with portable version-1 project state and all live/deleted tasks
+in stored order, regardless of filters. Notes line endings are exported as LF without
+changing stored notes. Export tests cover legacy defaults, empty projects, movement and
+return ordering, exact text, deletion, archived access, unchanged data and restart behavior.
