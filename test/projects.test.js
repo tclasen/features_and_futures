@@ -32,6 +32,86 @@ async function start(databasePath) {
   };
 }
 
+test('due dates validate calendar days, migrate empty, and preserve task data across restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  const oldDb = new DatabaseSync(databasePath);
+  oldDb.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Existing'), ('Other');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Original', 1);
+  `);
+  oldDb.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const get = async (path) => (await fetch(server.baseUrl + path)).text();
+    const post = (path, values = {}) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const dateInput = (body, id, date, disabled = false) => {
+      assert.ok(body.includes(`<input id="task-due-date-${id}" name="dueDate" type="text" value="${date}"${disabled ? ' disabled' : ''}>`));
+    };
+    dateInput(await get('/projects/1'), 1, '');
+    await post('/projects/1/tasks', { title: 'New task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    dateInput(await get('/projects/1'), 2, '');
+    const filters = { filter: 'Completed', priorityFilter: 'Normal' };
+    const path = '/projects/1?filter=Completed&priorityFilter=Normal';
+    const summary = await get('/');
+    for (const date of ['0001-01-01', '9999-12-31', '2000-02-29', '2024-02-29', '1900-02-28']) {
+      const result = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate: `  ${date}  ` });
+      assert.equal(result.status, 303);
+      assert.equal(result.headers.get('location'), path);
+      dateInput(await get(path), 1, date);
+    }
+    const saved = await get(path);
+    for (const date of ['0000-01-01', '10000-01-01', '1900-02-29', '2023-02-29', '2024-04-31',
+      '2024-00-01', '2024-13-01', '2024-01-00', '2024-01-32', '2024-1-01', '24-01-01',
+      '2024-01-01T00:00:00Z', 'not a date', '<script>']) {
+      const result = await post('/projects/1/tasks/1/due-date', { ...filters, dueDate: date });
+      assert.equal(result.status, 400, date);
+      const body = await result.text();
+      assert.match(body, /role="alert">Due date must be a valid YYYY-MM-DD date/);
+      dateInput(body, 1, '1900-02-28');
+      assert.match(body, /<option selected>Completed<\/option>/);
+      assert.match(body, /<option selected>Normal<\/option>/);
+      assert.equal(await get(path), saved);
+    }
+    dateInput(await get('/projects/1'), 2, '');
+    dateInput(await get('/projects/2'), 3, '');
+    assert.equal((await post('/projects/2/tasks/1/due-date', { dueDate: '2024-01-01' })).status, 404);
+    assert.equal(await get('/'), summary);
+    await post('/projects/1/tasks/1/rename', { ...filters, title: 'Renamed' });
+    dateInput(await get(path), 1, '1900-02-28');
+    assert.match(await get(path), /aria-label="Complete Renamed" checked/);
+    await server.stop();
+    server = await start(databasePath);
+    dateInput(await get(path), 1, '1900-02-28');
+    await post('/projects/1/archive');
+    const archived = await get(path);
+    dateInput(archived, 1, '1900-02-28', true);
+    assert.match(archived, /<button type="submit" disabled>Save due date<\/button>/);
+    assert.equal((await post('/projects/1/tasks/1/due-date', { dueDate: '' })).status, 403);
+    assert.equal(await get(path), archived);
+    await post('/projects/1/restore');
+    dateInput(await get(path), 1, '1900-02-28');
+    for (const value of ['', '   ']) {
+      await post('/projects/1/tasks/1/due-date', { ...filters, dueDate: value });
+      dateInput(await get(path), 1, '');
+    }
+    await server.stop();
+    server = await start(databasePath);
+    dateInput(await get(path), 1, '');
+    assert.equal(await get('/'), summary);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project defaults migrate, apply only to new tasks, and survive edits and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
   const databasePath = join(directory, 'projects.sqlite');

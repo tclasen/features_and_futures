@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. Defaults are port `8080` and database path
 `data/workboard.sqlite`. The server binds to `0.0.0.0`; keep the database file
-to preserve project names and IDs, tasks, completion state, priorities, project default priorities, and archive state across restarts.
+to preserve project names and IDs, tasks, completion state, priorities, project default priorities, due dates, and archive state across restarts.
 Existing databases are upgraded automatically. `GET /health` returns `{"status":"ok"}`.
 
 ## Verify
@@ -34,3 +34,6 @@ on archived project pages.
 Project-default tests cover schema migration, independent defaults, new-task inheritance,
 unchanged existing tasks and filters, validation, renaming, restart persistence,
 and archive/restore protection.
+Due-date tests cover empty defaults and migration, strict Gregorian calendar validation,
+trimming and clearing, independent values, unchanged filters and summaries, rename preservation,
+restart persistence, and archive/restore protection.
