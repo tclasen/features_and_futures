@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
+import { DatabaseSync } from 'node:sqlite';
 
 test('projects and tasks validate, stay isolated, filter, and survive server restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
@@ -121,7 +122,7 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     const archivedPage = await tasksPage();
     assert.match(archivedPage, /Archived project/);
     assert.match(archivedPage, /<button type="submit" disabled>Create task/);
-    assert.equal((archivedPage.match(/ disabled onchange/g) || []).length, 2);
+    assert.equal((archivedPage.match(/aria-label="Complete [^"]*"[^>]* disabled onchange/g) || []).length, 2);
     assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
     assert.equal(rowCount(await tasksPage(1, 'Open')), 1);
     assert.equal((await postTask('/projects/1/tasks', { title: 'Forbidden' })).status, 403);
@@ -214,8 +215,87 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     await start();
     assert.equal(await tasksPage(), finalTasks);
     assert.match(await (await fetch(base)).text(), /1\/2 completed/);
+
+    // Priority is independent of completion, titles, ownership, and ordering.
+    const priorityOptions = (html, id) => html.match(new RegExp(`<select id="task-priority-${id}"[^>]*>([\\s\\S]*?)</select>`))[1].trim();
+    const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    assert.equal(priorityOptions(finalTasks, 1), normalOptions);
+    assert.equal(priorityOptions(finalTasks, 2), normalOptions);
+    const summaryBefore = await (await fetch(base)).text();
+    const priorityChange = await postTask('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(priorityChange.status, 303);
+    assert.equal(priorityChange.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal(priorityOptions(await tasksPage(), 1), '<option>Low</option><option>Normal</option><option selected>High</option>');
+    assert.equal(priorityOptions(await tasksPage(), 2), normalOptions);
+    assert.equal((await postTask('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await postTask('/projects/1/tasks/999/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await postTask('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 422);
+    await postTask('/projects/1/tasks/2/priority', { priority: 'Low' });
+    assert.equal(await (await fetch(base)).text(), summaryBefore);
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
+    assert.equal(rowCount(await tasksPage(1, 'Open')), 1);
+    await postTask('/projects/1/tasks/1/rename', { title: 'Priority retained' });
+    const prioritized = await tasksPage();
+    assert.match(prioritized, /aria-label="Complete Priority retained" checked/);
+    assert.ok(prioritized.indexOf('Priority retained') < prioritized.indexOf('Renamed open task'));
+    assert.equal(priorityOptions(prioritized, 1), '<option>Low</option><option>Normal</option><option selected>High</option>');
+    assert.equal(priorityOptions(prioritized, 2), '<option selected>Low</option><option>Normal</option><option>High</option>');
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), prioritized);
+    await postTask('/projects/1/archive', {});
+    const archivedPriorities = await tasksPage();
+    assert.equal((archivedPriorities.match(/id="task-priority-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((await postTask('/projects/1/tasks/1/priority', { priority: 'Low' })).status, 403);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), archivedPriorities);
+    await postTask('/projects/1/restore', {});
+    assert.equal(await tasksPage(), prioritized);
+    await postTask('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    assert.equal(priorityOptions(await tasksPage(), 1), normalOptions);
+    assert.equal(await (await fetch(base)).text(), summaryBefore);
   } finally {
     await stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('migrates existing tasks to Normal priority without changing saved data', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const path = join(dir, 'legacy.sqlite');
+  const db = new DatabaseSync(path);
+  db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Legacy project');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy task', 1);`);
+  db.close();
+  const child = spawn(process.execPath, ['server.js'], {
+    env: { ...process.env, PORT: '18081', DB_PATH: path }, stdio: 'ignore'
+  });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      try {
+        ready = (await fetch('http://127.0.0.1:18081/health')).ok;
+        if (ready) break;
+      } catch {}
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.ok(ready);
+    const html = await (await fetch('http://127.0.0.1:18081/projects/1')).text();
+    assert.match(html, /aria-label="Complete Legacy task" checked/);
+    assert.match(html, /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    const migrated = new DatabaseSync(path);
+    try {
+      assert.deepEqual({ ...migrated.prepare('SELECT * FROM tasks').get() }, {
+        id: 1, project_id: 1, title: 'Legacy task', completed: 1, priority: 'Normal'
+      });
+    } finally { migrated.close(); }
+  } finally {
+    const exited = once(child, 'exit');
+    child.kill('SIGTERM');
+    await exited;
     await rm(dir, { recursive: true, force: true });
   }
 });
