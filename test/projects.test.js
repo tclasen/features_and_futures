@@ -75,6 +75,95 @@ function priorityControls(html) {
   }));
 }
 
+test('portable project downloads include all ordered state without changing data or filters', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  const databasePath = join(directory, 'board.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects VALUES (1, 'Source  Name'), (2, 'Other'), (3, 'Empty');
+    INSERT INTO tasks VALUES (1, 1, 'First  Title', 1), (2, 1, 'Second', 0), (3, 2, 'Other task', 0);
+  `);
+  legacy.close();
+  const snapshot = () => {
+    const db = new DatabaseSync(databasePath);
+    try {
+      return ['projects', 'tasks', 'task_positions'].map((table) =>
+        db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all());
+    } finally { db.close(); }
+  };
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = (path) => fetch(`${server.baseUrl}${path}`);
+    const download = async (id, query = '') => {
+      const response = await get(`/projects/${id}/download${query}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    const defaultTask = (title, completed = false) => ({
+      title, completed, priority: 'Normal', dueDate: '', notes: '', deleted: false,
+    });
+    // Upgrading old records supplies public defaults and exports no internal IDs/positions.
+    assert.deepEqual(await download(1), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Source  Name', archived: false, defaultPriority: 'Normal',
+        tasks: [defaultTask('First  Title', true), defaultTask('Second')] },
+    });
+    assert.deepEqual((await download(3)).project.tasks, []);
+    const notes = '  \r\nUnicode 📝 café\rline\n<script>& literal</script>  ';
+    await post(server.baseUrl, '/projects/1/tasks/1/notes', { notes });
+    await post(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await post(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/rename', { title: 'First  Updated 📝' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    await post(server.baseUrl, '/projects/1/tasks/2/delete', {});
+    await post(server.baseUrl, '/projects/1/default-priority', { priority: 'Low' });
+    await post(server.baseUrl, '/projects/1/tasks', { title: 'Third' });
+    await post(server.baseUrl, '/projects/1/rename', { name: 'Saved  Project 📝' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Saved  Project 📝', archived: false, defaultPriority: 'Low', tasks: [
+        { ...defaultTask('First  Updated 📝', true), priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n') },
+        { ...defaultTask('Second'), deleted: true },
+        { ...defaultTask('Third'), priority: 'Low' },
+      ] },
+    };
+    const query = '?filter=Deleted&priorityFilter=High&dueFrom=2026-01-01&dueThrough=2026-12-31&search=absent';
+    const html = await (await get(`/projects/1${query}`)).text();
+    assert.deepEqual(taskRows(html), []);
+    assert.match(html, /<form action="\/projects\/1\/download" method="get"><button type="submit">Download project<\/button>/);
+    const before = snapshot();
+    assert.deepEqual(await download(1, query), expected);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(snapshot()[1][0].notes, notes); // LF conversion never rewrites stored notes.
+    assert.equal(await (await get(`/projects/1${query}`)).text(), html);
+    assert.deepEqual((await download(2)).project.tasks, [defaultTask('Other task')]);
+    await post(server.baseUrl, '/projects/1/archive', {});
+    expected.project.archived = true;
+    assert.deepEqual(await download(1), expected);
+    assert.match(await (await get('/projects/1')).text(), /<button type="submit">Download project<\/button>/);
+    await post(server.baseUrl, '/projects/3/tasks', { title: 'Only deleted' });
+    await post(server.baseUrl, '/projects/3/tasks/5/delete', {});
+    await post(server.baseUrl, '/projects/3/archive', {});
+    assert.deepEqual((await download(3)).project.tasks, [{ ...defaultTask('Only deleted'), deleted: true }]);
+    const archivedSnapshot = snapshot();
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(1), expected);
+    assert.deepEqual(snapshot(), archivedSnapshot);
+    assert.equal((await get('/projects/999/download')).status, 404);
+    assert.equal((await get('/projects/99999999999999999/download')).status, 404);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('deletion migrates live tasks, preserves fields and positions, filters and archive restrictions', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
   const databasePath = join(directory, 'board.sqlite');
@@ -354,8 +443,9 @@ test('task search intersects all filters and survives edits, validation, moves, 
     const state = { filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-01', dueThrough: '2024-03-01', search: 'alpha' };
     assert.deepEqual(titles(await get(state)), ['Alpha task']);
     const html = await get(state);
-    // Every mutation and filter form carries the applied search; the search form has only its visible input.
+    // Every mutation and filter form carries search; downloads are independent of page state.
     for (const match of html.matchAll(/<form action="\/projects\/1[^\"]*"[^>]*>([\s\S]*?)<\/form>/g)) {
+      if (match[0].includes('action="/projects/1/download"')) continue;
       if (match[1].includes('id="task-search"')) {
         assert.equal((match[1].match(/name="search"/g) || []).length, 1);
       } else {

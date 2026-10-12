@@ -268,6 +268,28 @@ function projectList(error = '', filter = 'Active', search = '') {
   `);
 }
 
+// Export current ownership and remembered order, independent of all page filters.
+function portableProject(project) {
+  return {
+    format: 'workboard-project',
+    version: 1,
+    project: {
+      name: project.name,
+      archived: Boolean(project.archived),
+      defaultPriority: project.default_priority,
+      tasks: listTasks.all(project.id).map((task) => ({
+        title: task.title,
+        completed: Boolean(task.completed),
+        priority: task.priority,
+        dueDate: task.due_date,
+        // Browser textareas use LF; normalize only the portable representation.
+        notes: task.notes.replace(/\r\n?/g, '\n'),
+        deleted: Boolean(task.deleted),
+      })),
+    },
+  };
+}
+
 function projectPage(project, filter = 'All', error = '', priority = 'All', range = { from: '', through: '' }, search = '', draftRange = range) {
   const path = `/projects/${project.id}`;
   const destinations = listDestinations.all(project.id);
@@ -340,6 +362,7 @@ ${escapeHtml(task.notes).replace(/\r/g, '&#13;')}</textarea>
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form action="/" method="get"><button type="submit">Projects</button></form>
+    <form action="${path}/download" method="get"><button type="submit">Download project</button></form>
     <form action="${path}/rename" method="post">
       ${taskFilterFields(filter, priority, range, search)}
       <label for="new-project-name">New project name</label>
@@ -537,6 +560,18 @@ const server = http.createServer(async (request, response) => {
       response.writeHead(303, { Location: search
         ? `${location}${location.includes('?') ? '&' : '?'}${new URLSearchParams({ search })}` : location });
       response.end();
+    } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*\/download$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+      if (!project) {
+        sendHtml(response, 404, page('Not found', '<h1>Project not found</h1><a href="/">Projects</a>'));
+        return;
+      }
+      response.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="workboard-project.json"',
+      });
+      response.end(JSON.stringify(portableProject(project)));
     } else if (request.method === 'GET' && /^\/projects\/[1-9]\d*$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
