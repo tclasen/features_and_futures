@@ -193,7 +193,7 @@ const page = `<!doctype html>
       }
       app.append(list);
     }
-    async function showProject(id) {
+    async function showProject(id, savedView = null) {
       const response = await fetch('/api/projects/' + escId(id));
       app.replaceChildren();
       if (!response.ok) {
@@ -236,7 +236,7 @@ const page = `<!doctype html>
           const renamed = await fetch('/api/projects/' + escId(id), {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name })
           });
-          if (renamed.ok) await showProject(id);
+          if (renamed.ok) await showProject(id, currentView());
         });
         app.append(renameForm, renameAlert);
         const defaultPriorityLabel = document.createElement('label');
@@ -294,7 +294,7 @@ const page = `<!doctype html>
           const created = await fetch('/api/projects/' + escId(id) + '/tasks', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title })
           });
-          if (created.ok) await showProject(id);
+          if (created.ok) await showProject(id, currentView());
         });
         app.append(form, alert);
         const filterLabel = document.createElement('label');
@@ -321,6 +321,65 @@ const page = `<!doctype html>
         }
         priorityFilterLabel.append(priorityFilter);
         app.append(priorityFilterLabel);
+        const dueRangeForm = document.createElement('form');
+        const dueFromLabel = document.createElement('label');
+        dueFromLabel.textContent = 'Due from';
+        const dueFrom = document.createElement('input');
+        dueFrom.type = 'text';
+        dueFrom.setAttribute('aria-label', 'Due from');
+        dueFrom.placeholder = 'YYYY-MM-DD';
+        dueFromLabel.append(dueFrom);
+        const dueThroughLabel = document.createElement('label');
+        dueThroughLabel.textContent = 'Due through';
+        const dueThrough = document.createElement('input');
+        dueThrough.type = 'text';
+        dueThrough.setAttribute('aria-label', 'Due through');
+        dueThrough.placeholder = 'YYYY-MM-DD';
+        dueThroughLabel.append(dueThrough);
+        const applyDueRange = document.createElement('button');
+        applyDueRange.type = 'submit';
+        applyDueRange.textContent = 'Apply due range';
+        dueRangeForm.append(dueFromLabel, dueThroughLabel, applyDueRange);
+        const rangeAlert = document.createElement('p');
+        rangeAlert.setAttribute('role', 'alert');
+        rangeAlert.hidden = true;
+        app.append(dueRangeForm, rangeAlert);
+        let appliedFrom = savedView?.appliedFrom || '';
+        let appliedThrough = savedView?.appliedThrough || '';
+        dueFrom.value = savedView?.dueFrom || '';
+        dueThrough.value = savedView?.dueThrough || '';
+        filter.value = savedView?.taskFilter || 'All';
+        priorityFilter.value = savedView?.priorityFilter || 'All';
+        function currentView() {
+          return { taskFilter: filter.value, priorityFilter: priorityFilter.value,
+            dueFrom: dueFrom.value, dueThrough: dueThrough.value, appliedFrom, appliedThrough };
+        }
+        dueRangeForm.addEventListener('submit', (event) => {
+          event.preventDefault();
+          const from = dueFrom.value.trim();
+          const through = dueThrough.value.trim();
+          const validDate = (value) => {
+            if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+            const [year, month, day] = value.split('-').map(Number);
+            if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+            const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+            return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+          };
+          if ((from && !validDate(from)) || (through && !validDate(through))) {
+            rangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+            rangeAlert.hidden = false;
+            return;
+          }
+          if (from && through && from > through) {
+            rangeAlert.textContent = 'Due from must not be after Due through';
+            rangeAlert.hidden = false;
+            return;
+          }
+          appliedFrom = from;
+          appliedThrough = through;
+          rangeAlert.hidden = true;
+          renderTasks();
+        });
         const tasksResponse = await fetch('/api/projects/' + escId(id) + '/tasks');
         const tasks = await tasksResponse.json();
         const list = document.createElement('ul');
@@ -330,6 +389,9 @@ const page = `<!doctype html>
             if (filter.value === 'Open' && task.completed) continue;
             if (filter.value === 'Completed' && !task.completed) continue;
             if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+            if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
+            if (appliedFrom && task.dueDate < appliedFrom) continue;
+            if (appliedThrough && task.dueDate > appliedThrough) continue;
             const row = document.createElement('li');
             row.dataset.testid = 'task-row';
             const checkbox = document.createElement('input');
@@ -343,6 +405,7 @@ const page = `<!doctype html>
               });
               if (updated.ok) {
                 task.completed = checkbox.checked ? 1 : 0;
+                if (savedView) Object.assign(savedView, currentView());
                 renderTasks();
               }
             });
@@ -364,6 +427,7 @@ const page = `<!doctype html>
               });
               if (updated.ok) {
                 task.priority = priority.value;
+                if (savedView) Object.assign(savedView, currentView());
                 renderTasks();
               }
             });
@@ -390,6 +454,7 @@ const page = `<!doctype html>
               if (renamed.ok) {
                 const updatedTask = await renamed.json();
                 task.title = updatedTask.title;
+                if (savedView) Object.assign(savedView, currentView());
                 renderTasks();
               }
             });
@@ -420,6 +485,7 @@ const page = `<!doctype html>
                 task.dueDate = updatedTask.dueDate;
                 dueDateInput.value = task.dueDate || '';
                 alert.hidden = true;
+                renderTasks();
               } else {
                 alert.textContent = 'Due date must be a valid YYYY-MM-DD date';
                 alert.hidden = false;
