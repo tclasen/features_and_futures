@@ -132,6 +132,7 @@ const page = `<!doctype html>
     [data-testid="project-row"] { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem 0; border-bottom: 1px solid #e3e8ee; }
     [data-testid="task-row"] { display: flex; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #e3e8ee; }
     [data-testid="task-row"] input { padding: 0; }
+    [data-testid="directory-task-notes"] { white-space: pre-wrap; }
     .task-controls { margin-top: 1.5rem; }
     [role="alert"] { color: #a32626; margin: .75rem 0; }
   </style>
@@ -156,6 +157,11 @@ const page = `<!doctype html>
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
       app.append(heading);
+      const directoryButton = document.createElement('button');
+      directoryButton.type = 'button';
+      directoryButton.textContent = 'Task directory';
+      directoryButton.addEventListener('click', () => { location.href = '/directory'; });
+      app.append(directoryButton);
       const form = document.createElement('form');
       const label = document.createElement('label');
       label.textContent = 'Project name';
@@ -280,6 +286,153 @@ const page = `<!doctype html>
         list.append(row);
       }
       app.append(list);
+    }
+    async function showDirectory() {
+      const response = await fetch('/api/directory');
+      if (!response.ok) throw new Error('Could not load task directory');
+      const tasks = await response.json();
+      app.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = 'Task directory';
+      const back = document.createElement('button');
+      back.type = 'button';
+      back.textContent = 'Projects';
+      back.addEventListener('click', () => { location.href = '/'; });
+      app.append(heading, back);
+
+      const addSelect = (labelText, ariaLabel, values) => {
+        const label = document.createElement('label');
+        label.textContent = labelText;
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', ariaLabel);
+        for (const value of values) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = value;
+          select.append(option);
+        }
+        label.append(select);
+        app.append(label);
+        return select;
+      };
+      const projectScope = addSelect('Project scope', 'Project scope', ['Active', 'Archived']);
+      const taskFilter = addSelect('Task filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted']);
+      const priorityFilter = addSelect('Priority filter', 'Priority filter', ['All', 'Low', 'Normal', 'High']);
+      const rangeForm = document.createElement('form');
+      const makeDateInput = (labelText) => {
+        const label = document.createElement('label');
+        label.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'YYYY-MM-DD';
+        input.setAttribute('aria-label', labelText);
+        label.append(input);
+        rangeForm.append(label);
+        return input;
+      };
+      const dueFrom = makeDateInput('Due from');
+      const dueThrough = makeDateInput('Due through');
+      const applyRange = document.createElement('button');
+      applyRange.type = 'submit';
+      applyRange.textContent = 'Apply due range';
+      rangeForm.append(applyRange);
+      const rangeAlert = document.createElement('p');
+      rangeAlert.setAttribute('role', 'alert');
+      rangeAlert.hidden = true;
+      app.append(rangeForm, rangeAlert);
+      const searchForm = document.createElement('form');
+      const searchLabel = document.createElement('label');
+      searchLabel.textContent = 'Directory search';
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.setAttribute('aria-label', 'Directory search');
+      searchLabel.append(searchInput);
+      const searchButton = document.createElement('button');
+      searchButton.type = 'submit';
+      searchButton.textContent = 'Search directory';
+      searchForm.append(searchLabel, searchButton);
+      app.append(searchForm);
+      const list = document.createElement('ul');
+      app.append(list);
+      let appliedFrom = '';
+      let appliedThrough = '';
+      let appliedQuery = '';
+      const validDate = (value) => {
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+        const [year, month, day] = value.split('-').map(Number);
+        if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+      };
+      rangeForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const from = dueFrom.value.trim();
+        const through = dueThrough.value.trim();
+        if ((from && !validDate(from)) || (through && !validDate(through))) {
+          rangeAlert.textContent = 'Due range must use valid YYYY-MM-DD dates';
+          rangeAlert.hidden = false;
+          return;
+        }
+        if (from && through && from > through) {
+          rangeAlert.textContent = 'Due from must not be after Due through';
+          rangeAlert.hidden = false;
+          return;
+        }
+        appliedFrom = from;
+        appliedThrough = through;
+        rangeAlert.hidden = true;
+        render();
+      });
+      searchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        appliedQuery = searchInput.value.trim();
+        render();
+      });
+      const normalize = (value) => value.replace(/[ \\t]+/g, ' ').replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+      function render() {
+        list.replaceChildren();
+        for (const task of tasks) {
+          if (task.archived !== (projectScope.value === 'Archived')) continue;
+          if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
+          if (taskFilter.value === 'Open' && task.completed) continue;
+          if (taskFilter.value === 'Completed' && !task.completed) continue;
+          if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+          if (!normalize(task.title).includes(normalize(appliedQuery))) continue;
+          if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
+          if (appliedFrom && task.dueDate < appliedFrom) continue;
+          if (appliedThrough && task.dueDate > appliedThrough) continue;
+          const row = document.createElement('li');
+          row.dataset.testid = 'directory-task-row';
+          const title = document.createElement('span');
+          title.dataset.testid = 'directory-task-title';
+          title.textContent = task.title;
+          const owner = document.createElement('span');
+          owner.dataset.testid = 'directory-project-name';
+          owner.textContent = task.projectName;
+          const completion = document.createElement('span');
+          completion.dataset.testid = 'directory-task-completion';
+          completion.textContent = task.completed ? 'Completed' : 'Open';
+          const priority = document.createElement('span');
+          priority.dataset.testid = 'directory-task-priority';
+          priority.textContent = task.priority || 'Normal';
+          const dueDate = document.createElement('span');
+          dueDate.dataset.testid = 'directory-task-due-date';
+          dueDate.textContent = task.dueDate || '';
+          const notes = document.createElement('span');
+          notes.dataset.testid = 'directory-task-notes';
+          notes.textContent = task.notes || '';
+          const open = document.createElement('button');
+          open.type = 'button';
+          open.textContent = 'Open project';
+          open.addEventListener('click', () => { location.href = '/projects/' + escId(task.projectId); });
+          row.append(title, owner, completion, priority, dueDate, notes, open);
+          list.append(row);
+        }
+      }
+      projectScope.addEventListener('change', render);
+      taskFilter.addEventListener('change', render);
+      priorityFilter.addEventListener('change', render);
+      render();
     }
     async function showProject(id, savedView = null) {
       const response = await fetch('/api/projects/' + escId(id));
@@ -682,7 +835,7 @@ const page = `<!doctype html>
       }
     }
     const match = location.pathname.match(/^\\/projects\\/([^/]+)\\/?$/);
-    (match ? showProject(decodeURIComponent(match[1])) : showList()).catch(() => {
+    (match ? showProject(decodeURIComponent(match[1])) : location.pathname === '/directory' ? showDirectory() : showList()).catch(() => {
       app.textContent = 'Unable to load Workboard';
     });
   </script>
@@ -692,6 +845,13 @@ const page = `<!doctype html>
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/health') return sendJson(response, 200, { status: 'ok' });
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    const rows = db.prepare(`SELECT t.id, t.project_id AS projectId, p.name AS projectName,
+      p.archived, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+      FROM projects p JOIN tasks t ON t.project_id = p.id
+      ORDER BY p.id, t.sort_order, t.id`).all();
+    return sendJson(response, 200, rows);
+  }
   if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all(url.searchParams.get('archived') === '1' ? 1 : 0));
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     const body = await readJson(request);
@@ -868,7 +1028,7 @@ const server = createServer(async (request, response) => {
     const task = findTask.get(taskId, projectId);
     return task ? sendJson(response, 200, task) : sendJson(response, 404, { error: 'Task not found' });
   }
-  if (request.method === 'GET' && (url.pathname === '/' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
+  if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/directory' || /^\/projects\/\d+\/?$/.test(url.pathname))) {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return response.end(page);
   }
