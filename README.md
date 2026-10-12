@@ -10,7 +10,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `http://localhost:8080`. The server binds to `0.0.0.0` and exposes
 `GET /health`. `PORT` defaults to `8080`; `DB_PATH` defaults to
-`./data/workboard.sqlite`. Keep the database file to retain projects across
+`./data/workboard.sqlite`. Keep the database file to retain projects, tasks and completion state across
 restarts.
 
 Run the integration checks:

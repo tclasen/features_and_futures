@@ -26,18 +26,116 @@ function projectRow(project) {
   return row;
 }
 
+async function renderProject(projectId) {
+  app.innerHTML = `
+    <button type="button" id="projects">Projects</button>
+    <h1></h1>
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-fields">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <p role="alert" hidden></p>
+    <div class="task-filter">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter">
+        <option>All</option><option>Open</option><option>Completed</option>
+      </select>
+    </div>
+    <section aria-label="Tasks" id="task-list"></section>`;
+  app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
+  const form = app.querySelector('form');
+  const input = app.querySelector('#task-title');
+  const button = form.querySelector('button');
+  const alert = app.querySelector('[role="alert"]');
+  const filter = app.querySelector('#task-filter');
+  const list = app.querySelector('#task-list');
+  const tasksPath = `/api/projects/${projectId}/tasks`;
+  let tasks = [];
+
+  function displayTasks() {
+    const matching = tasks.filter(task => filter.value === 'All' ||
+      (filter.value === 'Completed' ? task.completed : !task.completed));
+    list.replaceChildren(...matching.map(task => {
+      const row = document.createElement('div');
+      row.className = 'task-row';
+      row.dataset.testid = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        checkbox.disabled = true;
+        alert.hidden = true;
+        try {
+          const saved = await request(`${tasksPath}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          Object.assign(task, saved);
+          displayTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          showError(alert, error.message);
+        } finally {
+          checkbox.disabled = false;
+        }
+      });
+      row.append(title, checkbox);
+      return row;
+    }));
+  }
+
+  try {
+    const project = await request(`/api/projects/${projectId}`);
+    app.querySelector('h1').textContent = project.name;
+    document.title = `${project.name} · Workboard`;
+    tasks = await request(tasksPath);
+    displayTasks();
+  } catch (error) {
+    showError(alert, error.message);
+    return;
+  } finally {
+    app.setAttribute('aria-busy', 'false');
+  }
+  filter.addEventListener('change', displayTasks);
+  button.disabled = false;
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) {
+      showError(alert, 'Task title is required');
+      input.focus();
+      return;
+    }
+    button.disabled = true;
+    alert.hidden = true;
+    try {
+      tasks.push(await request(tasksPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      }));
+      displayTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 async function render() {
   const match = location.pathname.match(/^\/projects\/(\d+)$/);
   if (match) {
-    app.innerHTML = '<button type="button" id="projects">Projects</button><h1></h1><p role="alert" hidden></p>';
-    app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
-    try {
-      const project = await request(`/api/projects/${match[1]}`);
-      app.querySelector('h1').textContent = project.name;
-      document.title = `${project.name} · Workboard`;
-    } catch (error) {
-      showError(app.querySelector('[role="alert"]'), error.message);
-    }
+    await renderProject(match[1]);
   } else {
     app.innerHTML = `
       <h1>Workboard</h1>
