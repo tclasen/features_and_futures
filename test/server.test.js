@@ -140,6 +140,43 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
     assert.equal((await postTask('/projects/1/tasks/1', {})).status, 303);
     assert.equal(rowCount(await tasksPage(1, 'Completed')), 0);
+
+    // Renaming preserves project identity, order, tasks, and completion counts.
+    assert.equal((await postTask('/projects/1/tasks/1', { completed: '1' })).status, 303);
+    const blankRename = await postTask('/projects/1/rename', { name: '   ' });
+    assert.equal(blankRename.status, 422);
+    const blankPage = await blankRename.text();
+    assert.match(blankPage, /role="alert">Project name is required/);
+    assert.match(blankPage, /<h1>First project<\/h1>/);
+    assert.equal((await postTask('/projects/999/rename', { name: 'Missing' })).status, 404);
+    const renamed = await postTask('/projects/1/rename', { name: '  Renamed <project>  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed');
+    const renamedPage = await tasksPage();
+    assert.match(renamedPage, /<h1>Renamed &lt;project&gt;<\/h1>/);
+    assert.match(renamedPage, /<label for="new-project-name">New project name<\/label>/);
+    assert.equal(rowCount(renamedPage), 2);
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
+    const renamedList = await (await fetch(base)).text();
+    assert.ok(renamedList.indexOf('Renamed &lt;project&gt;') < renamedList.indexOf('&lt;Second&gt;'));
+    assert.match(renamedList, /action="\/projects\/1"/);
+    assert.match(renamedList, /1\/2 completed/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), renamedPage);
+    assert.equal(await (await fetch(base)).text(), renamedList);
+    await postTask('/projects/1/archive', {});
+    const archivedRenamePage = await tasksPage();
+    assert.match(archivedRenamePage, /id="new-project-name"[^>]* disabled/);
+    assert.match(archivedRenamePage, /<button type="submit" disabled>Rename project/);
+    assert.equal((await postTask('/projects/1/rename', { name: 'Forbidden' })).status, 403);
+    await postTask('/projects/1/restore', {});
+    assert.equal(await tasksPage(), renamedPage);
+    assert.equal((await postTask('/projects/1/rename', { name: 'Restored name' })).status, 303);
+    await stop();
+    await start();
+    assert.match(await tasksPage(), /<h1>Restored name<\/h1>/);
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
