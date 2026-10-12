@@ -87,23 +87,30 @@ export function createApp(databasePath) {
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id ASC`);
   const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+  const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
   const listTasks = database.prepare(`SELECT id, title, completed FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?) ORDER BY id ASC`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 
-  function projectPage(project, filter, error = '') {
+  function projectPage(project, filter, { taskError = '', renameError = '' } = {}) {
     const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0);
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
+<form method="post" action="/projects/${project.id}/rename">
+<input type="hidden" name="filter" value="${filter}">
+<label for="new-project-name">New project name</label>
+<div class="fields"><input id="new-project-name" name="name" type="text" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}${renameError ? ' aria-describedby="rename-error" aria-invalid="true"' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button></div>
+${renameError ? `<p id="rename-error" role="alert">${escapeHtml(renameError)}</p>` : ''}
+</form>
 <h2>Tasks</h2>
 <form method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
 <label for="task-title">Task title</label>
-<div class="fields"><input id="task-title" name="title" type="text"${error ? ' aria-describedby="task-error" aria-invalid="true"' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
-${error ? `<p id="task-error" role="alert">${escapeHtml(error)}</p>` : ''}
+<div class="fields"><input id="task-title" name="title" type="text"${taskError ? ' aria-describedby="task-error" aria-invalid="true"' : ''}><button type="submit"${project.archived ? ' disabled' : ''}>Create task</button></div>
+${taskError ? `<p id="task-error" role="alert">${escapeHtml(taskError)}</p>` : ''}
 </form>
 <form class="filter" method="get" action="/projects/${project.id}">
 <label for="task-filter">Task filter</label>
@@ -137,7 +144,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?|\/(archive|restore))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/completion)?|\/(archive|restore|rename))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -163,6 +170,22 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         const normalizeFilter = (value) => ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
         if (request.method === 'GET' && pathname === `/projects/${id}`) {
           sendHtml(response, 200, projectPage(project, normalizeFilter(url.searchParams.get('filter'))));
+        } else if (request.method === 'POST' && projectRoute[3] === 'rename') {
+          const form = await readForm(request);
+          const currentProject = findProject.get(id);
+          const filter = normalizeFilter(form.get('filter'));
+          if (currentProject.archived) {
+            sendHtml(response, 403, projectPage(currentProject, filter, { renameError: 'Archived project is read-only' }));
+            return;
+          }
+          const name = (form.get('name') ?? '').trim();
+          if (!name) {
+            sendHtml(response, 422, projectPage(currentProject, filter, { renameError: 'Project name is required' }));
+            return;
+          }
+          renameProject.run(name, id);
+          response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
+          response.end();
         } else if (request.method === 'POST' && projectRoute[3]) {
           updateArchive.run(projectRoute[3] === 'archive' ? 1 : 0, id);
           response.writeHead(303, { Location: projectRoute[3] === 'archive' ? '/' : '/?filter=Archived' });
@@ -170,13 +193,13 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         } else if (request.method === 'POST' && pathname.endsWith('/tasks')) {
           const form = await readForm(request);
           if (findProject.get(id).archived) {
-            sendHtml(response, 403, projectPage(findProject.get(id), normalizeFilter(form.get('filter')), 'Archived project is read-only'));
+            sendHtml(response, 403, projectPage(findProject.get(id), normalizeFilter(form.get('filter')), { taskError: 'Archived project is read-only' }));
             return;
           }
           const title = (form.get('title') ?? '').trim();
           const filter = normalizeFilter(form.get('filter'));
           if (!title) {
-            sendHtml(response, 422, projectPage(project, filter, 'Task title is required'));
+            sendHtml(response, 422, projectPage(project, filter, { taskError: 'Task title is required' }));
             return;
           }
           insertTask.run(id, title);
@@ -185,7 +208,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         } else if (request.method === 'POST' && projectRoute[2]) {
           const form = await readForm(request);
           if (findProject.get(id).archived) {
-            sendHtml(response, 403, projectPage(findProject.get(id), normalizeFilter(form.get('filter')), 'Archived project is read-only'));
+            sendHtml(response, 403, projectPage(findProject.get(id), normalizeFilter(form.get('filter')), { taskError: 'Archived project is read-only' }));
             return;
           }
           const taskId = Number(projectRoute[2]);

@@ -10,6 +10,7 @@ The server binds to `0.0.0.0`, using `PORT` (default `8080`). SQLite data is
 stored at `DB_PATH` (default `data/workboard.sqlite`). Parent directories are
 created automatically. Reuse the same database path to preserve projects,
 their tasks, task completion state, and archive state.
+Project names, including later renames, persist at the same project URL.
 
 ```sh
 PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
@@ -28,3 +29,8 @@ projects. Archiving preserves all tasks and makes task creation and completion
 read-only until restoration. Each project summary counts every task regardless
 of task filters. Existing databases are migrated automatically, preserving IDs
 and treating existing projects as active.
+
+Active project pages provide a New project name field and Rename project button.
+Renaming trims whitespace and preserves the project's identity, creation order,
+tasks, and summary. Empty names are rejected. Archived projects disable renaming
+and reject rename requests until restored.
