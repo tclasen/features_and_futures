@@ -11,8 +11,8 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 const server=http.createServer(async(req,res)=>{const url=new URL(req.url,'http://localhost');const send=(status,body,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store'});res.end(body)};const body=async()=>{let raw='';for await(const c of req)raw+=c;try{return JSON.parse(raw)}catch{return null}};
 try{
 if(url.pathname==='/health'&&req.method==='GET')return send(200,'{"status":"ok"}');
-let m=url.pathname.match(/^\/api\/projects\/(\d+)(?:\/(tasks(?:\/(\d+))?|archive|restore))?$/);
-if(m){const id=Number(m[1]), action=m[2], project=db.prepare('SELECT * FROM projects WHERE id=?').get(id);if(!project)return send(404,JSON.stringify({error:'Project not found'}));
+let m=url.pathname.match(/^\/api\/projects\/(\d+)(?:\/(tasks)(?:\/(\d+))?|\/(archive|restore))?$/);
+if(m){const id=Number(m[1]), action=m[2] || m[4], project=db.prepare('SELECT * FROM projects WHERE id=?').get(id);if(!project)return send(404,JSON.stringify({error:'Project not found'}));
 if(!action&&req.method==='PATCH'){const d=await body();if(!d||!['archive','restore'].includes(d.action))return send(400,'{}');db.prepare('UPDATE projects SET archived=? WHERE id=?').run(d.action==='archive'?1:0,id);return send(200,'{"ok":true}')}
 if(action==='tasks'&&req.method==='GET')return send(200,JSON.stringify(db.prepare('SELECT id,project_id AS projectId,title,completed FROM tasks WHERE project_id=? ORDER BY id').all(id)));
 if(action==='tasks'&&req.method==='POST'){const d=await body(),title=typeof d?.title==='string'?d.title.trim():'';if(!title)return send(400,JSON.stringify({error:'Task title is required'}));if(project.archived)return send(409,JSON.stringify({error:'Archived project'}));const r=db.prepare('INSERT INTO tasks(project_id,title) VALUES(?,?)').run(id,title);return send(201,JSON.stringify({id:Number(r.lastInsertRowid),projectId:id,title,completed:0}))}
