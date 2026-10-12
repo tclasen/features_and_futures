@@ -8,13 +8,13 @@ A dependency-free project board using Node.js 22.22.1, built-in HTTP, and SQLite
 npm start
 ```
 
-The server binds to `0.0.0.0`, with `PORT` defaulting to `8080` and `DB_PATH` defaulting to `data/workboard.sqlite`. Parent database directories are created automatically. Set `DB_PATH` to a persistent, writable file location to retain projects across restarts.
+The server binds to `0.0.0.0`, with `PORT` defaulting to `8080` and `DB_PATH` defaulting to `data/workboard.sqlite`. Parent database directories are created automatically. Set `DB_PATH` to a persistent, writable file location to retain projects, tasks, and completion state across restarts.
 
 ```sh
 PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 ```
 
-Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`. Pages use native HTML forms and work without client-side scripting. SQLite assigns permanent project IDs; the list is sorted by creation ID. Names are trimmed on the server and escaped when rendered.
+Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`. Project pages support task creation, completion checkboxes, and an All/Open/Completed filter. Tasks belong to their project and display in creation order. Pages use native HTML forms; a small browser script submits completion and filter changes automatically. SQLite assigns permanent IDs. Names and titles are trimmed on the server and escaped when rendered.
 
 ## Verify
 
@@ -23,4 +23,4 @@ npm test
 node --check server.js
 ```
 
-Tests launch the real server against a temporary database and cover health, required-name validation, trimming, creation order, HTML escaping, project navigation, and persistence across server restarts. Temporary files are removed after the test.
+Tests launch the real server against a temporary database and cover health, required-name validation, trimming, creation order, HTML escaping, project navigation, task validation, completion, filtering, project isolation, and persistence across server restarts. Temporary files are removed after the test.

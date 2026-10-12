@@ -41,6 +41,20 @@ async function create(baseUrl, name) {
   });
 }
 
+async function post(baseUrl, path, fields) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+  });
+}
+
+function taskRows(html) {
+  return [...html.matchAll(/<li data-testid="task-row">([\s\S]*?)<\/li>/g)].map((match) => ({
+    title: match[1].match(/<span>(.*?)<\/span>/s)[1],
+    path: match[1].match(/action="(.*?)"/)[1],
+    completed: / checked/.test(match[1]),
+  }));
+}
+
 function projectRows(html) {
   return [...html.matchAll(/<li data-testid="project-row">([\s\S]*?)<\/li>/g)].map((match) => ({
     name: match[1].match(/<span>(.*?)<\/span>/s)[1],
@@ -103,6 +117,62 @@ test('projects validate, render safely, retain order and persist after restart',
     for (const row of rows) {
       assert.equal((await fetch(`${server.baseUrl}${row.path}`)).status, 200);
     }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('tasks validate, filter, isolate completion updates and persist', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    await create(server.baseUrl, 'One');
+    await create(server.baseUrl, 'Two');
+    const projects = projectRows(await (await fetch(server.baseUrl)).text());
+    const [first, second] = projects.map((project) => project.path);
+    const detail = async (path = first) => (await fetch(`${server.baseUrl}${path}`)).text();
+    let html = await detail();
+    assert.match(html, /<label for="task-title">Task title<\/label>/);
+    assert.match(html, />Create task<\/button>/);
+    assert.match(html, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(html, /<option selected>All<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const result = await post(server.baseUrl, `${first}/tasks`, { title });
+      assert.equal(result.status, 400);
+      html = await result.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.deepEqual(taskRows(html), []);
+    }
+    for (const title of ['  First task  ', '<b>Second</b>', 'First task']) {
+      assert.equal((await post(server.baseUrl, `${first}/tasks`, { title })).status, 303);
+    }
+    html = await detail();
+    const rows = taskRows(html);
+    assert.deepEqual(rows.map((row) => row.title), ['First task', '&lt;b&gt;Second&lt;/b&gt;', 'First task']);
+    assert.ok(rows.every((row) => !row.completed));
+    assert.match(html, /aria-label="Complete First task"/);
+    assert.match(html, /aria-label="Complete &lt;b&gt;Second&lt;\/b&gt;"/);
+    assert.deepEqual(taskRows(await detail(second)), []);
+    const foreignPath = rows[0].path.replace(first, second);
+    assert.equal((await post(server.baseUrl, foreignPath, { completed: '1' })).status, 404);
+    assert.equal((await post(server.baseUrl, '/projects/99999/tasks', { title: 'Bad' })).status, 404);
+    await post(server.baseUrl, rows[1].path, { completed: '1', filter: 'All' });
+    assert.deepEqual(taskRows(await detail()).map((row) => row.completed), [false, true, false]);
+    assert.deepEqual(taskRows(await detail(`${first}?filter=Open`)).map((row) => row.path), [rows[0].path, rows[2].path]);
+    assert.deepEqual(taskRows(await detail(`${first}?filter=Completed`)).map((row) => row.path), [rows[1].path]);
+    assert.equal(taskRows(await detail(`${first}?filter=invalid`)).length, 3);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await detail()).map((row) => row.completed), [false, true, false]);
+    assert.deepEqual(taskRows(await detail(second)), []);
+    const unchecked = await post(server.baseUrl, rows[1].path, { filter: 'Completed' });
+    assert.equal(unchecked.headers.get('location'), `${first}?filter=Completed`);
+    assert.deepEqual(taskRows(await detail(`${first}?filter=Completed`)), []);
+    assert.deepEqual(taskRows(await detail()), rows);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
