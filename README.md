@@ -40,9 +40,19 @@ until restored. `PATCH /api/projects/<project-id>/tasks/<task-id>` accepts eithe
 Renamed titles persist across restarts; archived task writes return HTTP 409.
 
 Each task has a Task priority select with Low, Normal, and High options. Existing
-and new tasks default to Normal. Priorities persist across restarts independently
+tasks default to Normal on migration. New tasks inherit their project's saved
+default. Priorities persist across restarts independently
 of titles, completion, and ownership. Archived projects disable priority changes;
 restoring a project preserves its saved priorities and enables editing again.
+
+Default task priority on each project page offers Low, Normal, and High. Existing
+and new projects initially use Normal. Changes apply only to subsequently created
+tasks in that project, preserving existing tasks, both filters, and summaries.
+Defaults persist through renaming, restarts, archive, and restoration. Archived
+projects show the saved default with editing disabled. The project API exposes
+`defaultPriority`; `PATCH /api/projects/<id>` accepts `{ "defaultPriority": "High" }`
+separately from rename or archive requests. Invalid priorities return HTTP 400;
+default edits on archived projects return HTTP 409.
 
 Run the integration tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.

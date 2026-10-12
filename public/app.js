@@ -124,6 +124,7 @@ async function showProject(id) {
     document.title = `${project.name} · Workboard`;
     if (project.archived) app.append(element('p', 'Archived project'));
     showProjectRename(project, heading);
+    showProjectDefaultPriority(project);
     await showTasks(id, project.archived);
   } finally {
     app.setAttribute('aria-busy', 'false');
@@ -150,7 +151,7 @@ function showProjectRename(project, heading) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      Object.assign(project, saved);
+      project.name = saved.name;
       heading.textContent = project.name;
       document.title = `${project.name} · Workboard`;
       input.value = project.name;
@@ -162,6 +163,36 @@ function showProjectRename(project, heading) {
     }
   });
   app.append(form);
+}
+
+function showProjectDefaultPriority(project) {
+  const control = element('div', '', { class: 'project-default-priority' });
+  const select = element('select', '', { id: 'default-task-priority' });
+  for (const priority of ['Low', 'Normal', 'High']) {
+    select.append(element('option', priority, { value: priority }));
+  }
+  select.value = project.defaultPriority;
+  select.disabled = project.archived;
+  select.addEventListener('change', async () => {
+    if (select.disabled) return;
+    select.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultPriority: select.value }),
+      });
+      project.defaultPriority = saved.defaultPriority;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      select.value = project.defaultPriority;
+      select.disabled = project.archived;
+    }
+  });
+  control.append(element('label', 'Default task priority', { for: 'default-task-priority' }), select);
+  app.append(control);
 }
 
 function taskRenameForm(task, path, archived, onRename) {

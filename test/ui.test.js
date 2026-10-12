@@ -53,7 +53,7 @@ function taskTitle(row) {
 }
 
 test('task rename validates, trims, updates accessible names, and preserves order and filtering', async () => {
-  const project = { id: 1, name: 'Alpha', archived: false };
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal' };
   const tasks = [
     { id: 1, title: 'Original', completed: true, priority: 'High' },
     { id: 2, title: 'Open task', completed: false, priority: 'Normal' },
@@ -115,8 +115,8 @@ async function page(pathname, respond) {
 }
 
 test('project UI defaults to active and moves rows on archive and restore', async () => {
-  const project = { id: 1, name: 'Alpha', archived: false, completedCount: 1, totalCount: 2 };
-  const archived = { id: 2, name: 'Beta', archived: true, completedCount: 0, totalCount: 0 };
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal', completedCount: 1, totalCount: 2 };
+  const archived = { id: 2, name: 'Beta', archived: true, defaultPriority: 'Normal', completedCount: 0, totalCount: 0 };
   const ui = await page('/', (path, options) => {
     if (!options) return [project, archived];
     assert.equal(options.method, 'PATCH');
@@ -152,7 +152,7 @@ test('project UI defaults to active and moves rows on archive and restore', asyn
 });
 
 test('archived project UI shows saved tasks and keeps controls disabled through filtering', async () => {
-  const project = { id: 1, name: 'Archived Alpha', archived: true };
+  const project = { id: 1, name: 'Archived Alpha', archived: true, defaultPriority: 'Normal' };
   const tasks = [
     { id: 1, title: 'Done task', completed: true, priority: 'High' },
     { id: 2, title: 'Open task', completed: false, priority: 'Low' },
@@ -198,7 +198,7 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
 });
 
 test('active project UI validates and trims renames without changing its URL or tasks', async () => {
-  const project = { id: 1, name: 'Original', archived: false };
+  const project = { id: 1, name: 'Original', archived: false, defaultPriority: 'Normal' };
   const tasks = [{ id: 1, title: 'Saved task', completed: true, priority: 'Normal' }];
   const ui = await page('/projects/1', (path, options) => {
     if (!options) return path.endsWith('/tasks') ? tasks : project;
@@ -228,7 +228,7 @@ test('active project UI validates and trims renames without changing its URL or 
 });
 
 test('task priority options save independently and survive completion filtering', async () => {
-  const project = { id: 1, name: 'Alpha', archived: false };
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal' };
   const tasks = [
     { id: 1, title: 'Done', completed: true, priority: 'Normal' },
     { id: 2, title: 'Open', completed: false, priority: 'Low' },
@@ -266,7 +266,7 @@ test('task priority options save independently and survive completion filtering'
 });
 
 test('failed priority writes show an alert and restore the saved selection', async () => {
-  const project = { id: 1, name: 'Alpha', archived: false };
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal' };
   const tasks = [{ id: 1, title: 'Task', completed: false, priority: 'Normal' }];
   const ui = await page('/projects/1', (path, options) => {
     if (!options) return path.endsWith('/tasks') ? tasks : project;
@@ -308,7 +308,7 @@ test('completion and priority filters combine in creation order without writes, 
   };
   const original = structuredClone(tasks);
   for (const archived of [false, true, false]) {
-    const project = { id: 1, name: 'Alpha', archived, totalCount: 7, completedCount: 3 };
+    const project = { id: 1, name: 'Alpha', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
     const ui = await page('/projects/1', (path, options) => {
       assert.equal(options, undefined);
       return path.endsWith('/tasks') ? structuredClone(tasks) : project;
@@ -343,7 +343,7 @@ test('completion and priority filters combine in creation order without writes, 
 });
 
 test('task edits re-evaluate both filters and renames preserve selections and matching membership', async () => {
-  const project = { id: 1, name: 'Alpha', archived: false };
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal' };
   const savedTasks = [
     { id: 1, title: 'First', completed: false, priority: 'High' },
     { id: 2, title: 'Second', completed: false, priority: 'High' },
@@ -418,4 +418,94 @@ test('task edits re-evaluate both filters and renames preserve selections and ma
   const list = await page('/', respond);
   const summary = find(list.rows('project')[0], (node) => node.attributes['data-testid'] === 'project-summary')[0];
   assert.equal(summary.textContent, '1/3 completed');
+});
+
+test('default priority saves without changing filters or existing rows and new tasks inherit it', async () => {
+  const savedProject = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'Normal' };
+  const savedTasks = [
+    { id: 1, title: 'Done', completed: true, priority: 'High' },
+    { id: 2, title: 'Open', completed: false, priority: 'Normal' },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? savedTasks : savedProject);
+    const body = JSON.parse(options.body);
+    if (options.method === 'PATCH') {
+      assert.equal(path, '/api/projects/1');
+      assert.deepEqual(body, { defaultPriority: 'Low' });
+      savedProject.defaultPriority = body.defaultPriority;
+      return { ...savedProject };
+    }
+    assert.equal(options.method, 'POST');
+    assert.equal(path, '/api/projects/1/tasks');
+    const task = { id: 3, title: body.title, completed: false, priority: savedProject.defaultPriority };
+    savedTasks.push(task);
+    return { ...task };
+  };
+  const ui = await page('/projects/1', respond);
+  const select = ui.byId('default-task-priority');
+  assert.equal(find(ui.app, (node) => node.attributes.for === 'default-task-priority')[0].textContent, 'Default task priority');
+  assert.deepEqual(select.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(select.value, 'Normal');
+  assert.equal(select.disabled, false);
+  const completion = ui.byId('task-filter');
+  const priority = ui.byId('priority-filter');
+  completion.value = 'Open';
+  await completion.fire('change');
+  priority.value = 'Normal';
+  await priority.fire('change');
+  const originalRows = ui.rows('task');
+  select.value = 'Low';
+  await select.fire('change');
+  assert.equal(select.value, 'Low');
+  assert.equal(select.disabled, false);
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'Normal');
+  assert.deepEqual(ui.rows('task'), originalRows);
+  assert.deepEqual(savedTasks.map((task) => task.priority), ['High', 'Normal']);
+  ui.byId('task-title').value = 'Inherited low';
+  await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'task-title'))[0].fire('submit');
+  assert.equal(completion.value, 'Open');
+  assert.equal(priority.value, 'Normal');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Open']);
+  priority.value = 'Low';
+  await priority.fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Inherited low']);
+  assert.equal(ui.byId('task-priority-3').value, 'Low');
+  for (const archived of [true, false]) {
+    savedProject.archived = archived;
+    const reloaded = await page('/projects/1', respond);
+    const defaultSelect = reloaded.byId('default-task-priority');
+    assert.equal(defaultSelect.value, 'Low');
+    assert.equal(defaultSelect.disabled, archived);
+    assert.deepEqual(reloaded.rows('task').map(taskTitle), ['Done', 'Open', 'Inherited low']);
+    if (archived) {
+      defaultSelect.value = 'High';
+      await defaultSelect.fire('change');
+      assert.equal(reloaded.calls.length, 2);
+      assert.equal(savedProject.defaultPriority, 'Low');
+    }
+  }
+});
+
+test('failed default priority writes restore saved selection and preserve filters and tasks', async () => {
+  const project = { id: 1, name: 'Alpha', archived: false, defaultPriority: 'High' };
+  const tasks = [{ id: 1, title: 'Task', completed: false, priority: 'Normal' }];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return path.endsWith('/tasks') ? tasks : project;
+    throw new Error('Unable to save default');
+  });
+  ui.byId('task-filter').value = 'Open';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'Normal';
+  await ui.byId('priority-filter').fire('change');
+  const rows = ui.rows('task');
+  const select = ui.byId('default-task-priority');
+  select.value = 'Low';
+  await select.fire('change');
+  assert.equal(select.value, 'High');
+  assert.equal(select.disabled, false);
+  assert.equal(ui.byId('task-filter').value, 'Open');
+  assert.equal(ui.byId('priority-filter').value, 'Normal');
+  assert.deepEqual(ui.rows('task'), rows);
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Unable to save default');
 });

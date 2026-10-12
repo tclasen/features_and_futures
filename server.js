@@ -11,7 +11,8 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL CHECK (length(trim(name)) > 0),
-    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+    default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,12 +27,16 @@ database.exec(`
 if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+// Project defaults apply only to future tasks; existing task priorities stay intact.
+if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 // Backfill existing tasks without changing their IDs, order, or completion.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
 const projectSelection = `
-  SELECT projects.id, projects.name, projects.archived,
+  SELECT projects.id, projects.name, projects.archived, projects.default_priority AS defaultPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
   FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
 `;
@@ -39,10 +44,14 @@ const listProjects = database.prepare(`${projectSelection} GROUP BY projects.id 
 const findProject = database.prepare(`${projectSelection} WHERE projects.id = ? GROUP BY projects.id`);
 const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
+const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
-const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const insertTask = database.prepare(`
+  INSERT INTO tasks (project_id, title, priority)
+  SELECT id, ?, default_priority FROM projects WHERE id = ?
+`);
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
@@ -112,6 +121,19 @@ const server = createServer(async (request, response) => {
       } catch {
         return json(response, 400, { error: 'Invalid JSON request' });
       }
+      if (body && Object.hasOwn(body, 'defaultPriority')) {
+        if (Object.hasOwn(body, 'name') || Object.hasOwn(body, 'archived')) {
+          return json(response, 400, { error: 'Default priority, rename, and archive must be separate requests' });
+        }
+        if (findProject.get(projectId).archived) {
+          return json(response, 409, { error: 'Archived project cannot be changed' });
+        }
+        if (!['Low', 'Normal', 'High'].includes(body.defaultPriority)) {
+          return json(response, 400, { error: 'Default task priority must be Low, Normal, or High' });
+        }
+        updateProjectDefaultPriority.run(body.defaultPriority, projectId);
+        return json(response, 200, projectData(findProject.get(projectId)));
+      }
       if (body && Object.hasOwn(body, 'name')) {
         if (Object.hasOwn(body, 'archived')) {
           return json(response, 400, { error: 'Rename and archive must be separate requests' });
@@ -158,7 +180,7 @@ const server = createServer(async (request, response) => {
         if (!taskId) {
           const title = typeof body?.title === 'string' ? body.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
-          const result = insertTask.run(projectId, title);
+          const result = insertTask.run(title, projectId);
           return json(response, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
         }
         if (body && Object.hasOwn(body, 'priority')) {
