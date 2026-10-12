@@ -227,6 +227,29 @@ function renderTasks() {
       dueDate.value = task.dueDate || '';
       renderTasks();
     });
+    const notes = document.createElement('textarea');
+    notes.setAttribute('aria-label', 'Task notes');
+    notes.value = task.notes || '';
+    notes.disabled = archived;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'button';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = archived;
+    saveNotes.addEventListener('click', async () => {
+      const error = document.querySelector('#task-rename-error');
+      error.hidden = true;
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: notes.value })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        error.textContent = result.error || 'Unable to save notes';
+        error.hidden = false;
+        return;
+      }
+      task.notes = (await response.json()).notes;
+    });
     const destinations = document.createElement('select');
     destinations.setAttribute('aria-label', 'Destination project');
     const eligible = allProjects.filter(item => !item.archived && item.id !== Number(activeProjectId));
@@ -248,7 +271,7 @@ function renderTasks() {
       });
       if (response.ok) await loadTasks();
     });
-    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate, destinations, moveButton);
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destinations, moveButton);
     taskContainer.append(row);
   }
 }
