@@ -38,6 +38,7 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -82,6 +83,9 @@ function page(title, content) {
     .task-row label { display: flex; align-items: center; gap: 12px; margin: 0; overflow-wrap: anywhere; }
     .task-row input { flex: none; }
     .task-title { min-width: 0; }
+    .task-rename { margin-top: 16px; }
+    .task-rename label { display: block; margin-bottom: 10px; }
+    .task-rename input { flex: 1; }
     @media (max-width: 520px) { main { margin-top: 32px; } .controls { flex-direction: column; } .project-row { align-items: flex-start; flex-direction: column; } }
   </style>
 </head>
@@ -163,6 +167,13 @@ function projectPage(project, filter = 'All', error = '') {
         <form method="post" action="${action}/tasks/${task.id}?${query}">
           <label><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()"><span class="task-title">${escapeHtml(task.title)}</span></label>
         </form>
+        <form class="task-rename" method="post" action="${action}/tasks/${task.id}/rename?${query}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <div class="controls">
+            <input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+          </div>
+        </form>
       </li>`).join('')}</ul>` : '<p class="empty">No tasks to show.</p>'}
   `);
 }
@@ -212,7 +223,7 @@ const server = http.createServer(async (request, response) => {
       }
       redirect(response, url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/');
     } else if ((request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) ||
-      (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|tasks(?:\/\d+)?)$/.test(url.pathname))) {
+      (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|tasks(?:\/\d+(?:\/rename)?)?)$/.test(url.pathname))) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
       if (!project) {
@@ -231,7 +242,7 @@ const server = http.createServer(async (request, response) => {
           return;
         }
         const taskId = url.pathname.split('/')[4];
-        if (url.pathname.endsWith('/rename')) {
+        if (url.pathname.endsWith('/rename') && taskId === undefined) {
           const name = (body.get('name') ?? '').trim();
           if (!name) {
             html(response, 400, projectPage(currentProject, filter, 'Project name is required'));
@@ -245,6 +256,17 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           createTask.run(project.id, title);
+        } else if (url.pathname.endsWith('/rename')) {
+          const title = (body.get('title') ?? '').trim();
+          if (!title) {
+            html(response, 400, projectPage(currentProject, filter, 'Task title is required'));
+            return;
+          }
+          const id = Number(taskId);
+          if (!Number.isSafeInteger(id) || !renameTask.run(title, id, project.id).changes) {
+            html(response, 404, page('Task not found', '<h1>Task not found</h1>'));
+            return;
+          }
         } else {
           const id = Number(taskId);
           if (!Number.isSafeInteger(id) || !updateTask.run(body.get('completed') === '1' ? 1 : 0, id, project.id).changes) {
