@@ -180,7 +180,32 @@ function renderTasks() {
         renderTasks();
       }
     });
-    row.append(title, checkbox, renameInput, renameButton, priority);
+    const dueDate = document.createElement('input');
+    dueDate.type = 'text';
+    dueDate.value = task.dueDate || '';
+    dueDate.setAttribute('aria-label', 'Task due date');
+    dueDate.disabled = archived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'button';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = archived;
+    saveDueDate.addEventListener('click', async () => {
+      const error = document.querySelector('#task-rename-error');
+      error.hidden = true;
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: dueDate.value })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        error.textContent = result.error || 'Unable to save due date';
+        error.hidden = false;
+        return;
+      }
+      task.dueDate = (await response.json()).dueDate;
+      dueDate.value = task.dueDate || '';
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority, dueDate, saveDueDate);
     taskContainer.append(row);
   }
 }
