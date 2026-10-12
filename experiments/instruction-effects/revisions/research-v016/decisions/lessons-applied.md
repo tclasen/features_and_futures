@@ -7,3 +7,5 @@ Focused future-owner002revealed dynamic Complete/Reopen protection role narrowin
 Corrected future candidate uses future031040-role-preparation002 with10identical requirements and scoped suite002bindings. All40future phase listings independently verified; collection scope only. Original preparation001retained. Browser positives/faults/full gates and per-builder native lifecycle remain required.
 
 Corrected future owner focused003independently passes16positivecases and16genuinefaultvariants, zero skips/flakes. Combined focused role gates total132checks (48exports+52directory+32futureowners); broad full030/040remaining. Original faulty001/002andcanceledpartialtrace limitations retained.
+
+Early link-only async baseline independently verifies99cumulative30cases and2process-local probes,0skips/flakes. This additional early check does not replace complete16variant030or10variant040gates and is not an actual restart.
