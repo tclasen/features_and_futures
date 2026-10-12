@@ -381,7 +381,7 @@ test('migrates existing tasks to Normal priority without changing saved data', a
     const migrated = new DatabaseSync(path);
     try {
       assert.deepEqual({ ...migrated.prepare('SELECT * FROM tasks').get() }, {
-        id: 1, project_id: 1, title: 'Legacy task', completed: 1, priority: 'Normal', due_date: '', notes: '', position: 1
+        id: 1, project_id: 1, title: 'Legacy task', completed: 1, priority: 'Normal', due_date: '', notes: '', deleted: 0, position: 1
       });
     } finally { migrated.close(); }
   } finally {
