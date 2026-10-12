@@ -410,3 +410,186 @@ test('move controls disable without eligible destinations and failures preserve 
   assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Archived project');
   assert.equal(form.querySelector('button').disabled, false);
 });
+
+async function searchTasks(page, query) {
+  page.app.querySelector('#task-search').value = query;
+  await page.app.querySelector('#task-search-form').trigger('submit');
+}
+
+test('task search intersects every filter and only applied queries affect rows', async () => {
+  const page = await projectPage();
+  assert.equal(page.app.querySelector('#task-search').value, '');
+  await saveDate(page, 5, '2024-02-29');
+  await saveDate(page, 7, '2024-02-29');
+  const original = structuredClone(page.tasks);
+  const requests = page.requests.length;
+  await searchTasks(page, ' \tHiGH \n');
+  assert.deepEqual(page.titles(), ['High open', 'High done', 'Second high open']);
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  await applyRange(page, '2024-02-29', '2024-02-29');
+  assert.deepEqual(page.titles(), ['High open', 'Second high open']);
+  page.app.querySelector('#task-search').value = 'not applied';
+  await page.select(page.priority, 'All');
+  assert.deepEqual(page.titles(), ['High open', 'Second high open']);
+  await searchTasks(page, 'high  open');
+  assert.deepEqual(page.titles(), []);
+  await searchTasks(page, 'SECOND');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  await searchTasks(page, ' \t ');
+  assert.deepEqual(page.titles(), ['High open', 'Second high open']);
+  assert.equal(page.completion.value, 'Open');
+  assert.equal(page.priority.value, 'All');
+  assert.equal(page.app.querySelector('#due-from').value, '2024-02-29');
+  assert.equal(page.app.querySelector('#due-through').value, '2024-02-29');
+  assert.deepEqual(page.tasks, original);
+  assert.equal(page.requests.length, requests);
+});
+
+test('task edits retain search and other filters, including rename membership and movement', async () => {
+  const page = await projectPage();
+  await searchTasks(page, 'HIGH');
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  const rename = page.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'No longer matches';
+  await rename.trigger('submit');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  assert.equal(page.tasks[4].title, 'No longer matches');
+  await saveDate(page, 7, '2024-02-29');
+  await applyRange(page, '2024-02-29', '2024-02-29');
+  const projectRename = page.app.querySelector('#rename-project');
+  projectRename.querySelector('input').value = 'Renamed project';
+  await projectRename.trigger('submit');
+  await page.select(page.app.querySelector('#default-task-priority'), 'High');
+  const create = page.app.querySelector('#create-task');
+  create.querySelector('input').value = 'New high task';
+  await create.trigger('submit');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  await saveDate(page, 7, '2024-03-01');
+  assert.deepEqual(page.titles(), []);
+  await applyRange(page, '', '');
+  assert.deepEqual(page.titles(), ['Second high open', 'New high task']);
+  await page.select(page.rows()[0].querySelector('select'), 'Low');
+  assert.deepEqual(page.titles(), ['New high task']);
+  const checkbox = page.rows()[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.trigger('change');
+  assert.deepEqual(page.titles(), []);
+  await page.select(page.completion, 'Completed');
+  assert.deepEqual(page.titles(), ['High done', 'New high task']);
+  await page.rows()[0].querySelectorAll('form')[2].trigger('submit');
+  assert.deepEqual(page.titles(), ['New high task']);
+  assert.equal(page.app.querySelector('#task-search').value, 'HIGH');
+  assert.equal(page.completion.value, 'Completed');
+  assert.equal(page.priority.value, 'High');
+  const reopened = await projectPage();
+  assert.equal(reopened.app.querySelector('#task-search').value, '');
+  assert.equal(reopened.rows().length, 7);
+});
+
+test('archived task search stays usable and preserves non-ASCII case and internal whitespace', async () => {
+  const page = await projectPage();
+  const rename = page.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'ÄBC  work';
+  await rename.trigger('submit');
+  await searchTasks(page, 'äbc');
+  assert.deepEqual(page.titles(), []);
+  await searchTasks(page, 'Äbc  WORK');
+  assert.deepEqual(page.titles(), ['ÄBC  work']);
+  await searchTasks(page, 'Äbc work');
+  assert.deepEqual(page.titles(), []);
+  const archived = await projectPage(true);
+  for (const tag of ['input', 'button']) {
+    assert.ok(archived.app.querySelector('#task-search-form').querySelectorAll(tag).every(control => !control.disabled));
+  }
+  await searchTasks(archived, 'NORMAL');
+  await archived.select(archived.completion, 'Completed');
+  assert.deepEqual(archived.titles(), ['Normal done']);
+  for (const tag of ['input', 'select', 'button']) {
+    assert.ok(archived.rows()[0].querySelectorAll(tag).every(control => control.disabled));
+  }
+  await searchTasks(archived, '');
+  assert.deepEqual(archived.titles(), ['Low done', 'Normal done', 'High done']);
+  assert.equal(archived.requests.length, 3);
+});
+
+async function projectListPage() {
+  const app = new Element('main');
+  const projects = ['Alpha  Work', 'Other', 'ALPHA archived', 'ÄBC work', 'Alpha later'].map((name, index) => ({
+    id: index + 1, name, archived: index === 2, totalCount: index + 2, completedCount: index,
+  }));
+  const requests = [];
+  const navigation = [];
+  runInNewContext(script, {
+    isValidDueDate,
+    document: { querySelector: () => app, createElement: tag => new Element(tag) },
+    location: { pathname: '/', assign: path => navigation.push(path) },
+    fetch: async (path, options) => {
+      requests.push({ path, options });
+      let data = projects;
+      if (options?.method === 'PATCH') {
+        data = projects.find(project => project.id === Number(path.split('/').at(-1)));
+        Object.assign(data, JSON.parse(options.body));
+      } else if (options?.method === 'POST') {
+        data = { id: projects.length + 1, name: JSON.parse(options.body).name,
+          archived: false, totalCount: 0, completedCount: 0 };
+        projects.push(data);
+      }
+      return { ok: true, json: async () => structuredClone(data) };
+    },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const rows = () => app.querySelector('#project-list').children;
+  const names = () => rows().map(row => row.children[0].textContent);
+  async function search(query) {
+    app.querySelector('#project-search').value = query;
+    await app.querySelector('#project-search-form').trigger('submit');
+  }
+  async function filter(value) {
+    const control = app.querySelector('#project-filter');
+    control.value = value;
+    await control.trigger('change');
+  }
+  return { app, projects, requests, navigation, rows, names, search, filter };
+}
+
+test('project search intersects archive state, retains order and summaries, and resets on returning', async () => {
+  const page = await projectListPage();
+  assert.equal(page.app.querySelector('#project-search').value, '');
+  const original = structuredClone(page.projects);
+  await page.search(' \tAlPhA \n');
+  assert.deepEqual(page.names(), ['Alpha  Work', 'Alpha later']);
+  assert.deepEqual(page.rows().map(row => row.children[1].textContent), ['0/2 completed', '4/6 completed']);
+  await page.filter('Archived');
+  assert.deepEqual(page.names(), ['ALPHA archived']);
+  await page.rows()[0].querySelectorAll('button')[1].trigger('click');
+  assert.deepEqual(page.names(), []);
+  await page.filter('Active');
+  assert.deepEqual(page.names(), ['Alpha  Work', 'ALPHA archived', 'Alpha later']);
+  assert.deepEqual(page.projects, original.map(project => ({ ...project, archived: false })));
+  await page.search('alpha work');
+  assert.deepEqual(page.names(), []);
+  await page.search('alpha  WORK');
+  assert.deepEqual(page.names(), ['Alpha  Work']);
+  await page.search('äbc');
+  assert.deepEqual(page.names(), []);
+  await page.search('Äbc');
+  assert.deepEqual(page.names(), ['ÄBC work']);
+  await page.search('alpha');
+  const create = page.app.querySelector('form');
+  create.querySelector('input').value = 'New unrelated project';
+  await create.trigger('submit');
+  assert.deepEqual(page.names(), ['Alpha  Work', 'ALPHA archived', 'Alpha later']);
+  create.querySelector('input').value = 'Alpha newest';
+  await create.trigger('submit');
+  assert.deepEqual(page.names(), ['Alpha  Work', 'ALPHA archived', 'Alpha later', 'Alpha newest']);
+  await page.search(' \t ');
+  assert.equal(page.rows().length, 7);
+  await page.rows()[0].querySelector('button').trigger('click');
+  assert.deepEqual(page.navigation, ['/projects/1']);
+  assert.equal(page.requests.length, 4);
+  const reopened = await projectListPage();
+  assert.equal(reopened.app.querySelector('#project-search').value, '');
+  assert.deepEqual(reopened.names(), ['Alpha  Work', 'Other', 'ÄBC work', 'Alpha later']);
+});

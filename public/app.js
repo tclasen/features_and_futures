@@ -14,6 +14,10 @@ function showError(container, message) {
   container.hidden = false;
 }
 
+function foldAscii(value) {
+  return value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+}
+
 function projectRow(project, changeArchive) {
   const row = document.createElement('div');
   row.className = 'project-row';
@@ -80,6 +84,13 @@ async function renderProject(projectId) {
       <input id="due-through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
+    <form id="task-search-form" class="task-filter">
+      <label for="task-search">Task search</label>
+      <div class="create-fields">
+        <input id="task-search" type="text" autocomplete="off">
+        <button type="submit">Search tasks</button>
+      </div>
+    </form>
     <section aria-label="Tasks" id="task-list"></section>`;
   app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
   const form = app.querySelector('#create-task');
@@ -97,6 +108,9 @@ async function renderProject(projectId) {
   const dueThrough = app.querySelector('#due-through');
   let appliedFrom = '';
   let appliedThrough = '';
+  const searchForm = app.querySelector('#task-search-form');
+  const searchInput = app.querySelector('#task-search');
+  let appliedSearch = '';
   const list = app.querySelector('#task-list');
   const tasksPath = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -106,6 +120,7 @@ async function renderProject(projectId) {
 
   function displayTasks() {
     const matching = tasks.filter(task =>
+      foldAscii(task.title).includes(appliedSearch) &&
       (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)) &&
       (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
       ((!appliedFrom && !appliedThrough) || (task.dueDate &&
@@ -181,6 +196,7 @@ async function renderProject(projectId) {
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           renameInput.value = '';
           renameInput.focus();
+          if (appliedSearch) displayTasks();
         } catch (error) {
           showError(alert, error.message);
         } finally {
@@ -343,6 +359,12 @@ async function renderProject(projectId) {
   });
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedSearch = foldAscii(searchInput.value.trim());
+    alert.hidden = true;
+    displayTasks();
+  });
   defaultPriority.disabled = archived;
   defaultPriority.addEventListener('change', async () => {
     if (archived) return;
@@ -439,16 +461,27 @@ async function render() {
         <label for="project-filter">Project filter</label>
         <select id="project-filter"><option>Active</option><option>Archived</option></select>
       </div>
+      <form id="project-search-form" class="project-filter">
+        <label for="project-search">Project search</label>
+        <div class="create-fields">
+          <input id="project-search" type="text" autocomplete="off">
+          <button type="submit">Search projects</button>
+        </div>
+      </form>
       <section aria-label="Projects" id="project-list"></section>`;
     const form = app.querySelector('form');
     const input = app.querySelector('input');
     const alert = app.querySelector('[role="alert"]');
     const list = app.querySelector('#project-list');
     const filter = app.querySelector('#project-filter');
+    const searchForm = app.querySelector('#project-search-form');
+    const searchInput = app.querySelector('#project-search');
+    let appliedSearch = '';
     let projects = [];
     function displayProjects() {
       list.replaceChildren(...projects
-        .filter(project => project.archived === (filter.value === 'Archived'))
+        .filter(project => project.archived === (filter.value === 'Archived') &&
+          foldAscii(project.name).includes(appliedSearch))
         .map(project => projectRow(project, changeArchive)));
     }
     async function changeArchive(project, archiveButton) {
@@ -469,6 +502,12 @@ async function render() {
       }
     }
     filter.addEventListener('change', displayProjects);
+    searchForm.addEventListener('submit', event => {
+      event.preventDefault();
+      appliedSearch = foldAscii(searchInput.value.trim());
+      alert.hidden = true;
+      displayProjects();
+    });
     // Load the existing rows before accepting creations to preserve their order.
     const button = form.querySelector('button');
     button.disabled = true;
