@@ -23,6 +23,7 @@
     .project-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .project-name { overflow-wrap: anywhere; }
     .task-form, .task-filter { margin-top: 18px; }
+    .search-form { margin-top: 18px; }
     #tasks { display: grid; gap: 10px; margin-top: 18px; }
     .task-row { display: flex; align-items: center; gap: 12px; background: white; border: 1px solid #dce2e8; border-radius: 10px; padding: 16px 20px; }
     .task-row { flex-wrap: wrap; }
@@ -78,6 +79,10 @@
             <button type="submit">Apply due range</button>
             <p id="due-range-alert" role="alert" hidden></p>
           </form>
+          <form class="search-form" id="task-search-form">
+            <label for="task-search">Task search</label><input id="task-search" type="text" autocomplete="off">
+            <button type="submit">Search tasks</button>
+          </form>
           <section id="tasks" aria-label="Tasks"></section>`;
         document.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
         document.querySelector('#rename-form').addEventListener('submit', async event => {
@@ -98,6 +103,13 @@
         const filter = document.querySelector('#task-filter');
         const priorityFilter = document.querySelector('#priority-filter');
         const defaultPriority = document.querySelector('#default-task-priority');
+        let appliedTaskQuery = '';
+        document.querySelector('#task-search-form').addEventListener('submit', event => {
+          event.preventDefault();
+          appliedTaskQuery = document.querySelector('#task-search').value.trim();
+          refreshTasks();
+        });
+        const foldAscii = value => value.replace(/[A-Z]/g, char => String.fromCharCode(char.charCodeAt(0) + 32));
         let appliedDueFrom = '', appliedDueThrough = '';
         const dueRangeAlert = document.querySelector('#due-range-alert');
         const isCalendarDate = value => {
@@ -131,6 +143,7 @@
           const visible = allTasks.filter(task =>
             (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : !!task.completed)) &&
             (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+            foldAscii(task.title).includes(foldAscii(appliedTaskQuery)) &&
             (!appliedDueFrom && !appliedDueThrough || !!task.dueDate) &&
             (!appliedDueFrom || task.dueDate >= appliedDueFrom) &&
             (!appliedDueThrough || task.dueDate <= appliedDueThrough)
@@ -188,6 +201,10 @@
       }
       app.innerHTML = `<h1>Workboard</h1>
         <div class="project-filter"><label for="project-filter">Project filter</label><select id="project-filter"><option>Active</option><option>Archived</option></select></div>
+        <form class="search-form" id="project-search-form">
+          <label for="project-search">Project search</label><input id="project-search" type="text" autocomplete="off">
+          <button type="submit">Search projects</button>
+        </form>
         <form id="create-form" novalidate>
           <label for="project-name">Project name</label>
           <input id="project-name" name="name" type="text" autocomplete="off">
@@ -197,9 +214,16 @@
         <section id="projects" aria-label="Projects"></section>`;
       const list = document.querySelector('#projects');
       const filter = document.querySelector('#project-filter');
+      let appliedProjectQuery = '';
+      document.querySelector('#project-search-form').addEventListener('submit', event => {
+        event.preventDefault();
+        appliedProjectQuery = document.querySelector('#project-search').value.trim();
+        refresh();
+      });
+      const foldAscii = value => value.replace(/[A-Z]/g, char => String.fromCharCode(char.charCodeAt(0) + 32));
       async function refresh() {
         const response = await fetch('/api/projects');
-        const projects = (await response.json()).filter(project => !!project.archived === (filter.value === 'Archived'));
+        const projects = (await response.json()).filter(project => !!project.archived === (filter.value === 'Archived') && foldAscii(project.name).includes(foldAscii(appliedProjectQuery)));
         list.innerHTML = projects.map(project => `<div class="project-row" data-testid="project-row"><div class="project-info"><span class="project-name">${escapeHtml(project.name)}</span><span class="project-summary" data-testid="project-summary">${project.completedCount}/${project.totalCount} completed</span></div><div class="project-actions"><button type="button" data-action="open" data-id="${escapeHtml(project.id)}">Open project</button><button type="button" data-action="archive" data-id="${escapeHtml(project.id)}">${project.archived ? 'Restore project' : 'Archive project'}</button></div></div>`).join('');
         list.querySelectorAll('[data-action="open"]').forEach(button => button.addEventListener('click', () => {
           history.pushState({}, '', `/projects/${encodeURIComponent(button.dataset.id)}`); render();
