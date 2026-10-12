@@ -12,7 +12,7 @@ Open http://localhost:8080. Defaults are port 8080 and `data/workboard.sqlite`.
 The server binds to `0.0.0.0`. `GET /health` returns `{"status":"ok"}`.
 Projects, archive state, and tasks are saved in SQLite and retained across restarts.
 Use the Project filter to view Active or Archived projects. Archive or restore
-projects from their rows; summaries show completed tasks out of all tasks.
+projects from their rows; summaries show completed live tasks out of all live tasks.
 Active project pages support renaming with trimmed, nonblank names while retaining
 project identity, order, and tasks. Archived project pages allow viewing and
 filtering but prevent task changes and renaming.
@@ -22,8 +22,15 @@ whitespace, Unicode and literal markup as plain text, persist across restarts,
 and travel with moved tasks. They do not participate in search or change filters
 or other task data. Existing and new tasks start with empty notes. Archived
 projects show notes with editing disabled; restoration enables editing again.
-Open a project to create tasks, toggle completion, and filter All, Open, or
-Completed tasks. Each task row supports renaming with a trimmed, nonblank title;
+Live tasks provide Delete task; deleted tasks provide Restore task. Deletion
+preserves all fields and remembered positions but excludes the task from live
+filters and completion summaries. The Deleted task filter intersects priority,
+due range and title search. Deleted rows are read-only until restored; restoring
+returns them to their reserved position without resetting filters. Archived
+projects disable deletion and restoration. Existing tasks migrate as live, and
+deletion persists across restarts.
+Open a project to create tasks, toggle completion, and filter All, Open,
+Completed, or Deleted tasks. Each task row supports renaming with a trimmed, nonblank title;
 renaming preserves ownership, creation order, and completion. Archived projects
 disable task rename controls, and restoration enables them again. Each task has a
 Task priority selector with Low, Normal, and High choices, defaulting to Normal.
