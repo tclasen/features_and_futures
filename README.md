@@ -20,8 +20,12 @@ Existing databases are migrated automatically without losing projects or tasks.
 Open a project to create tasks, toggle completion, and filter All, Open, or
 Completed tasks. Each task row supports renaming with a trimmed, nonblank title;
 renaming preserves ownership, creation order, and completion. Archived projects
-disable task rename controls, and restoration enables them again. Native HTML forms handle creation and navigation; small inline
-browser event handlers submit completion and filter changes.
+disable task rename controls, and restoration enables them again. Each task has a
+Task priority selector with Low, Normal, and High choices, defaulting to Normal.
+Priorities persist independently, including through renaming and archive/restore;
+archived projects disable priority edits. Existing tasks migrate to Normal.
+Native HTML forms handle creation and navigation; small inline browser event
+handlers submit completion, priority, and filter changes.
 
 ## Verify
 
@@ -33,4 +37,6 @@ Tests use a temporary database outside the repository and verify validation,
 creation order, escaping, navigation, health, task filtering, project isolation,
 task/completion persistence, schema migration, archive/restore, read-only archived
 projects, completion summaries, and project/task renaming with preserved identity,
-ownership, order, completion, and filter membership across restarts.
+ownership, order, completion, and filter membership across restarts. Priority tests
+also cover existing-task migration, defaults, independent updates, validation,
+archive protection, restoration, and persistence across process restarts.

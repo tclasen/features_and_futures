@@ -25,6 +25,82 @@ async function start(dbPath) {
   return { base, async stop() { const exited = once(process, 'exit'); process.kill('SIGTERM'); await exited; } };
 }
 
+test('priorities migrate, remain independent, and persist through renaming and archive/restore', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const database = join(directory, 'projects.sqlite');
+  const db = new DatabaseSync(database);
+  db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (name) VALUES ('Existing'), ('Other');
+    INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy', 1);`);
+  db.close();
+  let server;
+  try {
+    server = await start(database);
+    const post = (path, fields = {}) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual'
+    });
+    const get = async path => (await fetch(server.base + path)).text();
+    const select = (html, id) => html.match(new RegExp(`<select id="task-priority-${id}"[^>]*>[\\s\\S]*?<\\/select>`))?.[0];
+    const selected = (html, id, value) => assert.match(select(html, id), new RegExp(`<option selected>${value}</option>`));
+    selected(await get('/projects/1'), 1, 'Normal');
+    await post('/projects/1/tasks', { title: 'New' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    let detail = await get('/projects/1');
+    selected(detail, 2, 'Normal');
+    assert.match(select(detail, 1), /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    const listing = await get('/');
+    for (const priority of ['High', 'Low', 'Normal', 'High']) {
+      const response = await post('/projects/1/tasks/1/priority', { priority, filter: 'Completed' });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+      detail = await get('/projects/1');
+      selected(detail, 1, priority);
+      selected(detail, 2, 'Normal');
+      selected(await get('/projects/2'), 3, 'Normal');
+      assert.match(detail, /aria-label="Complete Legacy" checked/);
+      assert.ok(detail.indexOf('Complete Legacy') < detail.indexOf('Complete New'));
+      assert.doesNotMatch(await get('/projects/1?filter=Open'), /Complete Legacy/);
+      selected(await get('/projects/1?filter=Completed'), 1, priority);
+      assert.equal(await get('/'), listing);
+    }
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Urgent' })).status, 422);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/tasks/1/rename', { title: ' Renamed ' });
+    detail = await get('/projects/1');
+    selected(detail, 1, 'High');
+    assert.match(detail, /aria-label="Complete Renamed" checked/);
+    await server.stop();
+    server = await start(database);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    for (const id of [1, 2]) assert.match(select(archived, id), / disabled/);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Low' })).status, 403);
+    assert.equal(await get('/projects/1'), archived);
+    await server.stop();
+    server = await start(database);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    await post('/projects/1/tasks/1', {});
+    await server.stop();
+    server = await start(database);
+    detail = await get('/projects/1');
+    selected(detail, 1, 'High');
+    selected(detail, 2, 'Low');
+    assert.doesNotMatch(detail, / disabled/);
+    assert.match(await get('/'), /0\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task rename preserves ownership, order, completion, filters and persistence', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
   const database = join(directory, 'projects.sqlite');

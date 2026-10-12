@@ -23,6 +23,10 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const priorities = ['Low', 'Normal', 'High'];
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
     COALESCE(SUM(t.completed), 0) AS completed
@@ -34,10 +38,11 @@ const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const validProjectFilter = value => value === 'Archived' ? 'Archived' : 'Active';
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id ASC');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id ASC');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const validFilter = value => ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 
@@ -64,7 +69,7 @@ function page(title, content) {
     input[type=checkbox] { width: 22px; height: 22px; }
     input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid #c07800; outline-offset: 3px; }
     .create button { margin-top: 12px; }
-    .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-top: 1px solid #dce2eb; padding: 16px 0; }
+    .row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; border-top: 1px solid #dce2eb; padding: 16px 0; }
     .row span { overflow-wrap: anywhere; min-width: 0; }
     .row form { flex-shrink: 0; }
     [role=alert] { padding: 12px; color: #9a1925; background: #fff0f1; border-radius: 6px; margin-bottom: 16px; }
@@ -138,6 +143,13 @@ function projectPage(project, filter = 'All', error = '') {
         <form method="post" action="/projects/${project.id}/tasks/${task.id}">
           <input type="hidden" name="filter" value="${filter}">
           <input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} onchange="this.form.submit()">
+        </form>
+        <form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="task-priority-${task.id}">Task priority</label>
+          <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.submit()">
+            ${priorities.map(value => `<option${value === task.priority ? ' selected' : ''}>${value}</option>`).join('')}
+          </select>
         </form>
         <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           <input type="hidden" name="filter" value="${filter}">
@@ -218,6 +230,27 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       renameProject.run(name, project.id);
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+      res.end();
+    } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/priority$/.test(path)) {
+      const [, , projectId, , taskId] = path.split('/');
+      const project = findProject.get(projectId);
+      if (!project || !findTask.get(taskId, projectId)) {
+        html(res, 404, page('Not found', '<h1>Task not found</h1>'));
+        return;
+      }
+      const body = await formBody(req);
+      const filter = validFilter(body.get('filter'));
+      if (project.archived) {
+        html(res, 403, projectPage(project, filter, 'Archived project is read-only'));
+        return;
+      }
+      const priority = body.get('priority');
+      if (!priorities.includes(priority)) {
+        html(res, 422, projectPage(project, filter, 'Invalid task priority'));
+        return;
+      }
+      setTaskPriority.run(priority, taskId, project.id);
       res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
       res.end();
     } else if (req.method === 'POST' && /^\/projects\/\d+\/tasks\/\d+\/rename$/.test(path)) {
