@@ -120,12 +120,44 @@ const setTaskDeleted = db.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND
 
 function validDueDate(value) {
   if (value === '') return true;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  if (value.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split('-').map(Number);
   if (year < 1 || month < 1 || month > 12) return false;
   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return day >= 1 && day <= days[month - 1];
+}
+
+function validProjectDocument(document) {
+  const object = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const nonblank = (value) => typeof value === 'string' && value.trim() !== '';
+  if (!object(document) || document.format !== 'workboard-project' || document.version !== 1) return false;
+  const project = document.project;
+  return object(project) && nonblank(project.name) && typeof project.archived === 'boolean'
+    && priorities.includes(project.defaultPriority) && Array.isArray(project.tasks)
+    && project.tasks.every((task) => object(task) && nonblank(task.title)
+      && typeof task.completed === 'boolean' && priorities.includes(task.priority)
+      && typeof task.dueDate === 'string' && validDueDate(task.dueDate)
+      && typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+}
+
+const insertImportedProject = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const insertImportedTask = db.prepare(`
+  INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted, sort_order)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+function importProject(name, project) {
+  return transaction(() => {
+    const projectId = insertImportedProject.run(name, Number(project.archived), project.defaultPriority).lastInsertRowid;
+    project.tasks.forEach((task, index) => {
+      const position = index + 1;
+      const taskId = insertImportedTask.run(projectId, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes.replace(/\r\n?/g, '\n'), Number(task.deleted), position).lastInsertRowid;
+      rememberPosition.run(taskId, projectId, position);
+    });
+    return projectId;
+  });
 }
 
 function escapeHtml(value) {
@@ -190,7 +222,7 @@ function projectsLocation(filter, query) {
   return `/?${new URLSearchParams({ filter, search: query })}`;
 }
 
-function projectsPage(error = '', filter = 'Active', query = '') {
+function projectsPage(error = '', filter = 'Active', query = '', importValues = {}) {
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0)
     .filter((project) => matchesSearch(project.name, query));
   const searchField = `<input type="hidden" name="search" value="${escapeHtml(query)}">`;
@@ -203,6 +235,16 @@ function projectsPage(error = '', filter = 'Active', query = '') {
       <label for="project-name">Project name</label>
       <input id="project-name" name="name" type="text">
       <button type="submit">Create project</button>
+    </form>
+    <form class="create" method="post" action="/projects/import">
+      <input type="hidden" name="filter" value="${filter}">
+      ${searchField}
+      <label for="project-json">Project JSON</label>
+      <textarea id="project-json" name="json" rows="6">
+${escapeHtml(importValues.json || '')}</textarea>
+      <label for="imported-project-name">Imported project name</label>
+      <input id="imported-project-name" name="name" type="text" value="${escapeHtml(importValues.name || '')}">
+      <button type="submit">Import project</button>
     </form>
     <form class="filter" method="get" action="/">
       ${searchField}
@@ -391,13 +433,13 @@ function html(response, status, body) {
   response.end(body);
 }
 
-async function readForm(request) {
+async function readForm(request, maxSize = 65536) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     chunks.push(chunk);
     size += chunk.length;
-    if (size > 65536) {
+    if (size > maxSize) {
       const error = new Error('Request too large');
       error.status = 413;
       throw error;
@@ -414,6 +456,21 @@ const server = http.createServer(async (request, response) => {
       response.end(JSON.stringify({ status: 'ok' }));
     } else if (request.method === 'GET' && url.pathname === '/') {
       html(response, 200, projectsPage('', projectFilter(url.searchParams.get('filter')), searchQuery(url.searchParams)));
+    } else if (request.method === 'POST' && url.pathname === '/projects/import') {
+      const form = await readForm(request, Infinity);
+      const values = { json: form.get('json') || '', name: form.get('name') || '' };
+      const name = values.name.trim();
+      let document;
+      try { document = JSON.parse(values.json); } catch { /* Invalid JSON is reported below. */ }
+      const error = !name ? 'Project name is required'
+        : !validProjectDocument(document) ? 'Invalid project JSON' : '';
+      if (error) {
+        html(response, 400, projectsPage(error, projectFilter(form.get('filter')), searchQuery(form), values));
+        return;
+      }
+      const projectId = importProject(name, document.project);
+      response.writeHead(303, { Location: `/projects/${projectId}` });
+      response.end();
     } else if (request.method === 'POST' && url.pathname === '/projects') {
       const form = await readForm(request);
       const filter = projectFilter(form.get('filter'));

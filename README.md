@@ -70,3 +70,11 @@ Every project page offers `Download project`, including archived projects. It do
 in stored order, regardless of filters. Notes line endings are exported as LF without
 changing stored notes. Export tests cover legacy defaults, empty projects, movement and
 return ordering, exact text, deletion, archived access, unchanged data and restart behavior.
+The home page provides `Project JSON`, `Imported project name`, and `Import project`.
+Import validates the complete version-1 document before atomically creating an independent
+project with the trimmed override name. It preserves supplied task order and state,
+normalizes notes line endings to LF, and ignores additional internal identity fields.
+Invalid documents and blank override names leave all data unchanged and retain the inputs.
+Import tests cover required fields and types, Gregorian dates, late-task validation failures,
+archived/deleted behavior, independent identities, restoration and return order, empty projects,
+and restart persistence.
