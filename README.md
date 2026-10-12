@@ -22,7 +22,11 @@ completion/deletion, priority, inclusive due range, and normalized title search
 intersect without modifying stored data. Results show literal task fields and
 owner names in project creation order and stored task order. Open project returns
 to the owning project's default view. Each directory opening starts with Active
-scope, All task/priority filters, and empty range/search.
+scope, All task/priority filters, empty range/search, and Original directory order.
+Directory order offers Original, Priority (High first), Due date (ascending, undated
+last), and Title (ASCII-folded Unicode code point order). Ties retain Original
+order. Ordering is directory-only, survives filter/search/range and bulk actions,
+and never changes saved order, exports, or remembered task positions.
 Complete visible tasks and Reopen visible tasks update only matching live tasks
 in Active scope, preserving every other field and all selected filters. Controls
 are disabled for archived/deleted views or when no visible task needs that action.

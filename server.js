@@ -269,10 +269,28 @@ function matchesTask(task, filter, priorityFilter, range, query) {
       (!range.through || task.due_date <= range.through)));
 }
 
-function directoryPage(scope, filter, priorityFilter, range, query, error = '', draft = range) {
+const directoryOrders = ['Original', 'Priority', 'Due date', 'Title'];
+const validDirectoryOrder = value => directoryOrders.includes(value) ? value : 'Original';
+function compareCodePoints(left, right) {
+  const a = Array.from(asciiLower(left), character => character.codePointAt(0));
+  const b = Array.from(asciiLower(right), character => character.codePointAt(0));
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return a.length - b.length;
+}
+function directoryPage(scope, filter, priorityFilter, range, query, error = '', draft = range, order = 'Original') {
   const tasks = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
     .filter(task => matchesTask(task, filter, priorityFilter, range, query));
-  const filterFields = `<input type="hidden" name="scope" value="${scope}">
+  // Stable sorting keeps Original order for ties and never writes saved positions.
+  if (order === 'Priority') tasks.sort((a, b) => priorities.indexOf(b.priority) - priorities.indexOf(a.priority));
+  if (order === 'Due date') tasks.sort((a, b) => {
+    if (!a.due_date || !b.due_date) return Number(!a.due_date) - Number(!b.due_date);
+    return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0;
+  });
+  if (order === 'Title') tasks.sort((a, b) => compareCodePoints(a.title, b.title));
+  const orderField = `<input type="hidden" name="order" value="${escapeHtml(order)}">`;
+  const filterFields = `${orderField}<input type="hidden" name="scope" value="${scope}">
     <input type="hidden" name="filter" value="${filter}">
     <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
   const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
@@ -291,6 +309,8 @@ function directoryPage(scope, filter, priorityFilter, range, query, error = '', 
       <select id="directory-task-filter" name="filter" onchange="this.form.requestSubmit()">${options(taskFilters, filter)}</select>
       <label for="directory-priority-filter">Priority filter</label>
       <select id="directory-priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${options(['All', ...priorities], priorityFilter)}</select>
+      <label for="directory-order">Directory order</label>
+      <select id="directory-order" name="order" onchange="this.form.requestSubmit()">${options(directoryOrders, order)}</select>
     </form>
     <form method="get" action="/directory">
       ${filterFields}${rangeFields}
@@ -552,7 +572,7 @@ const server = http.createServer(async (req, res) => {
           for (const task of tasks) completeTask.run(completed, task.id, task.project_id);
         });
       }
-      const params = new URLSearchParams({ scope, filter, priorityFilter,
+      const params = new URLSearchParams({ scope, filter, priorityFilter, order: validDirectoryOrder(body.get('order')),
         dueFrom: appliedRange.from, dueThrough: appliedRange.through, search: appliedQuery });
       res.writeHead(303, { Location: `/directory?${params}` });
       res.end();
@@ -564,7 +584,7 @@ const server = http.createServer(async (req, res) => {
       const draft = { from: (params.get('dueFrom') || '').trim(), through: (params.get('dueThrough') || '').trim() };
       const error = path === '/directory/due-range' ? rangeError(draft) : '';
       const range = error ? readRange(params, 'applied') : appliedRange;
-      html(res, error ? 422 : 200, directoryPage(scope, filter, priorityFilter, range, appliedQuery, error, error ? draft : range));
+      html(res, error ? 422 : 200, directoryPage(scope, filter, priorityFilter, range, appliedQuery, error, error ? draft : range, validDirectoryOrder(params.get('order'))));
     } else if (req.method === 'GET' && path === '/') {
       html(res, 200, projectsPage('', validProjectFilter(url.searchParams.get('filter')), appliedQuery));
     } else if (req.method === 'POST' && path === '/projects/import') {
