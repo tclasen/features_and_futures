@@ -50,10 +50,19 @@ async function withServer(run, seed) {
   const taskPath = project => `/${project.id}/tasks`;
   const move = (source, task, destination, status = 200) =>
     api(`${taskPath(source)}/${task.id}/move`, 'POST', { destinationProjectId: destination.id }, status);
+  async function download(projectId, status = 200) {
+    const response = await fetch(`${base}/api/projects/${projectId}/export`);
+    assert.equal(response.status, status);
+    if (status === 200) {
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+    }
+    return response.json();
+  }
   try {
     if (seed) seed(join(directory, 'tasks.sqlite'));
     await start();
-    await run({ api, taskPath, move, restart: async () => { await stop(); await start(); } });
+    await run({ api, taskPath, move, download, restart: async () => { await stop(); await start(); } });
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -105,6 +114,90 @@ test('moves preserve data, remembered order and summaries through repeated moves
     assert.deepEqual(await api(taskPath(destination)), [existing, saved, newest, remaining]);
     const summary = await api(`/${destination.id}`);
     assert.deepEqual([summary.completedCount, summary.totalCount], [1, 4]);
+  });
+});
+
+test('portable export includes all current project tasks in remembered order without changing stored data', async () => {
+  await withServer(async ({ api, taskPath, move, download, restart }) => {
+    const source = await api('', 'POST', { name: 'MiXeD\t  Project 🌱 <b>literal</b>' }, 201);
+    const other = await api('', 'POST', { name: 'Other' }, 201);
+    const empty = await api('', 'POST', { name: 'Empty' }, 201);
+    const first = await api(taskPath(source), 'POST', { title: 'First\t  TITLE <script>日本語</script>' }, 201);
+    const second = await api(taskPath(source), 'POST', { title: 'Second' }, 201);
+    await api(taskPath(other), 'POST', { title: 'Must not export from source' }, 201);
+    const notes = '  日本語 🌱\r\n\t<script>literal</script>\rLine\nEnd  \u2028';
+    const saved = await api(`${taskPath(source)}/${first.id}`, 'PATCH', {
+      completed: true, priority: 'High', dueDate: '0001-01-01', notes,
+    });
+    await move(source, first, other);
+    const third = await api(taskPath(source), 'POST', { title: 'Third' }, 201);
+    await move(other, first, source);
+    await api(`${taskPath(source)}/${first.id}/delete`, 'POST');
+    await api(`/${source.id}`, 'PATCH', { defaultPriority: 'Low' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: source.name, archived: false, defaultPriority: 'Low',
+        tasks: [
+          { title: saved.title, completed: true, priority: 'High', dueDate: '0001-01-01',
+            notes: '  日本語 🌱\n\t<script>literal</script>\nLine\nEnd  \u2028', deleted: true },
+          ...[second, third].map(task => ({ title: task.title, completed: false, priority: 'Normal',
+            dueDate: '', notes: '', deleted: false })),
+        ],
+      },
+    };
+    const before = await api(taskPath(source));
+    const projectsBefore = await api('');
+    assert.deepEqual(await download(source.id), expected);
+    assert.deepEqual(await api(taskPath(source)), before);
+    assert.deepEqual(await api(''), projectsBefore);
+    assert.equal((await api(taskPath(source)))[0].notes, notes);
+    await api(`/${empty.id}`, 'PATCH', { archived: true });
+    assert.deepEqual(await download(empty.id), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: true, defaultPriority: 'Normal', tasks: [] },
+    });
+    await download(999999, 404);
+    for (const task of [second, third]) await api(`${taskPath(source)}/${task.id}/delete`, 'POST');
+    expected.project.tasks.forEach(task => { task.deleted = true; });
+    await api(`/${source.id}`, 'PATCH', { archived: true });
+    expected.project.archived = true;
+    assert.deepEqual(await download(source.id), expected);
+    await restart();
+    assert.deepEqual(await download(source.id), expected);
+    const summary = await api(`/${source.id}`);
+    assert.deepEqual([summary.completedCount, summary.totalCount], [0, 0]);
+    await api(`/${source.id}`, 'PATCH', { archived: false });
+    await api(`${taskPath(source)}/${first.id}/restore`, 'POST');
+    await move(source, first, other);
+    await move(other, first, source);
+    assert.deepEqual(await api(taskPath(source)), [saved, { ...second, deleted: true }, { ...third, deleted: true }]);
+  });
+});
+
+test('export upgrades older records with public defaults and preserves original text and order', async () => {
+  await withServer(async ({ api, taskPath, download, restart }) => {
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Old\t  Project', archived: false, defaultPriority: 'Normal', tasks: [
+        { title: 'First  TASK', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        { title: 'Second', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+      ] },
+    };
+    assert.deepEqual(await download(7), expected);
+    const before = await api(taskPath({ id: 7 }));
+    await restart();
+    assert.deepEqual(await download(7), expected);
+    assert.deepEqual(await api(taskPath({ id: 7 })), before);
+  }, path => {
+    const db = new DatabaseSync(path);
+    try {
+      db.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+        CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+          title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO projects VALUES (7, 'Old\t  Project');
+        INSERT INTO tasks VALUES (20, 7, 'First  TASK', 1), (30, 7, 'Second', 0)`);
+    } finally { db.close(); }
   });
 });
 

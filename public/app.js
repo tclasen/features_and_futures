@@ -42,6 +42,7 @@ function projectRow(project, changeArchive) {
 async function renderProject(projectId) {
   app.innerHTML = `
     <button type="button" id="projects">Projects</button>
+    <button type="button" id="download-project">Download project</button>
     <h1></h1>
     <p id="archived-notice" hidden>Archived project</p>
     <form id="rename-project">
@@ -93,6 +94,8 @@ async function renderProject(projectId) {
     </form>
     <section aria-label="Tasks" id="task-list"></section>`;
   app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
+  app.querySelector('#download-project').addEventListener('click', () =>
+    location.assign(`/api/projects/${projectId}/export`));
   const form = app.querySelector('#create-task');
   const renameForm = app.querySelector('#rename-project');
   const renameInput = app.querySelector('#new-project-name');

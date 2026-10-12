@@ -50,6 +50,13 @@ reserved position; newer tasks follow it. Deleted tasks cannot be edited or move
 Deletion persists across restarts, and archived projects disable both deletion
 and restoration while retaining all filters.
 
+Download project saves `workboard-project.json`, a UTF-8 portable JSON document
+with format `workboard-project` and version `1`. It includes the project's name,
+archive state and default priority, plus all live and deleted tasks in their
+stored order with title, completion, priority, due date, notes and deletion state.
+Downloads work in archived and empty projects and leave stored data and page
+filters unchanged. Exported notes use LF line endings without changing saved notes.
+
 Move task sends a task to another active project, preserving its title,
 completion, priority and due date. First arrivals append after all positions
 established in the destination; returning tasks recover their remembered

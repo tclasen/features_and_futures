@@ -69,12 +69,13 @@ async function projectPage(archived = false, destinations = [
   tasks[0].notes = initialNotes;
   tasks[0].deleted = initialDeleted;
   const requests = [];
+  const navigation = [];
   let nextError;
   const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
   const context = {
     isValidDueDate,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
-    location: { pathname: '/projects/1' },
+    location: { pathname: '/projects/1', assign: path => navigation.push(path) },
     fetch: async (path, options) => {
       requests.push({ path, options });
       if (nextError) {
@@ -110,7 +111,7 @@ async function projectPage(archived = false, destinations = [
   const rows = () => app.querySelector('#task-list').children;
   const titles = () => rows().map(row => row.children[0].textContent);
   async function select(element, value) { element.value = value; await element.trigger('change'); }
-  return { app, tasks, project, requests, completion, priority, rows, titles, select,
+  return { app, tasks, project, requests, navigation, completion, priority, rows, titles, select,
     rejectNext: error => { nextError = error; } };
 }
 
@@ -134,6 +135,38 @@ test('combined filters preserve selections, creation order and data across all c
   assert.equal(page.priority.value, 'High');
   assert.deepEqual(page.tasks, original);
   assert.ok(page.requests.every(request => !request.options));
+});
+
+test('Download project stays enabled and preserves current filters, drafts and visible rows', async () => {
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived, undefined, 'Saved notes', true);
+    await page.select(page.completion, 'Deleted');
+    await page.select(page.priority, 'Low');
+    await applyRange(page, '0001-01-01', '9999-12-31');
+    await searchTasks(page, 'Low');
+    page.app.querySelector('#due-from').value = 'unapplied draft';
+    page.app.querySelector('#task-search').value = 'unapplied query';
+    const rows = [...page.rows()];
+    const tasks = structuredClone(page.tasks);
+    const project = structuredClone(page.project);
+    const requests = page.requests.length;
+    const control = page.app.querySelector('#download-project');
+    assert.equal(control.textContent, 'Download project');
+    assert.equal(control.disabled, false);
+    await control.trigger('click');
+    assert.deepEqual(page.navigation, ['/api/projects/1/export']);
+    assert.equal(page.completion.value, 'Deleted');
+    assert.equal(page.priority.value, 'Low');
+    assert.equal(page.app.querySelector('#due-from').value, 'unapplied draft');
+    assert.equal(page.app.querySelector('#due-through').value, '9999-12-31');
+    assert.equal(page.app.querySelector('#task-search').value, 'unapplied query');
+    assert.deepEqual(page.rows(), rows);
+    assert.deepEqual(page.tasks, tasks);
+    assert.deepEqual(page.project, project);
+    assert.equal(page.requests.length, requests);
+    await applyRange(page, '', '');
+    assert.deepEqual(page.titles(), ['Low open']);
+  }
 });
 
 test('priority, completion and rename handlers keep both filters and update matching rows', async () => {
