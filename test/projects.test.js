@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -7,8 +8,11 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 
-test('projects and tasks validate, stay isolated, and survive a server restart', async () => {
+test('projects, tasks, archives, and summaries persist with the original schema migrated', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
+  const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
+  legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+  legacy.close();
   const portReservation = createServer();
   portReservation.listen(0, '127.0.0.1');
   await once(portReservation, 'listening');
@@ -56,6 +60,14 @@ test('projects and tasks validate, stay isolated, and survive a server restart',
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completed }),
     });
   }
+  async function archiveProject(projectId, archived) {
+    return fetch(`${base}/api/projects/${projectId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
+    });
+  }
+  async function projects() {
+    return (await fetch(`${base}/api/projects`)).json();
+  }
   async function tasks(projectId) {
     return (await fetch(`${base}/api/projects/${projectId}/tasks`)).json();
   }
@@ -72,6 +84,9 @@ test('projects and tasks validate, stay isolated, and survive a server restart',
     assert.equal(response.status, 201);
     const first = await response.json();
     assert.equal(first.name, 'First project');
+    assert.equal(first.archived, false);
+    assert.equal(first.total, 0);
+    assert.equal(first.completed, 0);
     const second = await (await create('<script>Example</script>')).json();
     assert.notEqual(first.id, second.id);
     const expected = [first, second];
@@ -104,17 +119,37 @@ test('projects and tasks validate, stay isolated, and survive a server restart',
     const completedTask = await completedResponse.json();
     assert.deepEqual(completedTask, { ...firstTask, completed: true });
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    Object.assign(first, { total: 2, completed: 1 });
+    Object.assign(second, { total: 1, completed: 0 });
+    assert.deepEqual(await projects(), expected);
+    assert.equal((await archiveProject(first.id, 'true')).status, 400);
+    assert.equal((await archiveProject(99999, true)).status, 404);
+    const archived = await archiveProject(first.id, true);
+    assert.equal(archived.status, 200);
+    first.archived = true;
+    assert.deepEqual(await archived.json(), first);
+    assert.equal((await createTask(first.id, 'Blocked')).status, 409);
+    assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     await stop();
     await start();
-    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), expected);
+    assert.deepEqual(await projects(), expected);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}`)).json(), second);
     assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     assert.deepEqual(await tasks(second.id), [otherTask]);
     assert.equal((await fetch(`${base}/projects/${first.id}`)).status, 200);
+    const restored = await archiveProject(first.id, false);
+    assert.equal(restored.status, 200);
+    first.archived = false;
+    assert.deepEqual(await restored.json(), first);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
     assert.deepEqual(await (await completeTask(first.id, firstTask.id, false)).json(), firstTask);
+    first.completed = 0;
     await stop();
     await start();
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
+    assert.deepEqual(await projects(), expected);
     assert.equal((await fetch(`${base}/api/projects/99999`)).status, 404);
   } finally {
     await stop();

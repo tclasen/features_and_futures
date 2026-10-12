@@ -17,7 +17,7 @@ function showError(error) {
   alert.textContent = error.message;
 }
 
-function appendProject(project) {
+function appendProject(project, onArchive) {
   const row = document.createElement('li');
   row.dataset.testid = 'project-row';
   const name = document.createElement('span');
@@ -26,12 +26,31 @@ function appendProject(project) {
   button.type = 'button';
   button.textContent = 'Open project';
   button.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
-  row.append(name, button);
+  const summary = document.createElement('span');
+  summary.dataset.testid = 'project-summary';
+  summary.textContent = `${project.completed}/${project.total} completed`;
+  const archive = document.createElement('button');
+  archive.type = 'button';
+  archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+  archive.addEventListener('click', async () => {
+    app.querySelector('[role="alert"]')?.remove();
+    archive.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archived: !project.archived }),
+      });
+      Object.assign(project, saved);
+      onArchive();
+    } catch (error) { archive.disabled = false; showError(error); }
+  });
+  row.append(name, summary, button, archive);
   app.querySelector('#projects').append(row);
   app.querySelector('#empty').hidden = true;
 }
 
-async function renderTasks(projectId) {
+async function renderTasks(project) {
+  const projectId = project.id;
   const section = document.createElement('section');
   section.innerHTML = `
     <form>
@@ -72,6 +91,7 @@ async function renderTasks(projectId) {
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.checked = task.completed;
+      checkbox.disabled = project.archived;
       checkbox.setAttribute('aria-label', `Complete ${task.title}`);
       checkbox.addEventListener('change', async () => {
         app.querySelector('[role="alert"]')?.remove();
@@ -86,7 +106,7 @@ async function renderTasks(projectId) {
           drawTasks();
         } catch (error) {
           checkbox.checked = task.completed;
-          checkbox.disabled = false;
+          checkbox.disabled = project.archived;
           showError(error);
         }
       });
@@ -112,12 +132,12 @@ async function renderTasks(projectId) {
       input.value = '';
       input.focus();
     } catch (error) { showError(error); }
-    finally { submit.disabled = false; }
+    finally { submit.disabled = project.archived; }
   });
   try {
     tasks = await request(endpoint);
     drawTasks();
-    submit.disabled = false;
+    submit.disabled = project.archived;
   } catch (error) { showError(error); }
 }
 
@@ -130,7 +150,12 @@ async function render() {
       const project = await request(`/api/projects/${projectPath[1]}`);
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} · Workboard`;
-      await renderTasks(project.id);
+      if (project.archived) {
+        const notice = document.createElement('p');
+        notice.textContent = 'Archived project';
+        app.append(notice);
+      }
+      await renderTasks(project);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';
       showError(error);
@@ -146,16 +171,31 @@ async function render() {
         </div>
       </form>
       <h2>Projects</h2>
+      <label for="project-filter">Project filter</label>
+      <select id="project-filter">
+        <option value="active">Active</option>
+        <option value="archived">Archived</option>
+      </select>
       <p id="empty">No projects yet.</p>
       <ul id="projects" aria-label="Projects"></ul>`;
     const form = app.querySelector('form');
     const input = app.querySelector('input');
     const submit = form.querySelector('button');
+    const filter = app.querySelector('#project-filter');
+    let projects = [];
+    function drawProjects() {
+      app.querySelector('#projects').replaceChildren();
+      const visible = projects.filter((project) => project.archived === (filter.value === 'archived'));
+      app.querySelector('#empty').hidden = visible.length > 0;
+      app.querySelector('#empty').textContent = 'No projects to show.';
+      visible.forEach((project) => appendProject(project, drawProjects));
+    }
+    filter.addEventListener('change', drawProjects);
     // Register after loading so creations always follow the persisted rows.
     try {
       submit.disabled = true;
-      const projects = await request('/api/projects');
-      projects.forEach(appendProject);
+      projects = await request('/api/projects');
+      drawProjects();
     } catch (error) { showError(error); }
     finally { submit.disabled = false; }
     form.addEventListener('submit', async (event) => {
@@ -169,7 +209,8 @@ async function render() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: input.value }),
         });
-        appendProject(project);
+        projects.push(project);
+        drawProjects();
         input.value = '';
         input.focus();
       } catch (error) { showError(error); }
