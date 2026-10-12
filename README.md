@@ -15,7 +15,10 @@ restarts, including archive state.
 
 The project list starts with Active projects. Use Project filter to view Archived
 projects and restore them. Each row shows completed and total task counts.
-Archived project pages allow task filtering but disable task creation and completion changes.
+Each task has a saved Low, Normal, or High priority, initially Normal. Changing
+priority preserves its title, completion state and position. Archived project
+pages allow task filtering but disable task creation, completion, renaming and
+priority changes. Restoring a project enables editing with saved values intact.
 
 Run the integration checks:
 

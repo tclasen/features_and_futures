@@ -16,7 +16,7 @@ async function availablePort() {
   return port;
 }
 
-test('projects and tasks validate, rename, remain isolated and persist through restart', async () => {
+test('projects and tasks validate, rename, save priorities, remain isolated and persist through restart', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = await availablePort();
   const base = `http://127.0.0.1:${port}`;
@@ -104,8 +104,11 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     const firstTask = await taskResponse.json();
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask('<Second> & task')).json();
     const otherTask = await (await createTask('Other project task', `/api/projects/${second.id}/tasks`)).json();
+    assert.equal(secondTask.priority, 'Normal');
+    assert.equal(otherTask.priority, 'Normal');
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}/tasks`)).json(), [otherTask]);
     assert.equal((await completeTask(firstTask.id, true, second.id)).status, 404);
@@ -117,6 +120,36 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     first.totalCount = 2;
     first.completedCount = 1;
     second.totalCount = 1;
+    async function setPriority(taskId, priority, projectId = first.id) {
+      return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      });
+    }
+    for (const priority of ['', 'Urgent', 'high', null, 1]) {
+      const response = await setPriority(firstTask.id, priority);
+      assert.equal(response.status, 400);
+      assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
+    }
+    assert.equal((await setPriority(firstTask.id, 'High', second.id)).status, 404);
+    assert.equal((await setPriority(999999, 'High')).status, 404);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const response = await setPriority(firstTask.id, priority);
+      assert.equal(response.status, 200);
+      firstTask.priority = priority;
+      assert.deepEqual(await response.json(), firstTask);
+      assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}/tasks`)).json(), [otherTask]);
+    }
+    assert.equal((await setPriority(secondTask.id, 'Low')).status, 200);
+    secondTask.priority = 'Low';
+    const invalidCombinedEdit = await fetch(`${base}${tasksPath}/${firstTask.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Should not change', completed: false, priority: 'Urgent' }),
+    });
+    assert.equal(invalidCombinedEdit.status, 400);
+    assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     async function renameTask(taskId, title, projectId = first.id) {
       return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -180,6 +213,9 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     const blockedTaskRename = await renameTask(firstTask.id, 'Blocked task rename');
     assert.equal(blockedTaskRename.status, 409);
     assert.equal((await blockedTaskRename.json()).error, 'Archived project');
+    const blockedPriority = await setPriority(firstTask.id, 'Low');
+    assert.equal(blockedPriority.status, 409);
+    assert.equal((await blockedPriority.json()).error, 'Archived project');
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     await stop();
     await start();
@@ -191,6 +227,10 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     assert.equal((await archiveProject(false)).status, 200);
     first.archived = false;
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    const restoredPriority = await setPriority(firstTask.id, 'Normal');
+    assert.equal(restoredPriority.status, 200);
+    firstTask.priority = 'Normal';
+    assert.deepEqual(await restoredPriority.json(), firstTask);
     const restoredRename = await renameProject('  Restored project  ');
     assert.equal(restoredRename.status, 200);
     first.name = 'Restored project';
@@ -208,6 +248,7 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     const thirdTask = await (await createTask('Third task')).json();
     assert.ok(thirdTask.id > otherTask.id);
+    assert.equal(thirdTask.priority, 'Normal');
     const third = await (await create('Third project')).json();
     assert.ok(third.id > second.id);
   } finally {
@@ -245,7 +286,7 @@ test('migrates an existing database without changing project IDs or tasks', asyn
       id: 42, name: 'Existing project', archived: false, totalCount: 1, completedCount: 1,
     });
     const tasks = await fetch(`http://127.0.0.1:${port}/api/projects/42/tasks`);
-    assert.deepEqual(await tasks.json(), [{ id: 51, title: 'Existing task', completed: true }]);
+    assert.deepEqual(await tasks.json(), [{ id: 51, title: 'Existing task', completed: true, priority: 'Normal' }]);
   } finally {
     if (child.exitCode === null) {
       const exited = new Promise(resolve => child.once('exit', resolve));
