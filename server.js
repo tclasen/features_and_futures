@@ -11,7 +11,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
   );
   CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,10 +22,20 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
 `);
+// Upgrade databases created by the earlier task checkpoints.
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 
-const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+  SUM(CASE WHEN t.completed = 1 THEN 1 ELSE 0 END) AS completedCount,
+  COUNT(t.id) AS totalCount
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
+const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
+const setProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -70,13 +81,14 @@ const page = `<!doctype html>
   <script>
     const app = document.querySelector('#app');
     const escId = (value) => encodeURIComponent(value);
-    async function getProjects() {
-      const response = await fetch('/api/projects');
+    async function getProjects(archived = false) {
+      const response = await fetch('/api/projects?archived=' + (archived ? '1' : '0'));
       if (!response.ok) throw new Error('Could not load projects');
       return response.json();
     }
-    async function showList() {
-      const projects = await getProjects();
+    async function showList(selectedFilter = 'Active') {
+      const archived = selectedFilter === 'Archived';
+      const projects = await getProjects(archived);
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -111,17 +123,45 @@ const page = `<!doctype html>
         await showList();
       });
       app.append(form, alert);
+      const filterLabel = document.createElement('label');
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      filter.setAttribute('aria-label', 'Project filter');
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        filter.append(option);
+      }
+      filter.value = selectedFilter;
+      filter.addEventListener('change', () => showList(filter.value));
+      filterLabel.append(filter);
+      app.append(filterLabel);
       const list = document.createElement('ul');
       for (const project of projects) {
         const row = document.createElement('li');
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
         name.textContent = project.name;
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = project.completedCount + '/' + project.totalCount + ' completed';
         const open = document.createElement('button');
         open.type = 'button';
         open.textContent = 'Open project';
         open.addEventListener('click', () => { location.href = '/projects/' + escId(project.id); });
-        row.append(name, open);
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.className = 'secondary';
+        archive.textContent = archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          const changed = await fetch('/api/projects/' + escId(project.id) + '/archive', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archived: !archived })
+          });
+          if (changed.ok) await showList(selectedFilter);
+        });
+        row.append(name, summary, open, archive);
         list.append(row);
       }
       app.append(list);
@@ -141,6 +181,11 @@ const page = `<!doctype html>
         back.textContent = 'Projects';
         back.addEventListener('click', () => { location.href = '/'; });
         app.append(heading, back);
+        const archivedNotice = document.createElement('p');
+        if (project.archived) {
+          archivedNotice.textContent = 'Archived project';
+          app.append(archivedNotice);
+        }
         const form = document.createElement('form');
         form.className = 'task-controls';
         const label = document.createElement('label');
@@ -152,6 +197,7 @@ const page = `<!doctype html>
         const submit = document.createElement('button');
         submit.type = 'submit';
         submit.textContent = 'Create task';
+        submit.disabled = Boolean(project.archived);
         form.append(label, submit);
         const alert = document.createElement('p');
         alert.setAttribute('role', 'alert');
@@ -196,6 +242,7 @@ const page = `<!doctype html>
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = Boolean(task.completed);
+            checkbox.disabled = Boolean(project.archived);
             checkbox.setAttribute('aria-label', 'Complete ' + task.title);
             checkbox.addEventListener('change', async () => {
               const updated = await fetch('/api/projects/' + escId(id) + '/tasks/' + escId(task.id), {
@@ -228,7 +275,7 @@ const page = `<!doctype html>
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/health') return sendJson(response, 200, { status: 'ok' });
-  if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all());
+  if (request.method === 'GET' && url.pathname === '/api/projects') return sendJson(response, 200, listProjects.all(url.searchParams.get('archived') === '1' ? 1 : 0));
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     const body = await readJson(request);
     const name = typeof body?.name === 'string' ? body.name.trim() : '';
@@ -241,12 +288,23 @@ const server = createServer(async (request, response) => {
     const project = findProject.get(Number(projectMatch[1]));
     return project ? sendJson(response, 200, project) : sendJson(response, 404, { error: 'Project not found' });
   }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/archive$/);
+  if (request.method === 'PATCH' && archiveMatch) {
+    const projectId = Number(archiveMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    const body = await readJson(request);
+    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'archived must be a boolean' });
+    setProjectArchived.run(body.archived ? 1 : 0, projectId);
+    return sendJson(response, 200, findProject.get(projectId));
+  }
   const taskCollectionMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (taskCollectionMatch) {
     const projectId = Number(taskCollectionMatch[1]);
     if (!findProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') return sendJson(response, 200, listTasks.all(projectId));
     if (request.method === 'POST') {
+      if (findProject.get(projectId).archived) return sendJson(response, 409, { error: 'Archived projects cannot accept tasks' });
       const body = await readJson(request);
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
@@ -258,6 +316,9 @@ const server = createServer(async (request, response) => {
   if (request.method === 'PATCH' && taskMatch) {
     const projectId = Number(taskMatch[1]);
     const taskId = Number(taskMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     const body = await readJson(request);
     if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'completed must be a boolean' });
     updateTask.run(body.completed ? 1 : 0, taskId, projectId);
