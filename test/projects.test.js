@@ -75,6 +75,134 @@ function priorityControls(html) {
   }));
 }
 
+function directoryRows(html) {
+  return [...html.matchAll(/<li data-testid="directory-task-row">([\s\S]*?)<\/li>/g)].map((match) => {
+    const field = (name) => match[1].match(new RegExp(`data-testid="directory-${name}"[^>]*>([\\s\\S]*?)<\\/span>`))[1];
+    return { title: field('task-title'), project: field('project-name'),
+      completion: field('task-completion'), priority: field('task-priority'),
+      date: field('task-due-date'), notes: field('task-notes'), html: match[1] };
+  });
+}
+
+test('task directory intersects read-only filters and preserves project order and stored data', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const task = (title, fields = {}) => ({ title, completed: false, priority: 'Normal',
+      dueDate: '', notes: '', deleted: false, ...fields });
+    const importTasks = (name, archived, tasks) => post(server.baseUrl, '/projects/import', {
+      name, json: JSON.stringify({ format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'High', tasks } }),
+    });
+    const notes = '  <script>literal & 📝</script>\nsecond line\n  ';
+    await importTasks('Owner One', false, [
+      task('  ALPHA\t  Beta  ', { priority: 'High', dueDate: '2000-02-29', notes }),
+      task('Gone', { completed: true, deleted: true, priority: 'High', dueDate: '2000-02-29', notes }),
+      task('Alpha beta undated', { completed: true }),
+      task('Other', { priority: 'Low', dueDate: '2000-03-01' }),
+    ]);
+    await importTasks('Owner Two', false, [task('Second', { completed: true, priority: 'High', dueDate: '2000-02-29' })]);
+    await importTasks('Archived Owner', true, [task('Archived live', { notes }), task('Archived gone', { deleted: true })]);
+    // Returning a task reserves and restores its original directory position.
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try { return ['projects', 'tasks', 'task_positions'].map((table) => db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all()); }
+      finally { db.close(); }
+    };
+    const before = snapshot();
+    const get = async (fields = {}) => {
+      const response = await fetch(`${server.baseUrl}/directory?${new URLSearchParams(fields)}`);
+      return { status: response.status, html: await response.text() };
+    };
+    const home = await (await fetch(server.baseUrl)).text();
+    assert.match(home, /action="\/directory"[\s\S]*?>Task directory<\/button>/);
+    let result = await get();
+    let rows = directoryRows(result.html);
+    assert.deepEqual(rows.map((r) => r.title), ['  ALPHA\t  Beta  ', 'Alpha beta undated', 'Other', 'Second']);
+    assert.deepEqual(rows.map((r) => r.project), ['Owner One', 'Owner One', 'Owner One', 'Owner Two']);
+    assert.equal(rows[0].notes, '  &lt;script&gt;literal &amp; 📝&lt;/script&gt;\nsecond line\n  ');
+    assert.equal(rows[0].date, '2000-02-29');
+    assert.equal(rows[1].date, '');
+    assert.equal(rows[0].completion, 'Open');
+    assert.equal(rows[1].completion, 'Completed');
+    assert.equal(rows[0].priority, 'High');
+    for (const row of rows) {
+      assert.doesNotMatch(row.html, /<input|<textarea|<select|method="post"/);
+      assert.match(row.html, />Open project<\/button>/);
+    }
+    assert.match(result.html, /<option selected>Active<\/option>/);
+    assert.equal((result.html.match(/<option selected>All<\/option>/g) || []).length, 2);
+    const combined = { filter: 'Open', priorityFilter: 'High', search: '  alpha  \t BETA ', dueFrom: '2000-02-29', dueThrough: '2000-02-29' };
+    result = await get(combined);
+    assert.deepEqual(directoryRows(result.html).map((r) => r.title), ['  ALPHA\t  Beta  ']);
+    assert.match(result.html, /name="dueFrom" value="2000-02-29"/);
+    assert.match(result.html, /<option selected>High<\/option>/);
+    assert.deepEqual(directoryRows((await get({ ...combined, filter: 'Completed' })).html), []);
+    assert.deepEqual(directoryRows((await get({ search: 'alpha\t beta' })).html).map((r) => r.title), ['  ALPHA\t  Beta  ', 'Alpha beta undated']);
+    assert.deepEqual(directoryRows((await get({ search: 'literal' })).html), []);
+    assert.deepEqual(directoryRows((await get({ search: 'Owner' })).html), []);
+    assert.deepEqual(directoryRows((await get({ dueThrough: '2000-02-29' })).html).map((r) => r.title), ['  ALPHA\t  Beta  ', 'Second']);
+    assert.deepEqual(directoryRows((await get({ dueFrom: '2000-03-01' })).html).map((r) => r.title), ['Other']);
+    assert.deepEqual(directoryRows((await get({ filter: 'Deleted', priorityFilter: 'High', search: 'gone', dueFrom: '2000-02-29' })).html).map((r) => r.title), ['Gone']);
+    assert.deepEqual(directoryRows((await get({ scope: 'Archived' })).html).map((r) => r.title), ['Archived live']);
+    assert.deepEqual(directoryRows((await get({ scope: 'Archived', filter: 'Deleted' })).html).map((r) => r.title), ['Archived gone']);
+    for (const [dates, message] of [
+      [{ dueFrom: '1900-02-29' }, 'Due range must use valid YYYY-MM-DD dates'],
+      [{ dueFrom: '2000-03-01', dueThrough: '2000-02-29' }, 'Due from must not be after Due through'],
+    ]) {
+      result = await get({ ...combined, ...dates, appliedFrom: '2000-02-29', appliedThrough: '2000-02-29' });
+      assert.equal(result.status, 400);
+      assert.match(result.html, new RegExp(`role="alert">${message}`));
+      assert.deepEqual(directoryRows(result.html).map((r) => r.title), ['  ALPHA\t  Beta  ']);
+      assert.match(result.html, /name="dueFrom" value="2000-02-29"/); // applied range in other forms
+    }
+    const ownerPage = await (await fetch(`${server.baseUrl}/projects/3`)).text();
+    assert.match(ownerPage, /Archived project/);
+    assert.match(ownerPage, /<option selected>All<\/option>/);
+    assert.deepEqual(snapshot(), before);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(directoryRows((await get()).html).map((r) => r.title), ['  ALPHA\t  Beta  ', 'Alpha beta undated', 'Other', 'Second']);
+    assert.deepEqual(snapshot(), before);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task directory includes upgraded records with public defaults', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-legacy-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    const db = new DatabaseSync(databasePath);
+    db.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Legacy');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Earlier', 1), (1, 'Later', 0);
+    `);
+    db.close();
+    server = await startServer(databasePath);
+    const html = await (await fetch(`${server.baseUrl}/directory`)).text();
+    const rows = directoryRows(html);
+    assert.deepEqual(rows.map(({ html, ...fields }) => fields), [
+      { title: 'Earlier', project: 'Legacy', completion: 'Completed', priority: 'Normal', date: '', notes: '' },
+      { title: 'Later', project: 'Legacy', completion: 'Open', priority: 'Normal', date: '', notes: '' },
+    ]);
+    const deleted = await (await fetch(`${server.baseUrl}/directory?filter=Deleted`)).text();
+    assert.deepEqual(directoryRows(deleted), []);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('project imports validate atomically and preserve independent portable state and order', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-import-'));
   const databasePath = join(directory, 'board.sqlite');
