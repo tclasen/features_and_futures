@@ -87,6 +87,23 @@ const server = createServer(async (req, res) => {
       LEFT JOIN task_project_positions pos ON pos.task_id = t.id AND pos.project_id = p.id
       ORDER BY p.created_at, p.rowid, COALESCE(pos.position, t.created_at), t.created_at, t.rowid`).all());
   }
+  if (req.method === 'PATCH' && url.pathname === '/api/directory/bulk-completion') {
+    let payload;
+    try { let body = ''; for await (const chunk of req) body += chunk; payload = JSON.parse(body); }
+    catch { return send(res, 400, { error: 'Invalid request' }); }
+    if (!Array.isArray(payload.taskIds) || typeof payload.completed !== 'boolean' || payload.taskIds.some(id => typeof id !== 'string')) {
+      return send(res, 400, { error: 'Invalid bulk completion request' });
+    }
+    const update = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+      AND completed != ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    db.exec('BEGIN');
+    try {
+      let changed = 0;
+      for (const id of new Set(payload.taskIds)) changed += update.run(payload.completed ? 1 : 0, id, payload.completed ? 1 : 0).changes;
+      db.exec('COMMIT');
+      return send(res, 200, { changed });
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+  }
   const projectArchive = url.pathname.match(/^\/api\/projects\/([^/]+)\/archive$/);
   if (req.method === 'PATCH' && projectArchive) {
     let projectId;
