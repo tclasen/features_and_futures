@@ -35,6 +35,7 @@ const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
   FROM projects p ORDER BY p.id`);
 const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
@@ -96,6 +97,11 @@ function sendPage(response) {
       <button id="back" type="button">Projects</button>
       <h1 id="project-title"></h1>
       <p id="archived-notice" hidden>Archived project</p>
+      <form id="rename-form">
+        <label for="new-project-name">New project name</label>
+        <input id="new-project-name" name="name" type="text" autocomplete="off">
+        <button type="submit">Rename project</button>
+      </form>
       <form id="task-form">
         <label for="task-title">Task title</label>
         <input id="task-title" name="title" type="text" autocomplete="off">
@@ -170,6 +176,8 @@ function sendPage(response) {
       const archived = Boolean(project.archived);
       currentProjectArchived = archived;
       document.querySelector('#archived-notice').hidden = !archived;
+      document.querySelector('#new-project-name').disabled = archived;
+      document.querySelector('#rename-form button').disabled = archived;
       document.querySelector('#task-form button').disabled = archived;
       error.hidden = true;
       await renderTasks();
@@ -223,6 +231,24 @@ function sendPage(response) {
       if (!response.ok) throw new Error('Unable to create task');
       input.value = '';
       await renderTasks();
+    });
+    document.querySelector('#rename-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const input = document.querySelector('#new-project-name');
+      const name = input.value.trim();
+      if (!name) {
+        error.textContent = 'Project name is required';
+        error.hidden = false;
+        return;
+      }
+      error.hidden = true;
+      const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/name', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!response.ok) throw new Error('Unable to rename project');
+      document.querySelector('#project-title').textContent = name;
+      input.value = '';
     });
     document.querySelector('#task-filter').addEventListener('change', renderTasks);
     document.querySelector('#project-filter').addEventListener('change', showList);
@@ -304,6 +330,21 @@ const server = createServer(async (request, response) => {
       if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
       setProjectArchived.run(body.archived ? 1 : 0, projectId);
       sendJson(response, 200, { ...project, archived: body.archived });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/name$/);
+  if (renameMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(renameMatch[1]);
+      const body = await readRequestBody(request);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) { sendJson(response, 400, { error: 'Project name is required' }); return; }
+      const project = getProject.get(projectId);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot be renamed' }); return; }
+      renameProject.run(name, projectId);
+      sendJson(response, 200, { ...project, name });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
