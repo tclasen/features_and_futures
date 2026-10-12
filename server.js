@@ -10,6 +10,16 @@ function escapeHtml(value) {
   })[character]);
 }
 
+// Validate calendar days directly, without JavaScript Date's timezone or year coercion.
+export function isValidDueDate(value) {
+  if (value.length !== 10 || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
+
 function page(title, content) {
   return `<!doctype html>
 <html lang="en">
@@ -76,12 +86,17 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
     db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
+  // Empty dates represent no due date for both migrated and newly created tasks.
+  if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
+    db.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const priorities = ['Low', 'Normal', 'High'];
-  const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+  const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+  const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
   const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
     COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -169,6 +184,12 @@ export function createApplication(dbPath) {
           <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} data-auto-submit>
             ${priorities.map(value => `<option${task.priority === value ? ' selected' : ''}>${value}</option>`).join('')}
           </select>
+        </form>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+          ${filterFields}
+          <label for="task-due-date-${task.id}">Task due date</label>
+          <input id="task-due-date-${task.id}" name="dueDate" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
         </form>
         <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
           ${filterFields}
@@ -280,7 +301,7 @@ export function createApplication(dbPath) {
         }
         response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter) });
         response.end();
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority))?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority|due-date))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
         const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -302,6 +323,17 @@ export function createApplication(dbPath) {
             return;
           }
           insertTask.run(projectId, title, project.default_priority);
+        } else if (parts[5] === 'due-date') {
+          const taskId = Number(parts[4]);
+          const dueDate = (body.get('dueDate') ?? '').trim();
+          if (dueDate && !isValidDueDate(dueDate)) {
+            sendHtml(400, projectPage(project, filter, priorityFilter, 'Due date must be a valid YYYY-MM-DD date'));
+            return;
+          }
+          if (!Number.isSafeInteger(taskId) || !setTaskDueDate.run(dueDate, taskId, projectId).changes) {
+            sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
         } else if (parts[5] === 'priority') {
           const taskId = Number(parts[4]);
           const priority = body.get('priority');
