@@ -10,6 +10,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
+)`);
+const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const listProjects = db.prepare('SELECT id, name FROM projects ORDER BY id');
 const findProject = db.prepare('SELECT id, name FROM projects WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -34,6 +43,10 @@ function page(content) {
   button:hover { background: #1945a7; }
   :focus-visible { outline: 3px solid #edac28; outline-offset: 3px; }
   .create button { margin-top: 12px; }
+  .filter { margin-top: 24px; }
+  select { padding: 10px; font: inherit; }
+  .task-check { width: 22px; height: 22px; }
+  .task-title { flex: 1; margin: 0; overflow-wrap: anywhere; }
   .projects { margin-top: 32px; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid #dce2eb; padding: 16px 0; }
   .name { overflow-wrap: anywhere; min-width: 0; }
@@ -58,6 +71,50 @@ function projectList(error = '', name = '') {
     <section class="projects" aria-label="Projects">${rows || '<p>No projects yet.</p>'}</section>`);
 }
 
+function taskFilter(value) {
+  return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
+}
+
+function projectPage(project, filter = 'All', error = '') {
+  const rows = listTasks.all(project.id)
+    .filter(task => filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))
+    .map(task => `<form class="row" data-testid="task-row" method="post" action="/projects/${project.id}/tasks/${task.id}">
+      <label class="task-title" for="task-${task.id}">${escape(task.title)}</label>
+      <input type="hidden" name="filter" value="${filter}">
+      <input class="task-check" id="task-${task.id}" type="checkbox" name="completed" value="1"
+        aria-label="Complete ${escape(task.title)}" ${task.completed ? 'checked' : ''} onchange="this.form.submit()">
+    </form>`).join('');
+  return page(`<h1>${escape(project.name)}</h1>
+    <form action="/" method="get"><button type="submit">Projects</button></form>
+    ${error ? `<p role="alert">${escape(error)}</p>` : ''}
+    <form class="create" action="/projects/${project.id}/tasks" method="post">
+      <label for="task-title">Task title</label>
+      <input id="task-title" name="title" type="text">
+      <input type="hidden" name="filter" value="${filter}">
+      <button type="submit">Create task</button>
+    </form>
+    <form class="filter" action="/projects/${project.id}" method="get">
+      <label for="task-filter">Task filter</label>
+      <select id="task-filter" name="filter" onchange="this.form.submit()">
+        ${['All', 'Open', 'Completed'].map(option => `<option${option === filter ? ' selected' : ''}>${option}</option>`).join('')}
+      </select>
+    </form>
+    <section aria-label="Tasks">${rows || '<p>No matching tasks.</p>'}</section>`);
+}
+
+async function formBody(req) {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk;
+    if (Buffer.byteLength(body) > 1024 * 1024) {
+      const error = new Error('Request too large');
+      error.status = 413;
+      throw error;
+    }
+  }
+  return new URLSearchParams(body);
+}
+
 function html(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(body);
@@ -74,29 +131,39 @@ const server = http.createServer(async (req, res) => {
       return html(res, 200, projectList());
     }
     if (req.method === 'POST' && url.pathname === '/projects') {
-      let body = '';
-      for await (const chunk of req) {
-        body += chunk;
-        if (Buffer.byteLength(body) > 1024 * 1024) {
-          return html(res, 413, page('<h1>Request too large</h1>'));
-        }
-      }
-      const name = (new URLSearchParams(body).get('name') || '').trim();
+      const body = await formBody(req);
+      const name = (body.get('name') || '').trim();
       if (!name) return html(res, 422, projectList('Project name is required'));
       createProject.run(name);
       res.writeHead(303, { Location: '/' });
       return res.end();
     }
+    const taskMatch = url.pathname.match(/^\/projects\/(\d+)\/tasks(?:\/(\d+))?$/);
+    if (req.method === 'POST' && taskMatch) {
+      const project = findProject.get(taskMatch[1]);
+      if (!project) return html(res, 404, page('<h1>Page not found</h1>'));
+      const body = await formBody(req);
+      const filter = taskFilter(body.get('filter'));
+      if (taskMatch[2]) {
+        const result = updateTask.run(body.get('completed') === '1' ? 1 : 0, taskMatch[2], project.id);
+        if (!result.changes) return html(res, 404, page('<h1>Task not found</h1>'));
+      } else {
+        const title = (body.get('title') || '').trim();
+        if (!title) return html(res, 422, projectPage(project, filter, 'Task title is required'));
+        createTask.run(project.id, title);
+      }
+      res.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+      return res.end();
+    }
     const match = url.pathname.match(/^\/projects\/(\d+)$/);
     if (req.method === 'GET' && match) {
       const project = findProject.get(match[1]);
-      if (project) return html(res, 200, page(`<h1>${escape(project.name)}</h1>
-        <form action="/" method="get"><button type="submit">Projects</button></form>`));
+      if (project) return html(res, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
     }
     html(res, 404, page('<h1>Page not found</h1><a href="/">Projects</a>'));
   } catch (error) {
     console.error(error);
-    if (!res.headersSent) html(res, 500, page('<h1>Something went wrong</h1>'));
+    if (!res.headersSent) html(res, error.status || 500, page(`<h1>${error.status === 413 ? 'Request too large' : 'Something went wrong'}</h1>`));
     else res.end();
   }
 });

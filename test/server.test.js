@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
 
-test('projects validate, navigate, and survive a server restart', async () => {
+test('projects and tasks validate, stay isolated, filter, and survive server restarts', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const port = 18080;
   const base = `http://127.0.0.1:${port}`;
@@ -61,6 +61,50 @@ test('projects validate, navigate, and survive a server restart', async () => {
     await start();
     assert.equal(await (await fetch(base)).text(), listing);
     assert.equal(await (await fetch(`${base}/projects/1`)).text(), detail);
+
+    const postTask = (path, values) => fetch(`${base}${path}`, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual'
+    });
+    const tasksPage = async (project = 1, filter = 'All') =>
+      (await fetch(`${base}/projects/${project}?filter=${filter}`)).text();
+    const rowCount = html => (html.match(/data-testid="task-row"/g) || []).length;
+    const invalidTask = await postTask('/projects/1/tasks', { title: '   ' });
+    assert.equal(invalidTask.status, 422);
+    const invalidTaskPage = await invalidTask.text();
+    assert.match(invalidTaskPage, /role="alert">Task title is required/);
+    assert.equal(rowCount(invalidTaskPage), 0);
+    assert.equal((await postTask('/projects/1/tasks', { title: '  First task  ' })).status, 303);
+    assert.equal((await postTask('/projects/1/tasks', { title: '<Second task>' })).status, 303);
+    let all = await tasksPage();
+    assert.equal(rowCount(all), 2);
+    assert.ok(all.indexOf('First task') < all.indexOf('&lt;Second task&gt;'));
+    assert.match(all, /aria-label="Complete First task"/);
+    assert.match(all, /<option selected>All<\/option>/);
+    assert.doesNotMatch(all, / checked/);
+    assert.equal(rowCount(await tasksPage(2)), 0);
+    assert.equal(rowCount(await tasksPage(1, 'Open')), 2);
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 0);
+    assert.equal((await postTask('/projects/2/tasks/1', { completed: '1' })).status, 404);
+    assert.equal((await postTask('/projects/1/tasks/1', { completed: '1' })).status, 303);
+    assert.equal(rowCount(await tasksPage(1, 'Open')), 1);
+    const completed = await tasksPage(1, 'Completed');
+    assert.equal(rowCount(completed), 1);
+    assert.match(completed, /First task/);
+    assert.doesNotMatch(completed, /Second task/);
+    assert.match(completed, / checked/);
+    all = await tasksPage();
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), all);
+    assert.equal(await tasksPage(1, 'Completed'), completed);
+    assert.equal(rowCount(await tasksPage(2)), 0);
+    assert.equal((await postTask('/projects/1/tasks/1', {})).status, 303);
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 0);
+    assert.equal(rowCount(await tasksPage(1, 'Open')), 2);
+    await stop();
+    await start();
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 0);
+    assert.equal(rowCount(await tasksPage(1, 'Open')), 2);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
