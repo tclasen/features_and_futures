@@ -124,7 +124,13 @@ async function render() {
             try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ destinationProjectId: Number(destination.value) })); await refreshTasks(); }
             catch (error) { alert.textContent = error.message; }
           });
-          row.append(destination, moveButton); return row;
+          const notes = document.createElement('textarea'); notes.setAttribute('aria-label', 'Task notes'); notes.value = task.notes || ''; notes.disabled = Boolean(project.archived);
+          const saveNotes = element('button', 'Save notes'); saveNotes.type = 'button'; saveNotes.disabled = Boolean(project.archived);
+          saveNotes.addEventListener('click', async () => {
+            try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ notes: notes.value })); alert.textContent = ''; await refreshTasks(); }
+            catch (error) { alert.textContent = error.message; }
+          });
+          row.append(destination, moveButton, notes, saveNotes); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);
