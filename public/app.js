@@ -397,6 +397,8 @@ async function renderDirectory() {
   for (const value of ['All', 'Open', 'Completed', 'Deleted']) taskFilter.append(element('option', value, { value }));
   const priorityFilter = element('select', undefined, { 'aria-label': 'Priority filter' });
   for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
+  const directoryOrder = element('select', undefined, { 'aria-label': 'Directory order' });
+  for (const value of ['Original', 'Priority', 'Due date', 'Title']) directoryOrder.append(element('option', value, { value }));
   const searchForm = element('form');
   const search = element('input', undefined, { type: 'text', 'aria-label': 'Directory search' });
   searchForm.append(search, element('button', 'Search directory', { type: 'submit' }));
@@ -408,7 +410,7 @@ async function renderDirectory() {
   const reopenVisible = element('button', 'Reopen visible tasks', { type: 'button' });
   const empty = element('p', 'No matching tasks');
   const list = element('section', undefined, { 'aria-label': 'Directory tasks' });
-  app.append(scope, taskFilter, priorityFilter, searchForm, rangeForm, completeVisible, reopenVisible, empty, list);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, searchForm, rangeForm, completeVisible, reopenVisible, empty, list);
   let query = '', low = '', high = '';
   const render = async () => {
     empty.hidden = true;
@@ -424,6 +426,24 @@ async function renderDirectory() {
       if (!searchMatches(task.title, query)) continue;
       if ((low || high) && (!task.dueDate || low && task.dueDate < low || high && task.dueDate > high)) continue;
       visible.push(task);
+    }
+    if (directoryOrder.value === 'Priority') {
+      const rank = { High: 0, Normal: 1, Low: 2 };
+      visible.sort((a, b) => rank[a.priority] - rank[b.priority]);
+    } else if (directoryOrder.value === 'Due date') {
+      visible.sort((a, b) => {
+        if (!a.dueDate) return b.dueDate ? 1 : 0;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      });
+    } else if (directoryOrder.value === 'Title') {
+      visible.sort((a, b) => {
+        const left = a.title.replace(/[A-Z]/g, character => character.toLowerCase());
+        const right = b.title.replace(/[A-Z]/g, character => character.toLowerCase());
+        return left < right ? -1 : left > right ? 1 : 0;
+      });
+    }
+    for (const task of visible) {
       const row = element('div', undefined, { 'data-testid': 'directory-task-row' });
       row.dataset.taskId = task.taskId;
       row.dataset.completed = String(task.completed);
@@ -444,7 +464,7 @@ async function renderDirectory() {
   };
   completeVisible.addEventListener('click', () => bulkUpdate(true).catch(() => showError('Could not update tasks')));
   reopenVisible.addEventListener('click', () => bulkUpdate(false).catch(() => showError('Could not update tasks')));
-  for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', () => render().catch(() => showError('Could not load directory')));
+  for (const control of [scope, taskFilter, priorityFilter, directoryOrder]) control.addEventListener('change', () => render().catch(() => showError('Could not load directory')));
   searchForm.addEventListener('submit', event => { event.preventDefault(); query = search.value.trim(); render(); });
   rangeForm.addEventListener('submit', event => {
     event.preventDefault(); const a = from.value.trim(), b = through.value.trim();
