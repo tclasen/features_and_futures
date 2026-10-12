@@ -99,3 +99,7 @@ L060 resource ledger reconciliation: registered 1 additional names (0 present an
 L060 resource ledger reconciliation: registered 1 additional names (0 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L069 archive-first task021 recovery verified: five identical b004 diagnostics, all eighteen original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt019 start. Effective task021 repair remains pending; no comparison change or implementation hint.
+
+L069 task021 post-recovery feedback delivery verified: all retained requests in attempts007,013,019 contain the exact packet and preceding rejection feedback with expected date and recovery wording. Model attention and causal application mechanism remain unestablished. Evidence: preflight/task021-feedback-delivery001/verified.json. No comparison change.
+
+L069 recovery delivery proof strengthened: delivery002 checks the exact recorded recovery header and message in all36 native request bodies, extending delivery001 packet/feedback byte verification. Model attention and application cause remain unestablished. No comparison change.
