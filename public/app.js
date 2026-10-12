@@ -164,6 +164,39 @@ function showProjectRename(project, heading) {
   app.append(form);
 }
 
+function taskRenameForm(task, path, archived, onRename) {
+  const form = element('form', '', { class: 'task-rename' });
+  const inputId = `new-task-title-${task.id}`;
+  const input = element('input', '', { id: inputId, name: 'title', type: 'text' });
+  const rename = element('button', 'Rename task', { type: 'submit' });
+  input.value = task.title;
+  input.disabled = archived;
+  rename.disabled = archived;
+  form.append(element('label', 'New task title', { for: inputId }), input, rename);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (rename.disabled) return;
+    const title = input.value.trim();
+    if (!title) return showError('Task title is required');
+    rename.disabled = true;
+    try {
+      const saved = await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      Object.assign(task, saved);
+      app.querySelector('[role="alert"]')?.remove();
+      onRename();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      rename.disabled = archived;
+    }
+  });
+  return form;
+}
+
 async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -209,7 +242,9 @@ async function showTasks(projectId, archived) {
           checkbox.disabled = archived;
         }
       });
-      row.append(checkbox, element('span', task.title));
+      const details = element('div', '', { class: 'task-details' });
+      details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks));
+      row.append(checkbox, details);
       return row;
     }));
   }

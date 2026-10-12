@@ -39,6 +39,7 @@ const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 
 function projectData(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -153,6 +154,15 @@ const server = createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const result = insertTask.run(projectId, title);
           return json(response, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
+        }
+        if (body && Object.hasOwn(body, 'title')) {
+          if (Object.hasOwn(body, 'completed')) {
+            return json(response, 400, { error: 'Rename and completion must be separate requests' });
+          }
+          const title = typeof body.title === 'string' ? body.title.trim() : '';
+          if (!title) return json(response, 400, { error: 'Task title is required' });
+          renameTask.run(title, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
         }
         if (typeof body?.completed !== 'boolean') {
           return json(response, 400, { error: 'Task completion must be a boolean' });

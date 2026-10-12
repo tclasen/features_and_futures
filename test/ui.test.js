@@ -48,6 +48,52 @@ function find(root, predicate) {
   return [root, ...root.children.flatMap((child) => find(child, () => true))].filter(predicate);
 }
 
+function taskTitle(row) {
+  return find(row, (node) => node.tag === 'span')[0].textContent;
+}
+
+test('task rename validates, trims, updates accessible names, and preserves order and filtering', async () => {
+  const project = { id: 1, name: 'Alpha', archived: false };
+  const tasks = [
+    { id: 1, title: 'Original', completed: true },
+    { id: 2, title: 'Open task', completed: false },
+  ];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return path.endsWith('/tasks') ? tasks : project;
+    assert.equal(path, '/api/projects/1/tasks/1');
+    assert.equal(options.method, 'PATCH');
+    const body = JSON.parse(options.body);
+    assert.deepEqual(body, { title: '<b>New title</b>' });
+    return { ...tasks[0], ...body };
+  });
+  const row = ui.rows('task')[0];
+  const input = ui.byId('new-task-title-1');
+  const form = find(row, (node) => node.tag === 'form')[0];
+  assert.equal(find(row, (node) => node.attributes.for === input.attributes.id)[0].textContent, 'New task title');
+  assert.equal(input.disabled, false);
+  assert.equal(ui.button('Rename task').disabled, false);
+  input.value = ' \t\n ';
+  await form.fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Task title is required');
+  assert.equal(taskTitle(ui.rows('task')[0]), 'Original');
+  assert.equal(ui.calls.length, 2);
+  input.value = '  <b>New title</b> \n';
+  await form.fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]'), null);
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['<b>New title</b>', 'Open task']);
+  assert.equal(ui.byId('new-task-title-1').value, '<b>New title</b>');
+  const checkbox = find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0];
+  assert.equal(checkbox.attributes['aria-label'], 'Complete <b>New title</b>');
+  assert.equal(checkbox.checked, true);
+  const filter = ui.byId('task-filter');
+  for (const [value, titles] of [['Open', ['Open task']], ['Completed', ['<b>New title</b>']], ['All', ['<b>New title</b>', 'Open task']]]) {
+    filter.value = value;
+    await filter.fire('change');
+    assert.deepEqual(ui.rows('task').map(taskTitle), titles);
+  }
+  assert.equal(ui.window.location.href, '/projects/1');
+});
+
 async function page(pathname, respond) {
   const app = new Element('main');
   const window = { location: { pathname, href: pathname } };
@@ -125,12 +171,18 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
   for (const [value, titles] of [['All', ['Done task', 'Open task']], ['Open', ['Open task']], ['Completed', ['Done task']]]) {
     filter.value = value;
     await filter.fire('change');
-    assert.deepEqual(ui.rows('task').map((row) => row.textContent), titles);
+    assert.deepEqual(ui.rows('task').map(taskTitle), titles);
     for (const row of ui.rows('task')) {
       const checkbox = find(row, (node) => node.attributes.type === 'checkbox')[0];
       assert.equal(checkbox.disabled, true);
-      assert.equal(checkbox.attributes['aria-label'], `Complete ${row.textContent}`);
-      assert.equal(checkbox.checked, row.textContent === 'Done task');
+      assert.equal(checkbox.attributes['aria-label'], `Complete ${taskTitle(row)}`);
+      assert.equal(checkbox.checked, taskTitle(row) === 'Done task');
+      const renameInput = find(row, (node) => node.attributes.name === 'title')[0];
+      const renameButton = find(row, (node) => node.tag === 'button')[0];
+      assert.equal(renameInput.disabled, true);
+      assert.equal(renameButton.disabled, true);
+      renameInput.value = 'Cannot rename';
+      await find(row, (node) => node.tag === 'form')[0].fire('submit');
     }
   }
   ui.byId('task-title').value = 'Cannot create';
@@ -166,6 +218,6 @@ test('active project UI validates and trims renames without changing its URL or 
   assert.equal(input.value, 'New name');
   assert.equal(ui.app.querySelector('[role="alert"]'), null);
   assert.equal(ui.window.location.href, '/projects/1');
-  assert.deepEqual(ui.rows('task').map((row) => row.textContent), ['Saved task']);
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Saved task']);
   assert.equal(find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0].checked, true);
 });

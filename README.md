@@ -28,5 +28,12 @@ projects disable renaming until restored. `PATCH /api/projects/<id>` accepts
 either `{ "name": "New name" }` or `{ "archived": true }` in separate requests;
 renaming an archived project returns HTTP 409.
 
+Each task row provides New task title and Rename task. Titles are trimmed and
+must be nonblank. Renaming preserves task identity, ownership, creation order,
+completion state, and completion counts. Archived projects disable task renaming
+until restored. `PATCH /api/projects/<project-id>/tasks/<task-id>` accepts either
+`{ "title": "New title" }` or `{ "completed": true }` in separate requests.
+Renamed titles persist across restarts; archived task writes return HTTP 409.
+
 Run the integration tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.
