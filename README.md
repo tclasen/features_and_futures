@@ -84,8 +84,13 @@ Each task row provides a Destination project selector and Move task button. It
 lists only other active projects, using their current names in project creation
 order. With no eligible destinations both controls are disabled. Moving keeps
 the source page open with all applied filters, transfers the same task identity
-and saved data, and appends it after the destination's existing tasks. Project
-summaries reflect current ownership. A saved per-project task position preserves
-move order across restarts; existing databases initialize positions from task IDs.
+and saved data. First-time arrivals append after all positions established in the
+destination; returning tasks reuse their previous positions, even when several
+tasks return in a different order. New tasks also follow all established positions,
+including positions reserved for tasks currently elsewhere. Project summaries
+reflect current ownership. Remembered per-project positions survive restarts,
+renames, archives, and restoration. Existing databases seed the position history
+from their current task order; movements before this upgrade have no saved history.
+Task creation and movement update current ownership and position history atomically.
 Archived projects disable moving and cannot be sources or destinations. Invalid
 or stale destinations are rejected without changing task data.

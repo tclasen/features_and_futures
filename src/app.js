@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { normalizeDueDate, normalizeDueRange } from './due-date.js';
+import { createTaskOrdering } from './task-order.js';
 
 const taskPriorities = ['Low', 'Normal', 'High'];
 const taskFilters = ['All', 'Open', 'Completed'];
@@ -134,10 +135,8 @@ export function createApp(databasePath) {
       COMMIT;`);
   }
   database.exec('CREATE INDEX IF NOT EXISTS tasks_project_position ON tasks(project_id, position, id)');
+  const taskOrdering = createTaskOrdering(database);
   const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id ASC');
-  const moveTask = database.prepare(`UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
-    WHERE id = ? AND project_id = ?`);
   const listProjects = database.prepare(`SELECT projects.id, projects.name,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -152,8 +151,6 @@ export function createApp(databasePath) {
       AND (? = 'All' OR priority = ?)
       AND (? = '' OR (due_date != '' AND due_date >= ?))
       AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position ASC, id ASC`);
-  const insertTask = database.prepare(`INSERT INTO tasks (project_id, title, priority, position)
-    VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?))`);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -349,7 +346,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
             sendHtml(response, 422, projectPage(currentProject, filters, { taskError: 'Task title is required' }));
             return;
           }
-          insertTask.run(id, title, currentProject.default_task_priority, id);
+          taskOrdering.create(id, title, currentProject.default_task_priority);
           response.writeHead(303, { Location: projectLocation(id, filters) });
           response.end();
         } else if (request.method === 'POST' && projectRoute[2]) {
@@ -373,7 +370,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
               }));
               return;
             }
-            moveTask.run(destinationId, destinationId, taskId, id);
+            taskOrdering.move(taskId, id, destinationId);
           } else if (projectRoute[3] === 'due-date') {
             const dueDate = normalizeDueDate(form.get('dueDate') ?? '');
             if (dueDate === null) {
