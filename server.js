@@ -15,8 +15,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
   archived INTEGER NOT NULL DEFAULT 0
 )`);
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
-const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch {}
+const getProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const setDefaultPriority = db.prepare("UPDATE projects SET default_priority = ? WHERE id = ? AND archived = 0");
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
@@ -27,12 +29,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
-const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -88,7 +90,7 @@ const server = createServer(async (req, res) => {
       const owner = getProject.get(Number(taskMatch[1]));
       if (!owner) return send(404, JSON.stringify({ error: 'Project not found' }));
       if (owner.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
-      const result = createTask.run(Number(taskMatch[1]), title);
+      const result = createTask.run(Number(taskMatch[1]), title, owner.defaultPriority);
       return send(201, JSON.stringify(getTask.get(Number(result.lastInsertRowid), Number(taskMatch[1]))));
     } catch {
       return send(400, JSON.stringify({ error: 'Invalid request' }));
@@ -128,9 +130,17 @@ const server = createServer(async (req, res) => {
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const body = JSON.parse(raw);
+      const id = Number(projectMatch[1]);
+      if (Object.hasOwn(body, 'defaultPriority')) {
+        if (!['Low', 'Normal', 'High'].includes(body.defaultPriority)) return send(400, JSON.stringify({ error: 'Invalid default priority' }));
+        const project = getProject.get(id);
+        if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+        if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
+        setDefaultPriority.run(body.defaultPriority, id);
+        return send(200, JSON.stringify(getProject.get(id)));
+      }
       const name = typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
-      const id = Number(projectMatch[1]);
       const project = getProject.get(id);
       if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
       if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));

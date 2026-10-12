@@ -47,8 +47,15 @@ async function render() {
       for (const value of ['All', 'Open', 'Completed']) { const option = element('option', value); option.value = value; filter.append(option); }
       const priorityFilter = document.createElement('select'); priorityFilter.setAttribute('aria-label', 'Priority filter');
       for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', value); option.value = value; priorityFilter.append(option); }
+      const defaultPriority = document.createElement('select'); defaultPriority.setAttribute('aria-label', 'Default task priority');
+      for (const value of ['Low', 'Normal', 'High']) { const option = element('option', value); option.value = value; defaultPriority.append(option); }
+      defaultPriority.value = project.defaultPriority || 'Normal'; defaultPriority.disabled = Boolean(project.archived);
+      defaultPriority.addEventListener('change', async () => {
+        try { await request(`/api/projects/${project.id}`, json({ defaultPriority: defaultPriority.value })); }
+        catch (error) { alert.textContent = error.message; defaultPriority.value = project.defaultPriority || 'Normal'; }
+      });
       const list = element('section'); list.setAttribute('aria-label', 'Tasks');
-      app.append(form, alert, filter, priorityFilter, list);
+      app.append(form, alert, filter, priorityFilter, defaultPriority, list);
       async function refreshTasks() {
         const tasks = await request(`/api/projects/${project.id}/tasks`);
         list.replaceChildren(...tasks.filter(task =>
