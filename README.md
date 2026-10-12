@@ -40,6 +40,12 @@ are trimmed and validated as real Gregorian YYYY-MM-DD calendar days (years
 invalid values show an alert without changing data. Dates persist independently
 through renaming and restart. Archived projects disable date editing; restoration
 preserves dates and enables editing again.
+Due from and Due through apply an inclusive due-date range intersecting both
+combobox filters. Blank boundaries are unbounded; any nonblank boundary excludes
+undated tasks. Invalid ranges show an alert and retain the last applied range.
+All edits retain the applied range and filter selections, while date, priority,
+and completion edits immediately re-evaluate membership. Archived projects allow
+range filtering. Opening a project from the list starts with empty boundaries.
 Native HTML forms handle creation and navigation; small inline browser event
 handlers submit completion, priority, default priority, and filter changes.
 
@@ -65,3 +71,6 @@ protection, restoration, and process-restart persistence.
 Due-date tests cover migration, blank defaults, strict date validation including
 leap years and year boundaries, clearing, task isolation, unchanged summaries and
 filters, renaming, archive protection, restoration, and restart persistence.
+Due-range tests cover inclusive and one-sided boundaries, undated tasks, combined
+filters, rendered form state, invalid-range preservation, membership changes on
+edits, selection retention, archived filtering, restoration, and restart.
