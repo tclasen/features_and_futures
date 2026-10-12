@@ -11,6 +11,12 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  completed INTEGER NOT NULL DEFAULT 0
 )`);
 const indexPath = join(dirname(fileURLToPath(import.meta.url)), 'index.html');
 const server = http.createServer(async (req, res) => {
@@ -32,6 +38,37 @@ const server = http.createServer(async (req, res) => {
     } catch {
       return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
     }
+  }
+  const tasks = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
+  if (tasks && req.method === 'GET') {
+    const projectId = Number(tasks[1]);
+    if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+  }
+  if (tasks && req.method === 'POST') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const projectId = Number(tasks[1]);
+      if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+      const data = JSON.parse(body);
+      const title = typeof data.title === 'string' ? data.title.trim() : '';
+      if (!title) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Task title is required' }));
+      const result = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
+      return send(201, 'application/json; charset=utf-8', JSON.stringify({ id: Number(result.lastInsertRowid), projectId, title, completed: false }));
+    } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
+  }
+  const task = url.pathname.match(/^\/api\/tasks\/(\d+)$/);
+  if (task && req.method === 'PATCH') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const data = JSON.parse(body);
+      if (typeof data.completed !== 'boolean') return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
+      const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ?').run(data.completed ? 1 : 0, Number(task[1]));
+      if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+      return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+    } catch { return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' })); }
   }
   const project = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (project && req.method === 'GET') {
