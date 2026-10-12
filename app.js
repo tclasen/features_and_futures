@@ -22,8 +22,22 @@ async function render() {
       const project = await request(`/api/projects/${match[1]}`);
       const back = element('button', 'Projects', 'back');
       back.type = 'button'; back.addEventListener('click', () => navigate('/'));
-      app.append(back, element('h1', project.name));
+      app.append(back);
+      const heading = element('h1', project.name);
+      app.append(heading);
       if (project.archived) app.append(element('p', 'Archived project'));
+      const renameForm = document.createElement('form');
+      const renameInput = document.createElement('input'); renameInput.type = 'text'; renameInput.setAttribute('aria-label', 'New project name'); renameInput.disabled = Boolean(project.archived);
+      const renameButton = element('button', 'Rename project'); renameButton.type = 'submit'; renameButton.disabled = Boolean(project.archived);
+      renameForm.append(renameInput, renameButton);
+      const renameAlert = element('p', ''); renameAlert.setAttribute('role', 'alert');
+      app.append(renameForm, renameAlert);
+      renameForm.addEventListener('submit', async event => {
+        event.preventDefault(); const name = renameInput.value.trim();
+        if (!name) { renameAlert.textContent = 'Project name is required'; renameInput.focus(); return; }
+        try { const updated = await request(`/api/projects/${project.id}`, { ...json({ name }) }); heading.textContent = updated.name; renameInput.value = ''; renameAlert.textContent = ''; }
+        catch (error) { renameAlert.textContent = error.message; }
+      });
       const form = document.createElement('form');
       const input = document.createElement('input'); input.type = 'text'; input.setAttribute('aria-label', 'Task title');
       const submit = element('button', 'Create task'); submit.type = 'submit'; submit.disabled = Boolean(project.archived);

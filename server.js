@@ -17,6 +17,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS projects (
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch {}
 const getProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,6 +107,21 @@ const server = createServer(async (req, res) => {
     }
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (req.method === 'PATCH' && projectMatch) {
+    try {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const body = JSON.parse(raw);
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return send(400, JSON.stringify({ error: 'Project name is required' }));
+      const id = Number(projectMatch[1]);
+      const project = getProject.get(id);
+      if (!project) return send(404, JSON.stringify({ error: 'Not found' }));
+      if (project.archived) return send(403, JSON.stringify({ error: 'Archived project' }));
+      renameProject.run(name, id);
+      return send(200, JSON.stringify(getProject.get(id)));
+    } catch { return send(400, JSON.stringify({ error: 'Invalid request' })); }
+  }
   if (req.method === 'GET' && projectMatch) {
     const project = getProject.get(Number(projectMatch[1]));
     return project ? send(200, JSON.stringify(project)) : send(404, JSON.stringify({ error: 'Not found' }));
