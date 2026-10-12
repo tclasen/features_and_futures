@@ -200,3 +200,107 @@ test('projects validate, navigate, and persist through a server process restart'
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('archive and restore preserve tasks, enforce read-only state, and summarize all tasks', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-archive-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/') => (await fetch(server.baseUrl + path)).text();
+    await createProject(server.baseUrl, 'First');
+    await createProject(server.baseUrl, 'Second');
+    const initial = await read();
+    assert.match(initial, /<label for="project-filter">Project filter<\/label>/);
+    assert.match(initial, /<option selected>Active<\/option><option>Archived<\/option>/);
+    assert.ok(rows(initial).every((row) => row.includes('data-testid="project-summary">0/0 completed')));
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Done' });
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Pending' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    assert.match(rows(await read())[0], /data-testid="project-summary">1\/2 completed/);
+    await read('/projects/1?filter=Open');
+    assert.match(rows(await read())[0], /1\/2 completed/);
+    assert.equal((await postForm(server.baseUrl, '/projects/999/archive', {})).status, 404);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/archive', {})).status, 303);
+    assert.equal(rows(await read()).length, 1);
+    assert.match(rows(await read())[0], /Second/);
+    const archivedRows = rows(await read('/?filter=Archived'));
+    assert.equal(archivedRows.length, 1);
+    assert.match(archivedRows[0], /First/);
+    assert.match(archivedRows[0], /1\/2 completed/);
+    assert.match(archivedRows[0], />Open project<\/button>/);
+    assert.match(archivedRows[0], />Restore project<\/button>/);
+    assert.doesNotMatch(archivedRows[0], />Archive project<\/button>/);
+    const archivedPage = await read('/projects/1');
+    assert.match(archivedPage, /<p>Archived project<\/p>/);
+    assert.match(archivedPage, /<button type="submit" disabled>Create task<\/button>/);
+    const archivedTasks = taskRows(archivedPage);
+    assert.equal(archivedTasks.length, 2);
+    assert.ok(archivedTasks.every((row) => /type="checkbox"[^>]* disabled/.test(row)));
+    assert.equal(taskRows(await read('/projects/1?filter=Open')).length, 1);
+    assert.equal(taskRows(await read('/projects/1?filter=Completed')).length, 1);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Blocked' })).status, 403);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/1/completion', {})).status, 403);
+    assert.deepEqual(taskRows(await read('/projects/1')), archivedTasks);
+    assert.equal(taskRows(await read('/projects/2')).length, 0);
+    const invalid = await postForm(server.baseUrl, '/projects', { name: ' ', filter: 'Archived' });
+    assert.equal(invalid.status, 422);
+    assert.deepEqual(rows(await invalid.text()), archivedRows);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(rows(await read('/?filter=Archived')), archivedRows);
+    assert.deepEqual(taskRows(await read('/projects/1')), archivedTasks);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/restore', {})).status, 303);
+    assert.equal(rows(await read('/?filter=Archived')).length, 0);
+    const restoredRows = rows(await read());
+    assert.equal(restoredRows.length, 2);
+    assert.match(restoredRows[0], /First/);
+    assert.match(restoredRows[0], /1\/2 completed/);
+    assert.match(restoredRows[0], />Archive project<\/button>/);
+    assert.doesNotMatch(await read('/projects/1'), /<(?:input|button)\b[^>]* disabled|<p>Archived project<\/p>/);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/1/completion', {})).status, 303);
+    assert.match(rows(await read())[0], /0\/2 completed/);
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'After restore' });
+    assert.match(rows(await read())[0], /0\/3 completed/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(rows(await read()).length, 2);
+    assert.match(rows(await read())[0], /0\/3 completed/);
+    assert.equal(taskRows(await read('/projects/1')).length, 3);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('existing project databases migrate to active without changing IDs or tasks', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (id, name) VALUES (7, 'Existing');
+      INSERT INTO tasks (id, project_id, title, completed) VALUES (9, 7, 'Saved task', 1)`);
+    database.close();
+    server = await startServer(databasePath);
+    const list = await (await fetch(server.baseUrl)).text();
+    assert.match(rows(list)[0], /action="\/projects\/7"/);
+    assert.match(rows(list)[0], /1\/1 completed/);
+    const detail = await (await fetch(server.baseUrl + '/projects/7')).text();
+    assert.match(taskRows(detail)[0], /Complete Saved task" checked/);
+    assert.doesNotMatch(detail, /<(?:input|button)\b[^>]* disabled|<p>Archived project<\/p>/);
+    await postForm(server.baseUrl, '/projects/7/archive', {});
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(rows(await (await fetch(server.baseUrl)).text()).length, 0);
+    assert.match(rows(await (await fetch(server.baseUrl + '/?filter=Archived')).text())[0], /1\/1 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
