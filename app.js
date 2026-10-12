@@ -80,7 +80,7 @@ async function render() {
           (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
           (priorityFilter.value === 'All' || priorityFilter.value === (task.priority || 'Normal')) &&
           ((!appliedFrom && !appliedThrough) || (task.dueDate && (!appliedFrom || task.dueDate >= appliedFrom) && (!appliedThrough || task.dueDate <= appliedThrough))) &&
-          asciiLower(task.title).includes(asciiLower(appliedTaskQuery))
+          searchNormalize(task.title).includes(searchNormalize(appliedTaskQuery))
         ).map(task => {
           const row = element('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived);
@@ -157,7 +157,7 @@ async function render() {
   searchForm.addEventListener('submit', event => { event.preventDefault(); appliedProjectQuery = searchInput.value.trim(); refresh(); });
   async function refresh() {
     const projects = await request('/api/projects');
-    list.replaceChildren(...projects.filter(p => Boolean(p.archived) === (filter.value === 'Archived') && asciiLower(p.name).includes(asciiLower(appliedProjectQuery))).map(project => {
+    list.replaceChildren(...projects.filter(p => Boolean(p.archived) === (filter.value === 'Archived') && searchNormalize(p.name).includes(searchNormalize(appliedProjectQuery))).map(project => {
       const row = element('div', undefined, 'project-row'); row.dataset.testid = 'project-row';
       row.append(element('span', project.name, 'project-name'));
       const summary = element('span', `${project.completedCount}/${project.totalCount} completed`); summary.dataset.testid = 'project-summary'; row.append(summary);
@@ -177,6 +177,7 @@ async function render() {
   await refresh();
 }
 function asciiLower(value) { return value.replace(/[A-Z]/g, character => String.fromCharCode(character.charCodeAt(0) + 32)); }
+function searchNormalize(value) { return asciiLower(value.replace(/[ \t]+/g, ' ')); }
 function validDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return false;
