@@ -34,6 +34,9 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 if (!taskColumns.some((column) => column.name === 'sort_order')) {
   database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET sort_order = id');
@@ -129,7 +132,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
+      const tasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (request.method === 'POST') {
@@ -210,6 +213,11 @@ const server = createServer(async (request, response) => {
       const result = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate, taskId, projectId);
       if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, { id: taskId, due_date: dueDate });
+    }
+    if (typeof body?.notes === 'string') {
+      const result = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(body.notes, taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, notes: body.notes });
     }
     return sendJson(response, 400, { error: 'Task update is required' });
   }
