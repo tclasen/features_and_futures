@@ -296,9 +296,45 @@ function taskDueDateForm(task, path, archived, onDueDateChange) {
   return form;
 }
 
+function taskMoveForm(task, path, archived, destinations, onMove) {
+  const form = element('form', '', { class: 'task-move' });
+  const inputId = `destination-project-${task.id}`;
+  const select = element('select', '', { id: inputId });
+  for (const project of destinations) {
+    select.append(element('option', project.name, { value: String(project.id) }));
+  }
+  const move = element('button', 'Move task', { type: 'submit' });
+  const disabled = archived || destinations.length === 0;
+  select.disabled = disabled;
+  move.disabled = disabled;
+  form.append(element('label', 'Destination project', { for: inputId }), select, move);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (move.disabled) return;
+    select.disabled = true;
+    move.disabled = true;
+    try {
+      await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destinationProjectId: Number(select.value) }),
+      });
+      app.querySelector('[role="alert"]')?.remove();
+      onMove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      select.disabled = disabled;
+      move.disabled = disabled;
+    }
+  });
+  return form;
+}
+
 async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
+  let destinations = [];
   const form = element('form');
   const input = element('input', '', { id: 'task-title', name: 'title', type: 'text' });
   const create = element('button', 'Create task', { type: 'submit' });
@@ -367,7 +403,11 @@ async function showTasks(projectId, archived) {
       });
       const details = element('div', '', { class: 'task-details' });
       details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
-        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived, renderTasks));
+        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived, renderTasks),
+        taskMoveForm(task, path, archived, destinations, () => {
+          tasks = tasks.filter((remaining) => remaining.id !== task.id);
+          renderTasks();
+        }));
       row.append(checkbox, details);
       return row;
     }));
@@ -398,7 +438,9 @@ async function showTasks(projectId, archived) {
       create.disabled = archived;
     }
   });
-  tasks = await request(path);
+  const [savedTasks, projects] = await Promise.all([request(path), request('/api/projects')]);
+  tasks = savedTasks;
+  destinations = projects.filter((project) => !project.archived && project.id !== Number(projectId));
   renderTasks();
   create.disabled = archived;
 }

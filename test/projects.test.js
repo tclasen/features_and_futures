@@ -644,3 +644,87 @@ test('due dates persist independently through edits, restart, archive, and resto
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('task moves append after migration, preserve data and summaries, and survive restart and repeated moves', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-move-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0, default_priority TEXT NOT NULL DEFAULT 'Normal'
+    );
+    CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+      priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO projects (name, default_priority) VALUES ('Source', 'High'), ('Destination', 'Low'), ('Archived', 'Normal');
+    UPDATE projects SET archived = 1 WHERE id = 3;
+    INSERT INTO tasks (project_id, title, completed, priority, due_date) VALUES
+      (1, 'Oldest', 1, 'High', '0001-01-01'), (2, 'Destination first', 0, 'Normal', ''),
+      (1, 'Undated', 0, 'Low', ''), (2, 'Destination second', 1, 'High', '9999-12-31');
+  `);
+  legacy.close();
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const tasks = async (id) => (await api(`/api/projects/${id}/tasks`)).body;
+    const move = (source, task, destinationProjectId) =>
+      api(`/api/projects/${source}/tasks/${task}`, 'PATCH', { destinationProjectId });
+    const originalSource = await tasks(1);
+    const originalDestination = await tasks(2);
+    assert.deepEqual(originalSource.map((task) => task.id), [1, 3]);
+    assert.deepEqual(originalDestination.map((task) => task.id), [2, 4]);
+    for (const destination of [1, 0, -1, 1.5, null, '2']) {
+      assert.equal((await move(1, 1, destination)).status, 400);
+    }
+    assert.equal((await move(1, 1, 9999)).status, 404);
+    assert.equal((await move(1, 1, 3)).status, 409);
+    assert.equal((await move(2, 1, 1)).status, 404);
+    assert.equal((await api('/api/projects/1/tasks/1', 'PATCH', { destinationProjectId: 2, priority: 'Low' })).status, 400);
+    await api('/api/projects/1', 'PATCH', { archived: true });
+    assert.equal((await move(1, 1, 2)).status, 409);
+    assert.deepEqual(await tasks(1), originalSource);
+    await api('/api/projects/1', 'PATCH', { archived: false });
+    assert.deepEqual(await move(1, 1, 2), { status: 200, body: originalSource[0] });
+    assert.deepEqual(await tasks(1), [originalSource[1]]);
+    assert.deepEqual(await tasks(2), [...originalDestination, originalSource[0]]);
+    assert.equal((await move(1, 1, 2)).status, 404);
+    const checkCounts = async (sourceCompleted, sourceTotal, destCompleted, destTotal) => {
+      const projects = (await api('/api/projects')).body;
+      assert.deepEqual(projects.map((project) => [project.completedCount, project.totalCount]),
+        [[sourceCompleted, sourceTotal], [destCompleted, destTotal], [0, 0]]);
+      assert.deepEqual(projects.map((project) => project.defaultPriority), ['High', 'Low', 'Normal']);
+    };
+    await checkCounts(0, 1, 2, 3);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await tasks(2), [...originalDestination, originalSource[0]]);
+    await checkCounts(0, 1, 2, 3);
+    const created = (await api('/api/projects/2/tasks', 'POST', { title: 'Created after move' })).body;
+    assert.equal(created.priority, 'Low');
+    assert.deepEqual(await tasks(2), [...originalDestination, originalSource[0], created]);
+    assert.deepEqual(await move(1, 3, 2), { status: 200, body: originalSource[1] });
+    assert.deepEqual(await tasks(2), [...originalDestination, originalSource[0], created, originalSource[1]]);
+    assert.deepEqual(await move(2, 1, 1), { status: 200, body: originalSource[0] });
+    assert.deepEqual(await move(2, 3, 1), { status: 200, body: originalSource[1] });
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await tasks(1), originalSource);
+    assert.deepEqual(await tasks(2), [...originalDestination, created]);
+    await checkCounts(1, 2, 1, 3);
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

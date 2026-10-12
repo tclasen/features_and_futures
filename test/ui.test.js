@@ -122,7 +122,7 @@ test('due ranges intersect both filters, retain applied bounds, and reject inval
     assert.deepEqual(ui.rows('task').map(taskTitle), titles);
     assert.equal(ui.app.querySelector('[role="alert"]'), null);
   }
-  assert.equal(ui.calls.length, 2);
+  assert.equal(ui.calls.length, 3);
   const reopened = await page('/projects/1', respond);
   assert.equal(reopened.byId('due-from').value, '');
   assert.equal(reopened.byId('due-through').value, '');
@@ -227,7 +227,7 @@ test('archived project ranges remain usable while all task editing controls rema
   for (const control of find(ui.rows('task')[0], (node) => ['input', 'button', 'select'].includes(node.tag))) {
     assert.equal(control.disabled, true);
   }
-  assert.equal(ui.calls.length, 2);
+  assert.equal(ui.calls.length, 3);
   project.archived = false;
   const restored = await page('/projects/1', respond);
   assert.equal(restored.byId('task-due-date-2').value, '2024-02-29');
@@ -263,7 +263,7 @@ test('task rename validates, trims, updates accessible names, and preserves orde
   await form.fire('submit');
   assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Task title is required');
   assert.equal(taskTitle(ui.rows('task')[0]), 'Original');
-  assert.equal(ui.calls.length, 2);
+  assert.equal(ui.calls.length, 3);
   input.value = '  <b>New title</b> \n';
   await form.fire('submit');
   assert.equal(ui.app.querySelector('[role="alert"]'), null);
@@ -282,14 +282,15 @@ test('task rename validates, trims, updates accessible names, and preserves orde
   assert.equal(ui.window.location.href, '/projects/1');
 });
 
-async function page(pathname, respond) {
+async function page(pathname, respond, destinations = [{ id: 999, name: 'Other', archived: false }]) {
   const app = new Element('main');
   const window = { location: { pathname, href: pathname } };
   const document = { createElement: (tag) => new Element(tag), querySelector: () => app };
   const calls = [];
   const fetch = async (path, options) => {
     calls.push({ path, options });
-    const body = await respond(path, options);
+    const body = path === '/api/projects' && pathname.startsWith('/projects/') && !options
+      ? destinations : await respond(path, options);
     return { ok: true, json: async () => body };
   };
   await runInNewContext(`(async () => {\n${source}\n})()`, { document, window, fetch, normalizeDueRange, matchesDueRange });
@@ -379,7 +380,7 @@ test('archived project UI shows saved tasks and keeps controls disabled through 
   }
   ui.byId('task-title').value = 'Cannot create';
   await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'task-title'))[0].fire('submit');
-  assert.equal(ui.calls.length, 2);
+  assert.equal(ui.calls.length, 3);
   await ui.button('Projects').fire('click');
   assert.equal(ui.window.location.href, '/');
 });
@@ -403,7 +404,7 @@ test('active project UI validates and trims renames without changing its URL or 
   await form.fire('submit');
   assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Project name is required');
   assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, 'Original');
-  assert.equal(ui.calls.length, 2);
+  assert.equal(ui.calls.length, 3);
   input.value = '  New name \n';
   await form.fire('submit');
   assert.equal(find(ui.app, (node) => node.tag === 'h1')[0].textContent, 'New name');
@@ -524,7 +525,7 @@ test('completion and priority filters combine in creation order without writes, 
         }
       }
     }
-    assert.equal(ui.calls.length, 2);
+    assert.equal(ui.calls.length, 3);
     assert.deepEqual(tasks, original);
   }
 });
@@ -668,7 +669,7 @@ test('default priority saves without changing filters or existing rows and new t
     if (archived) {
       defaultSelect.value = 'High';
       await defaultSelect.fire('change');
-      assert.equal(reloaded.calls.length, 2);
+      assert.equal(reloaded.calls.length, 3);
       assert.equal(savedProject.defaultPriority, 'Low');
     }
   }
@@ -751,7 +752,75 @@ test('due date controls save and clear without changing filters, membership, or 
     if (archived) {
       reloaded.byId('task-due-date-1').value = '2024-02-29';
       await find(reloaded.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0].fire('submit');
-      assert.equal(reloaded.calls.length, 2);
+      assert.equal(reloaded.calls.length, 3);
     }
+  }
+});
+
+test('move destinations use active project names in order and moving retains source filters and applied range', async () => {
+  const project = { id: 1, name: 'Source', archived: false, defaultPriority: 'Normal' };
+  const tasks = [
+    { id: 1, title: 'Move me', completed: true, priority: 'High', dueDate: '2024-02-29' },
+    { id: 2, title: 'Stay here', completed: true, priority: 'High', dueDate: '2024-03-01' },
+    { id: 3, title: 'Hidden', completed: false, priority: 'Low', dueDate: '' },
+  ];
+  const projects = [project, { id: 2, name: 'Renamed destination', archived: false },
+    { id: 3, name: 'Archived destination', archived: true }, { id: 4, name: 'Last destination', archived: false }];
+  const ui = await page('/projects/1', (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    assert.equal(path, '/api/projects/1/tasks/1');
+    assert.equal(options.method, 'PATCH');
+    assert.deepEqual(JSON.parse(options.body), { destinationProjectId: 4 });
+    return { ...tasks[0] };
+  }, projects);
+  const destination = ui.byId('destination-project-1');
+  assert.equal(find(ui.rows('task')[0], (node) => node.attributes.for === destination.attributes.id)[0].textContent, 'Destination project');
+  assert.deepEqual(destination.children.map((option) => [option.textContent, option.value]),
+    [['Renamed destination', '2'], ['Last destination', '4']]);
+  assert.equal(destination.disabled, false);
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, '2024-02-29', '2024-03-01');
+  // Draft boundary edits must not replace the saved range during a move.
+  ui.byId('due-through').value = 'invalid draft';
+  ui.byId('destination-project-1').value = '4';
+  await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-move')[0].fire('submit');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Stay here']);
+  assert.equal(ui.byId('task-filter').value, 'Completed');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  assert.equal(ui.byId('due-from').value, '2024-02-29');
+  assert.equal(ui.byId('due-through').value, 'invalid draft');
+  assert.equal(ui.window.location.href, '/projects/1');
+  assert.equal(ui.calls.length, 4);
+  ui.byId('task-filter').value = 'All';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(ui.rows('task').map(taskTitle), ['Stay here']);
+});
+
+test('move controls disable without destinations or in archived projects and failed moves preserve rows', async () => {
+  const task = { id: 1, title: 'Task', completed: false, priority: 'Normal', dueDate: '' };
+  for (const [archived, projects, disabled] of [
+    [false, [{ id: 1, name: 'Source', archived: false }, { id: 2, name: 'Archived', archived: true }], true],
+    [true, [{ id: 2, name: 'Active', archived: false }], true],
+    [false, [{ id: 2, name: 'Active', archived: false }], false],
+  ]) {
+    const project = { id: 1, name: 'Source', archived, defaultPriority: 'Normal' };
+    const ui = await page('/projects/1', (path, options) => {
+      if (!options) return path.endsWith('/tasks') ? [task] : project;
+      throw new Error('Archived project cannot receive tasks');
+    }, projects);
+    assert.equal(ui.byId('destination-project-1').disabled, disabled);
+    assert.equal(ui.button('Move task').disabled, disabled);
+    if (projects.every((project) => project.id === 1 || project.archived)) {
+      assert.equal(ui.byId('destination-project-1').children.length, 0);
+    }
+    await find(ui.rows('task')[0], (node) => node.attributes.class === 'task-move')[0].fire('submit');
+    assert.deepEqual(ui.rows('task').map(taskTitle), ['Task']);
+    assert.equal(ui.byId('destination-project-1').disabled, disabled);
+    assert.equal(ui.button('Move task').disabled, disabled);
+    assert.equal(ui.calls.length, disabled ? 3 : 4);
+    if (!disabled) assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Archived project cannot receive tasks');
   }
 });

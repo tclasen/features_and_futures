@@ -21,7 +21,8 @@ database.exec(`
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-    due_date TEXT NOT NULL DEFAULT ''
+    due_date TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id);
 `);
@@ -41,6 +42,14 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
 }
+// Preserve legacy creation order while allowing moved tasks to append independently of IDs.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
+  database.exec(`BEGIN;
+    ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+    UPDATE tasks SET position = id;
+    COMMIT;`);
+}
+database.exec('CREATE INDEX IF NOT EXISTS tasks_by_project_position ON tasks(project_id, position, id)');
 const projectSelection = `
   SELECT projects.id, projects.name, projects.archived, projects.default_priority AS defaultPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
@@ -52,16 +61,23 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
-  INSERT INTO tasks (project_id, title, priority)
-  SELECT id, ?, default_priority FROM projects WHERE id = ?
+  INSERT INTO tasks (project_id, title, priority, position)
+  SELECT id, ?, default_priority,
+    (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = projects.id)
+  FROM projects WHERE id = ?
 `);
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
+const moveTask = database.prepare(`
+  UPDATE tasks SET project_id = ?,
+    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+  WHERE project_id = ? AND id = ?
+`);
 
 function projectData(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -185,11 +201,29 @@ const server = createServer(async (request, response) => {
         if (findProject.get(projectId).archived) {
           return json(response, 409, { error: 'Archived project cannot be changed' });
         }
+        if (taskId && !findTask.get(projectId, taskId)) {
+          return json(response, 404, { error: 'Task not found' });
+        }
         if (!taskId) {
           const title = typeof body?.title === 'string' ? body.title.trim() : '';
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const result = insertTask.run(title, projectId);
           return json(response, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
+        }
+        if (body && Object.hasOwn(body, 'destinationProjectId')) {
+          if (['dueDate', 'priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {
+            return json(response, 400, { error: 'Move and other task edits must be separate requests' });
+          }
+          const destinationId = body.destinationProjectId;
+          if (!Number.isSafeInteger(destinationId) || destinationId <= 0 || destinationId === Number(projectId)) {
+            return json(response, 400, { error: 'Choose another active destination project' });
+          }
+          const destination = findProject.get(destinationId);
+          if (!destination) return json(response, 404, { error: 'Destination project not found' });
+          if (destination.archived) return json(response, 409, { error: 'Archived project cannot receive tasks' });
+          // One SQLite statement changes ownership and appends in the destination atomically.
+          moveTask.run(destinationId, destinationId, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(destinationId, taskId)));
         }
         if (body && Object.hasOwn(body, 'dueDate')) {
           if (['priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {
