@@ -12,13 +12,17 @@ database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    default_priority TEXT NOT NULL DEFAULT 'Normal'
   )
 `);
 // Upgrade databases created by earlier task checkpoints.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some(column => column.name === 'archived')) {
   database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+}
+if (!projectColumns.some(column => column.name === 'default_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 database.exec(`
   CREATE TABLE IF NOT EXISTS tasks (
@@ -34,16 +38,17 @@ if (!taskColumns.some(column => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
 
-const listProjects = database.prepare(`SELECT p.id, p.name, p.archived,
+const listProjects = database.prepare(`SELECT p.id, p.name, p.archived, p.default_priority,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completed_count,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS total_count
   FROM projects p ORDER BY p.id`);
-const getProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const getProject = database.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const setProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const getTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -124,6 +129,8 @@ function sendPage(response) {
       <select id="priority-filter">
         <option>All</option><option>Low</option><option>Normal</option><option>High</option>
       </select>
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority"><option>Low</option><option>Normal</option><option>High</option></select>
       <ul id="tasks" aria-label="Tasks"></ul>
     </section>
   </main>
@@ -192,6 +199,9 @@ function sendPage(response) {
       document.querySelector('#new-project-name').disabled = archived;
       document.querySelector('#rename-form button').disabled = archived;
       document.querySelector('#task-form button').disabled = archived;
+      const defaultPriority = document.querySelector('#default-task-priority');
+      defaultPriority.value = project.default_priority;
+      defaultPriority.disabled = archived;
       error.hidden = true;
       await renderTasks();
     }
@@ -309,6 +319,13 @@ function sendPage(response) {
     });
     document.querySelector('#task-filter').addEventListener('change', renderTasks);
     document.querySelector('#priority-filter').addEventListener('change', renderTasks);
+    document.querySelector('#default-task-priority').addEventListener('change', async (event) => {
+      const response = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/default-priority', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: event.target.value })
+      });
+      if (!response.ok) throw new Error('Unable to update default task priority');
+    });
     document.querySelector('#project-filter').addEventListener('change', showList);
 
     document.querySelector('#create-form').addEventListener('submit', async (event) => {
@@ -391,6 +408,20 @@ const server = createServer(async (request, response) => {
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
+  const defaultPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/default-priority$/);
+  if (defaultPriorityMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(defaultPriorityMatch[1]);
+      const project = getProject.get(projectId);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot change default task priority' }); return; }
+      const body = await readRequestBody(request);
+      if (!['Low', 'Normal', 'High'].includes(body.priority)) { sendJson(response, 400, { error: 'Invalid default task priority' }); return; }
+      setProjectDefaultPriority.run(body.priority, projectId);
+      sendJson(response, 200, { ...project, default_priority: body.priority });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
   const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/name$/);
   if (renameMatch && request.method === 'PATCH') {
     try {
@@ -422,8 +453,8 @@ const server = createServer(async (request, response) => {
       const body = await readRequestBody(request);
       const title = typeof body.title === 'string' ? body.title.trim() : '';
       if (!title) { sendJson(response, 400, { error: 'Task title is required' }); return; }
-      const result = createTask.run(projectId, title);
-      sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
+      const result = createTask.run(projectId, title, project.default_priority);
+      sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_priority });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
