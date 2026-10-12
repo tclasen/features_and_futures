@@ -20,7 +20,8 @@ class Element {
   async trigger(name) { await this.listeners[name]({ preventDefault() {} }); }
   focus() {}
   get value() {
-    return this.selectedValue ?? (this.tagName === 'select' ? this.children[0]?.textContent : '') ?? '';
+    return this.selectedValue ?? (this.tagName === 'select' ?
+      this.children[0]?.value || this.children[0]?.textContent : '') ?? '';
   }
   set value(value) { this.selectedValue = value; }
   querySelector(selector) {
@@ -52,7 +53,11 @@ class Element {
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
 const script = source.replace("import { isValidDueDate } from './dates.js';", '');
-async function projectPage(archived = false) {
+async function projectPage(archived = false, destinations = [
+  { id: 2, name: 'Second project', archived: false },
+  { id: 3, name: 'Archived destination', archived: true },
+  { id: 4, name: 'Fourth project', archived: false },
+]) {
   const app = new Element('main');
   const tasks = [];
   for (const priority of ['Low', 'Normal', 'High']) {
@@ -76,7 +81,10 @@ async function projectPage(archived = false) {
         return { ok: false, json: async () => ({ error }) };
       }
       let data;
-      if (options?.method === 'POST') {
+      if (options?.method === 'POST' && path.endsWith('/move')) {
+        const taskId = Number(path.split('/').at(-2));
+        data = tasks.splice(tasks.findIndex(task => task.id === taskId), 1)[0];
+      } else if (options?.method === 'POST') {
         data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
           completed: false, priority: project.defaultPriority, dueDate: '' };
         tasks.push(data);
@@ -84,7 +92,8 @@ async function projectPage(archived = false) {
         const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
         Object.assign(target, JSON.parse(options.body));
         data = target;
-      } else if (path.endsWith('/tasks')) data = tasks;
+      } else if (path === '/api/projects') data = [project, ...destinations];
+      else if (path.endsWith('/tasks')) data = tasks;
       else data = project;
       return { ok: true, json: async () => structuredClone(data) };
     },
@@ -354,5 +363,50 @@ test('archived projects allow date ranges while task edits stay disabled', async
   }
   await applyRange(page, '', '');
   assert.equal(page.rows().length, 7);
-  assert.equal(page.requests.length, 2);
+  assert.equal(page.requests.length, 3);
+});
+
+test('moving retains source filters and range, lists eligible destinations and removes only the moved row', async () => {
+  const page = await projectPage();
+  await saveDate(page, 5, '2024-02-29');
+  await saveDate(page, 7, '2024-02-29');
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  await applyRange(page, '2024-02-29', '2024-02-29');
+  const form = page.rows()[0].querySelectorAll('form')[2];
+  const destination = form.querySelector('select');
+  assert.equal(form.querySelector('label').textContent, 'Destination project');
+  assert.equal(form.querySelector('button').textContent, 'Move task');
+  assert.deepEqual(destination.children.map(option => [option.value, option.textContent]),
+    [['2', 'Second project'], ['4', 'Fourth project']]);
+  destination.value = '4';
+  await form.trigger('submit');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  assert.equal(page.completion.value, 'Open');
+  assert.equal(page.priority.value, 'High');
+  assert.equal(page.app.querySelector('#due-from').value, '2024-02-29');
+  assert.equal(page.app.querySelector('#due-through').value, '2024-02-29');
+  const last = page.requests.at(-1);
+  assert.equal(last.path, '/api/projects/1/tasks/5/move');
+  assert.deepEqual(JSON.parse(last.options.body), { destinationProjectId: 4 });
+  await page.select(page.priority, 'All');
+  assert.deepEqual(page.titles(), ['Second high open']);
+});
+
+test('move controls disable without eligible destinations and failures preserve source rows', async () => {
+  for (const page of [await projectPage(false, []), await projectPage(true)]) {
+    for (const row of page.rows()) {
+      const form = row.querySelectorAll('form')[2];
+      assert.equal(form.querySelector('select').disabled, true);
+      assert.equal(form.querySelector('button').disabled, true);
+    }
+  }
+  const page = await projectPage();
+  const before = page.titles();
+  const form = page.rows()[0].querySelectorAll('form')[2];
+  page.rejectNext('Archived project');
+  await form.trigger('submit');
+  assert.deepEqual(page.titles(), before);
+  assert.equal(page.app.querySelector('[role="alert"]').textContent, 'Archived project');
+  assert.equal(form.querySelector('button').disabled, false);
 });

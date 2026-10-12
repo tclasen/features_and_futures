@@ -30,6 +30,11 @@ Invalid ranges leave the previous applied range intact. Editing a task updates
 matching rows, and opening a project starts with an empty range. Archived
 projects allow all filters while keeping saved task data read-only.
 
+Move task sends a task to another active project, appending it after that
+project's existing tasks and preserving its title, completion, priority and due
+date. The source page keeps all selected filters. Archived projects cannot send
+or receive tasks; moving is disabled when no active destination is available.
+
 Run the integration checks:
 
 ```sh
