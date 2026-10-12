@@ -17,6 +17,8 @@
     button:hover { background: #194da9; }
     .project-list { display: grid; gap: 10px; margin-top: 22px; }
     .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .project-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .project-summary { color: #657083; white-space: nowrap; }
     .project-name { overflow-wrap: anywhere; }
     .alert { margin: 12px 0 0; color: #a32828; }
     .detail p { margin: 0 0 20px; }
@@ -37,11 +39,14 @@
       <button type="submit">Create project</button>
     </form>
     <p id="alert" class="alert" role="alert" hidden></p>
+    <label for="project-filter" style="margin-top: 20px">Project filter</label>
+    <select id="project-filter"><option>Active</option><option>Archived</option></select>
     <section id="project-list" class="project-list" aria-label="Projects"></section>
   </main>
   <main id="project-detail" hidden>
     <button id="back-button" type="button">Projects</button>
     <h1><!-- PROJECT_HEADING --></h1>
+    <p id="archived-notice" hidden>Archived project</p>
     <form id="task-form" class="task-controls">
       <label for="task-title-input">Task title</label>
       <input id="task-title-input" name="title" type="text" autocomplete="off">
@@ -66,6 +71,10 @@
       const alert = document.querySelector('#task-alert');
       const input = document.querySelector('#task-title-input');
       const filter = document.querySelector('#task-filter');
+      const archived = Boolean(window.initialProject.archived);
+      document.querySelector('#archived-notice').hidden = !archived;
+      document.querySelector('#task-title-input').disabled = archived;
+      document.querySelector('#task-form button').disabled = archived;
       let tasks = [];
       const escapeText = (value) => {
         const element = document.createElement('span');
@@ -78,7 +87,7 @@
           || (filter.value === 'Completed' && task.completed));
         list.innerHTML = visibleTasks.map((task) => `
           <div class="task-row${task.completed ? ' completed' : ''}" data-testid="task-row">
-            <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}"${task.completed ? ' checked' : ''}>
+            <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}"${task.completed ? ' checked' : ''}${archived ? ' disabled' : ''}>
             <span class="task-title">${escapeText(task.title)}</span>
           </div>`).join('');
       };
@@ -133,6 +142,7 @@
       const list = document.querySelector('#project-list');
       const alert = document.querySelector('#alert');
       const input = document.querySelector('#project-name');
+      const filter = document.querySelector('#project-filter');
       const escapeText = (value) => {
         const element = document.createElement('span');
         element.textContent = value;
@@ -142,10 +152,16 @@
         list.innerHTML = projects.map((project) => `
           <div class="project-row" data-testid="project-row">
             <span class="project-name">${escapeText(project.name)}</span>
-            <button type="button" data-project-id="${project.id}">Open project</button>
+            <span class="project-summary" data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
+            <span class="project-actions">
+              <button type="button" data-project-id="${project.id}" data-action="open">Open project</button>
+              <button type="button" data-project-id="${project.id}" data-action="${project.archived ? 'restore' : 'archive'}">${project.archived ? 'Restore project' : 'Archive project'}</button>
+            </span>
           </div>`).join('');
       };
-      fetch('/api/projects').then((response) => response.json()).then(render);
+      const loadProjects = () => fetch(`/api/projects?filter=${filter.value}`).then((response) => response.json()).then(render);
+      loadProjects();
+      filter.addEventListener('change', loadProjects);
       document.querySelector('#create-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = input.value.trim();
@@ -168,12 +184,18 @@
         const project = await response.json();
         input.value = '';
         alert.hidden = true;
-        const current = await fetch('/api/projects').then((result) => result.json());
-        render(current);
+        await loadProjects();
       });
-      list.addEventListener('click', (event) => {
+      list.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-project-id]');
-        if (button) window.location.href = `/projects/${button.dataset.projectId}`;
+        if (!button) return;
+        const { projectId, action } = button.dataset;
+        if (action === 'open') {
+          window.location.href = `/projects/${projectId}`;
+          return;
+        }
+        const response = await fetch(`/api/projects/${projectId}/${action}`, { method: 'POST' });
+        if (response.ok) await loadProjects();
       });
     }
     document.querySelector('#back-button').addEventListener('click', () => {

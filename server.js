@@ -9,7 +9,8 @@ const database = new DatabaseSync(process.env.DB_PATH || join(directory, 'workbo
 database.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
   )
   ;
   CREATE TABLE IF NOT EXISTS tasks (
@@ -20,9 +21,22 @@ database.exec(`
   )
 `);
 
-const listProjects = database.prepare('SELECT id, name FROM projects ORDER BY id');
-const findProject = database.prepare('SELECT id, name FROM projects WHERE id = ?');
+// Add the archive flag to databases created by earlier versions of Workboard.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+
+const listProjects = database.prepare(`
+  SELECT p.id, p.name, p.archived,
+    COUNT(t.id) AS total_count,
+    COALESCE(SUM(t.completed), 0) AS completed_count
+  FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
+`);
+const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -62,7 +76,15 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
-    return sendJson(response, 200, listProjects.all());
+    return sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  }
+  const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
+  if (request.method === 'POST' && archiveMatch) {
+    const projectId = Number(archiveMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    setProjectArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, projectId);
+    return sendJson(response, 200, findProject.get(projectId));
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     try {
@@ -82,6 +104,7 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET') return sendJson(response, 200, listTasks.all(projectId));
     if (request.method === 'POST') {
       try {
+        if (findProject.get(projectId).archived) return sendJson(response, 400, { error: 'Archived projects cannot have tasks' });
         const payload = await readJson(request);
         const title = typeof payload.title === 'string' ? payload.title.trim() : '';
         if (!title) return sendJson(response, 400, { error: 'Task title is required' });
@@ -98,6 +121,7 @@ const server = createServer(async (request, response) => {
     const taskId = Number(taskMatch[2]);
     if (!findProject.get(projectId)) return sendJson(response, 404, { error: 'Project not found' });
     try {
+      if (findProject.get(projectId).archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
       const payload = await readJson(request);
       if (typeof payload.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
       const result = updateTaskCompletion.run(payload.completed ? 1 : 0, taskId, projectId);
