@@ -8,7 +8,8 @@ npm start
 
 The server binds to `0.0.0.0`, using `PORT` (default `8080`). SQLite data is
 stored at `DB_PATH` (default `data/workboard.sqlite`). Parent directories are
-created automatically. Reuse the same database path to preserve projects.
+created automatically. Reuse the same database path to preserve projects,
+their tasks, and task completion state.
 
 ```sh
 PORT=8080 DB_PATH=/tmp/workboard.sqlite npm start
@@ -16,4 +17,8 @@ npm test
 ```
 
 `GET /health` returns `{"status":"ok"}`. The application uses server-rendered
-HTML forms; project names are trimmed on the server and escaped for display.
+HTML forms; project names and task titles are trimmed on the server and escaped
+for display. Each project has its own tasks, with All, Open, and Completed
+filters. Changing a checkbox saves its completion state immediately; changing
+the filter reloads the matching tasks in creation order. Browser JavaScript
+submits these controls, with explicit submit buttons available without JavaScript.

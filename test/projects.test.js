@@ -55,6 +55,87 @@ function rows(html) {
   return [...html.matchAll(/<li data-testid="project-row">(.*?)<\/li>/gs)].map((match) => match[1]);
 }
 
+function taskRows(html) {
+  return [...html.matchAll(/<li data-testid="task-row">(.*?)<\/li>/gs)].map((match) => match[1]);
+}
+
+async function postForm(baseUrl, path, values) {
+  return fetch(baseUrl + path, {
+    method: 'POST',
+    body: new URLSearchParams(values),
+    redirect: 'manual',
+  });
+}
+
+test('tasks validate, filter, remain project-owned, and persist completion across restarts', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-tasks-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await startServer(databasePath);
+    await createProject(server.baseUrl, 'First');
+    await createProject(server.baseUrl, 'Second');
+    const readProject = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    const initial = await readProject();
+    assert.match(initial, /<label for="task-title">Task title<\/label>/);
+    assert.match(initial, />Create task<\/button>/);
+    assert.match(initial, /<label for="task-filter">Task filter<\/label>/);
+    assert.match(initial, /<option selected>All<\/option><option>Open<\/option><option>Completed<\/option>/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await postForm(server.baseUrl, '/projects/1/tasks', { title });
+      assert.equal(invalid.status, 422);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(taskRows(html).length, 0);
+    }
+    for (const title of ['  First task  ', '<b>Second</b> & "task"']) {
+      assert.equal((await postForm(server.baseUrl, '/projects/1/tasks', { title })).status, 303);
+    }
+    const originalRows = taskRows(await readProject());
+    assert.equal(originalRows.length, 2);
+    assert.match(originalRows[0], /<span class="name">First task<\/span>/);
+    assert.match(originalRows[0], /type="checkbox".*aria-label="Complete First task"/);
+    assert.match(originalRows[1], /aria-label="Complete &lt;b&gt;Second&lt;\/b&gt; &amp; &quot;task&quot;"/);
+    assert.ok(originalRows.every((row) => !row.includes(' checked')));
+    assert.deepEqual(taskRows(await readProject('/projects/1?filter=Open')), originalRows.map((row) => row.replace('value="All"', 'value="Open"')));
+    assert.equal(taskRows(await readProject('/projects/1?filter=Completed')).length, 0);
+    assert.equal(taskRows(await readProject('/projects/2')).length, 0);
+
+    const completionPath = originalRows[0].match(/action="([^"]+\/completion)"/)[1];
+    const checked = await postForm(server.baseUrl, completionPath, { completed: '1', filter: 'Open' });
+    assert.equal(checked.status, 303);
+    assert.equal(checked.headers.get('location'), '/projects/1?filter=Open');
+    assert.equal(taskRows(await readProject('/projects/1?filter=Open')).length, 1);
+    const completedRows = taskRows(await readProject('/projects/1?filter=Completed'));
+    assert.equal(completedRows.length, 1);
+    assert.match(completedRows[0], /aria-label="Complete First task" checked/);
+    assert.equal((await postForm(server.baseUrl, completionPath.replace('/projects/1/', '/projects/2/'), { completed: '0' })).status, 404);
+    assert.equal((await postForm(server.baseUrl, '/projects/999/tasks', { title: 'Missing' })).status, 404);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/999/completion', { completed: '1' })).status, 404);
+    assert.deepEqual(taskRows(await readProject('/projects/1?filter=Completed')), completedRows);
+    const invalid = await postForm(server.baseUrl, '/projects/1/tasks', { title: ' ' });
+    assert.equal(taskRows(await invalid.text()).length, 2);
+
+    const persistedRows = taskRows(await readProject());
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await readProject()), persistedRows);
+    assert.equal(taskRows(await readProject('/projects/2')).length, 0);
+    assert.equal((await postForm(server.baseUrl, completionPath, {})).status, 303);
+    assert.deepEqual(taskRows(await readProject()), originalRows);
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Other project task' });
+    assert.equal(taskRows(await readProject('/projects/2')).length, 1);
+    assert.deepEqual(taskRows(await readProject()), originalRows);
+    assert.equal(taskRows(await readProject('/projects/1?filter=unknown')).length, 2);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await readProject()), originalRows);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, navigate, and persist through a server process restart', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');
