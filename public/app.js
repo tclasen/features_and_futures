@@ -153,6 +153,14 @@ async function renderProject(id) {
     if (!response.ok) showError('Could not update default task priority');
     else app.querySelector('[role="alert"]')?.remove();
   });
+  const dueRangeForm = element('form');
+  const dueFrom = element('input', undefined, { type: 'text', 'aria-label': 'Due from' });
+  const dueThrough = element('input', undefined, { type: 'text', 'aria-label': 'Due through' });
+  const applyDueRange = element('button', 'Apply due range', { type: 'submit' });
+  dueRangeForm.append(dueFrom, dueThrough, applyDueRange);
+  app.append(dueRangeForm);
+  let appliedDueFrom = '';
+  let appliedDueThrough = '';
   const list = element('section', undefined, { 'aria-label': 'Tasks' });
   app.append(list);
 
@@ -164,6 +172,9 @@ async function renderProject(id) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if ((appliedDueFrom || appliedDueThrough) && (!task.dueDate ||
+          (appliedDueFrom && task.dueDate < appliedDueFrom) ||
+          (appliedDueThrough && task.dueDate > appliedDueThrough))) continue;
       const row = element('div', undefined, { 'data-testid': 'task-row', class: 'project-row' });
       row.append(element('span', task.title));
       const checkbox = element('input', undefined, { type: 'checkbox', 'aria-label': `Complete ${task.title}` });
@@ -229,6 +240,23 @@ async function renderProject(id) {
   };
   filter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
   priorityFilter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
+  dueRangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if ((from && !isValidDate(from)) || (through && !isValidDate(through))) {
+      showError('Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showError('Due from must not be after Due through');
+      return;
+    }
+    appliedDueFrom = from;
+    appliedDueThrough = through;
+    app.querySelector('[role="alert"]')?.remove();
+    renderTasks().catch(() => showError('Could not load tasks'));
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const title = input.value.trim();
@@ -242,6 +270,16 @@ async function renderProject(id) {
     await renderTasks();
   });
   await renderTasks();
+}
+
+function isValidDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
 }
 
 const match = window.location.pathname.match(/^\/projects\/([^/]+)\/?$/);
