@@ -242,6 +242,12 @@ const server = http.createServer(async (req, res) => {
         // separately so saving the already-current date remains a successful edit.
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
         updateDueDate.run(canonical, taskId, projectId);
+        // Verify and return the persisted value rather than relying on the
+        // request payload; this also makes no-op updates safe across SQLite.
+        const savedTask = getTask.get(taskId);
+        if (!savedTask || savedTask.projectId !== projectId || (savedTask.dueDate || null) !== canonical) {
+          return json(res, 500, { error: 'Could not save due date' });
+        }
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
