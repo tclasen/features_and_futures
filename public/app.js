@@ -136,6 +136,23 @@ async function renderProject(id) {
   for (const value of ['All', 'Low', 'Normal', 'High']) priorityFilter.append(element('option', value, { value }));
   priorityFilterLabel.append(priorityFilter);
   app.append(priorityFilterLabel);
+  const defaultPriorityLabel = element('label', 'Default task priority');
+  const defaultPriority = element('select', undefined, { 'aria-label': 'Default task priority' });
+  for (const value of ['Low', 'Normal', 'High']) {
+    const option = element('option', value, { value });
+    option.selected = project.defaultPriority === value;
+    defaultPriority.append(option);
+  }
+  defaultPriority.disabled = project.archived;
+  defaultPriorityLabel.append(defaultPriority);
+  app.append(defaultPriorityLabel);
+  defaultPriority.addEventListener('change', async () => {
+    const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ defaultPriority: defaultPriority.value })
+    });
+    if (!response.ok) showError('Could not update default task priority');
+    else app.querySelector('[role="alert"]')?.remove();
+  });
   const list = element('section', undefined, { 'aria-label': 'Tasks' });
   app.append(list);
 
