@@ -29,6 +29,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 )`);
+// Remember each task's slot in every project it has visited. Seed the current
+// order once so existing tasks keep their positions when this feature is added.
+db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (task_id, project_id)
+)`);
+db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY created_at, rowid)
+  FROM tasks`);
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 }
@@ -109,7 +120,9 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(projectTasks[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId));
+      return send(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+        FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+        WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid`).all(projectId));
     }
     if (req.method === 'POST') {
       let body = '';
@@ -122,6 +135,8 @@ const server = createServer(async (req, res) => {
       const task = { id: randomUUID(), projectId, title, completed: 0, priority };
       const createdAt = Math.max(Date.now(), db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value);
       db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, createdAt, task.priority);
+      const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(projectId).value;
+      db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(task.id, projectId, nextPosition);
       return send(res, 201, task);
     }
   }
@@ -140,8 +155,14 @@ const server = createServer(async (req, res) => {
     if (!destination || destination.archived || destinationId === sourceId) return send(res, 400, { error: 'Invalid destination project' });
     const task = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, sourceId);
     if (!task) return send(res, 404, { error: 'Task not found' });
-    const nextOrder = Math.max(Date.now(), db.prepare('SELECT COALESCE(MAX(created_at), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value);
-    db.prepare('UPDATE tasks SET project_id = ?, created_at = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, sourceId);
+    const remembered = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?').get(taskId, destinationId);
+    const nextPosition = remembered?.position ?? db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS value FROM task_project_positions WHERE project_id = ?').get(destinationId).value;
+    db.exec('BEGIN');
+    try {
+      if (!remembered) db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(taskId, destinationId, nextPosition);
+      db.prepare('UPDATE tasks SET project_id = ? WHERE id = ? AND project_id = ?').run(destinationId, taskId, sourceId);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
     return send(res, 200, { id: taskId, projectId: destinationId });
   }
   if (req.method === 'PATCH' && taskCompletion) {
