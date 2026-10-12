@@ -45,11 +45,16 @@ async function render() {
       const alert = element('p', ''); alert.setAttribute('role', 'alert');
       const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Task filter');
       for (const value of ['All', 'Open', 'Completed']) { const option = element('option', value); option.value = value; filter.append(option); }
+      const priorityFilter = document.createElement('select'); priorityFilter.setAttribute('aria-label', 'Priority filter');
+      for (const value of ['All', 'Low', 'Normal', 'High']) { const option = element('option', value); option.value = value; priorityFilter.append(option); }
       const list = element('section'); list.setAttribute('aria-label', 'Tasks');
-      app.append(form, alert, filter, list);
+      app.append(form, alert, filter, priorityFilter, list);
       async function refreshTasks() {
         const tasks = await request(`/api/projects/${project.id}/tasks`);
-        list.replaceChildren(...tasks.filter(task => filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)).map(task => {
+        list.replaceChildren(...tasks.filter(task =>
+          (filter.value === 'All' || (filter.value === 'Completed') === Boolean(task.completed)) &&
+          (priorityFilter.value === 'All' || priorityFilter.value === (task.priority || 'Normal'))
+        ).map(task => {
           const row = element('div'); row.dataset.testid = 'task-row';
           const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = Boolean(task.completed); checkbox.disabled = Boolean(project.archived);
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
@@ -70,13 +75,14 @@ async function render() {
           for (const value of ['Low', 'Normal', 'High']) { const option = element('option', value); option.value = value; priority.append(option); }
           priority.value = task.priority || 'Normal';
           priority.addEventListener('change', async () => {
-            try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ priority: priority.value })); }
+            try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ priority: priority.value })); await refreshTasks(); }
             catch (error) { alert.textContent = error.message; await refreshTasks(); }
           });
           row.append(renameInput, renameButton, priority); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);
+      priorityFilter.addEventListener('change', refreshTasks);
       form.addEventListener('submit', async event => {
         event.preventDefault(); const title = input.value.trim();
         if (!title) { alert.textContent = 'Task title is required'; input.focus(); return; }
