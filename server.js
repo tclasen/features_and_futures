@@ -25,6 +25,9 @@ if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.nam
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_priority')) {
+  db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))");
+}
 const priorities = ['Low', 'Normal', 'High'];
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
@@ -32,12 +35,13 @@ const listProjects = db.prepare(`
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
 `);
-const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+const findProject = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
+const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
@@ -148,6 +152,13 @@ function projectPage(project, filter = 'All', error = '', priority = 'All') {
       <input id="new-project-name" name="name" type="text"${project.archived ? ' disabled' : ''}>
       <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
     </form>
+    <form class="filter" method="post" action="/projects/${project.id}/default-priority">
+      ${filterFields}
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+        ${priorities.map((value) => `<option${value === project.default_priority ? ' selected' : ''}>${value}</option>`).join('')}
+      </select>
+    </form>
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       ${filterFields}
       <label for="task-title">Task title</label>
@@ -228,6 +239,28 @@ const server = http.createServer(async (request, response) => {
       }
       createProject.run(name);
       response.writeHead(303, { Location: '/' });
+      response.end();
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/default-priority$/.test(url.pathname)) {
+      const id = Number(url.pathname.split('/')[2]);
+      const project = Number.isSafeInteger(id) ? findProject.get(id) : null;
+      if (!project) {
+        html(response, 404, page('Not found', '<h1>Project not found</h1>'));
+        return;
+      }
+      const form = await readForm(request);
+      const filter = taskFilter(form.get('filter'));
+      const selectedPriority = priorityFilter(form.get('priorityFilter'));
+      if (project.archived) {
+        html(response, 403, projectPage(project, filter, 'Archived project is read-only', selectedPriority));
+        return;
+      }
+      const priority = form.get('priority');
+      if (!priorities.includes(priority)) {
+        html(response, 400, projectPage(project, filter, 'Invalid task priority', selectedPriority));
+        return;
+      }
+      setDefaultPriority.run(priority, id);
+      response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority) });
       response.end();
     } else if (request.method === 'POST' && /^\/projects\/\d+\/rename$/.test(url.pathname)) {
       const id = Number(url.pathname.split('/')[2]);
@@ -319,7 +352,7 @@ const server = http.createServer(async (request, response) => {
           html(response, 400, projectPage(project, filter, 'Task title is required', selectedPriority));
           return;
         }
-        createTask.run(id, title);
+        createTask.run(id, title, project.default_priority);
       }
       response.writeHead(303, { Location: projectLocation(id, filter, selectedPriority) });
       response.end();
