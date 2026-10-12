@@ -32,7 +32,7 @@ function page(title, content) {
     .project { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-top: 1px solid #dee4ee; }
     .project span { overflow-wrap: anywhere; min-width: 0; }
     .project form { flex-shrink: 0; }
-    .task { display: flex; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid #dee4ee; overflow-wrap: anywhere; }
+    .task { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid #dee4ee; overflow-wrap: anywhere; }
     .task label { margin: 0; font-weight: 400; }
     .filter { margin-top: 24px; }
     [role="alert"] { color: #a51c25; }
@@ -71,6 +71,7 @@ export function createApplication(dbPath) {
   const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
   const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+  const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
     COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
@@ -137,6 +138,12 @@ export function createApplication(dbPath) {
           <input type="checkbox" name="completed" value="1" id="task-${task.id}" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${project.archived ? ' disabled' : ''} data-auto-submit>
         </form>
         <label for="task-${task.id}">${escapeHtml(task.title)}</label>
+        <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
+          <input type="hidden" name="filter" value="${filter}">
+          <label for="new-task-title-${task.id}">New task title</label>
+          <input id="new-task-title-${task.id}" name="title" value="${escapeHtml(task.title)}"${project.archived ? ' disabled' : ''}>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Rename task</button>
+        </form>
       </li>`).join('')}</ul>`);
   }
 
@@ -220,7 +227,7 @@ export function createApplication(dbPath) {
         renameProject.run(name, id);
         response.writeHead(303, { Location: `/projects/${id}?filter=${filter}` });
         response.end();
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/completion)?$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename))?$/.test(pathname)) {
         const parts = pathname.split('/');
         const projectId = Number(parts[2]);
         const project = Number.isSafeInteger(projectId) ? findProject.get(projectId) : undefined;
@@ -241,6 +248,17 @@ export function createApplication(dbPath) {
             return;
           }
           insertTask.run(projectId, title);
+        } else if (parts[5] === 'rename') {
+          const taskId = Number(parts[4]);
+          const title = (body.get('title') ?? '').trim();
+          if (!title) {
+            sendHtml(400, projectPage(project, filter, 'Task title is required'));
+            return;
+          }
+          if (!Number.isSafeInteger(taskId) || !renameTask.run(title, taskId, projectId).changes) {
+            sendHtml(404, page('Not found', '<h1>Task not found</h1>'));
+            return;
+          }
         } else {
           const taskId = Number(parts[4]);
           const completed = body.getAll('completed').at(-1);

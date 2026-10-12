@@ -27,6 +27,11 @@ tasks; archived pages allow filtering but reject task changes and renaming. Each
 project row shows completed/total counts across all its tasks. Active project pages
 allow renaming with a trimmed, nonblank name. Renaming preserves the project URL,
 creation order, tasks, and completion states; names persist across restarts.
+Each task row also supports renaming to a trimmed, nonblank title. Task renaming
+preserves ownership, creation order, completion state, filter membership, and
+project summaries. The completion checkbox label follows the saved title.
+Archived projects disable task rename controls and reject rename requests;
+restoration enables them again.
 
 Run automated HTTP and persistence tests:
 
