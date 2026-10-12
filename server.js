@@ -130,12 +130,13 @@ const page = `<!doctype html>
   <script>
     const app = document.querySelector('#app');
     const escId = (value) => encodeURIComponent(value);
+    const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
     async function getProjects(archived = false) {
       const response = await fetch('/api/projects?archived=' + (archived ? '1' : '0'));
       if (!response.ok) throw new Error('Could not load projects');
       return response.json();
     }
-    async function showList(selectedFilter = 'Active') {
+    async function showList(selectedFilter = 'Active', appliedQuery = '') {
       const archived = selectedFilter === 'Archived';
       const projects = await getProjects(archived);
       app.replaceChildren();
@@ -172,6 +173,25 @@ const page = `<!doctype html>
         await showList();
       });
       app.append(form, alert);
+      const searchForm = document.createElement('form');
+      const searchLabel = document.createElement('label');
+      searchLabel.textContent = 'Project search';
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.setAttribute('aria-label', 'Project search');
+      searchInput.value = appliedQuery;
+      searchLabel.append(searchInput);
+      const searchButton = document.createElement('button');
+      searchButton.type = 'submit';
+      searchButton.textContent = 'Search projects';
+      searchForm.append(searchLabel, searchButton);
+      searchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        showList(selectedFilter, searchInput.value.trim());
+      });
+      app.append(searchForm);
+      const searchNeedle = asciiLower(appliedQuery.trim());
+      const matchingProjects = projects.filter((project) => asciiLower(project.name).includes(searchNeedle));
       const filterLabel = document.createElement('label');
       filterLabel.textContent = 'Project filter';
       const filter = document.createElement('select');
@@ -183,11 +203,11 @@ const page = `<!doctype html>
         filter.append(option);
       }
       filter.value = selectedFilter;
-      filter.addEventListener('change', () => showList(filter.value));
+      filter.addEventListener('change', () => showList(filter.value, appliedQuery));
       filterLabel.append(filter);
       app.append(filterLabel);
       const list = document.createElement('ul');
-      for (const project of projects) {
+      for (const project of matchingProjects) {
         const row = document.createElement('li');
         row.dataset.testid = 'project-row';
         const name = document.createElement('span');
@@ -208,7 +228,7 @@ const page = `<!doctype html>
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ archived: !archived })
           });
-          if (changed.ok) await showList(selectedFilter);
+          if (changed.ok) await showList(selectedFilter, appliedQuery);
         });
         row.append(name, summary, open, archive);
         list.append(row);
@@ -366,6 +386,26 @@ const page = `<!doctype html>
         rangeAlert.setAttribute('role', 'alert');
         rangeAlert.hidden = true;
         app.append(dueRangeForm, rangeAlert);
+        const taskSearchForm = document.createElement('form');
+        const taskSearchLabel = document.createElement('label');
+        taskSearchLabel.textContent = 'Task search';
+        const taskSearchInput = document.createElement('input');
+        taskSearchInput.type = 'text';
+        taskSearchInput.setAttribute('aria-label', 'Task search');
+        taskSearchInput.value = savedView?.taskSearchInput || '';
+        taskSearchLabel.append(taskSearchInput);
+        const taskSearchButton = document.createElement('button');
+        taskSearchButton.type = 'submit';
+        taskSearchButton.textContent = 'Search tasks';
+        taskSearchForm.append(taskSearchLabel, taskSearchButton);
+        app.append(taskSearchForm);
+        let appliedTaskQuery = savedView?.appliedTaskQuery || '';
+        taskSearchForm.addEventListener('submit', (event) => {
+          event.preventDefault();
+          appliedTaskQuery = taskSearchInput.value.trim();
+          if (savedView) Object.assign(savedView, currentView());
+          renderTasks();
+        });
         let appliedFrom = savedView?.appliedFrom || '';
         let appliedThrough = savedView?.appliedThrough || '';
         dueFrom.value = savedView?.dueFrom || '';
@@ -374,7 +414,8 @@ const page = `<!doctype html>
         priorityFilter.value = savedView?.priorityFilter || 'All';
         function currentView() {
           return { taskFilter: filter.value, priorityFilter: priorityFilter.value,
-            dueFrom: dueFrom.value, dueThrough: dueThrough.value, appliedFrom, appliedThrough };
+            dueFrom: dueFrom.value, dueThrough: dueThrough.value, appliedFrom, appliedThrough,
+            taskSearchInput: taskSearchInput.value, appliedTaskQuery };
         }
         dueRangeForm.addEventListener('submit', (event) => {
           event.preventDefault();
@@ -412,6 +453,7 @@ const page = `<!doctype html>
             if (filter.value === 'Open' && task.completed) continue;
             if (filter.value === 'Completed' && !task.completed) continue;
             if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+            if (!asciiLower(task.title).includes(asciiLower(appliedTaskQuery))) continue;
             if ((appliedFrom || appliedThrough) && !task.dueDate) continue;
             if (appliedFrom && task.dueDate < appliedFrom) continue;
             if (appliedThrough && task.dueDate > appliedThrough) continue;
