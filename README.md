@@ -19,7 +19,7 @@ npm test
 
 `GET /health` returns `{"status":"ok"}`. The application uses server-rendered
 HTML forms; project names and task titles are trimmed on the server and escaped
-for display. Each project has its own tasks, with All, Open, and Completed
+for display. Each project has its own tasks, with All, Open, Completed, and Deleted
 filters, combined with a Priority filter offering All, Low, Normal, and High.
 Only tasks matching all applied filters appear, in creation order. Both comboboxes default
 to All when opening a project from the list. Changing a checkbox or task priority
@@ -30,7 +30,7 @@ submits these controls, with explicit submit buttons available without JavaScrip
 
 The project list defaults to Active; select Archived to open or restore archived
 projects. Archiving preserves all tasks and makes task creation and completion
-read-only until restoration. Each project summary counts every task regardless
+read-only until restoration. Each project summary counts every live task regardless
 of task filters. Existing databases are migrated automatically, preserving IDs
 and treating existing projects as active.
 
@@ -74,7 +74,7 @@ due range button. Boundaries use the same Gregorian date rules as task dates and
 are inclusive. An empty boundary is unbounded; with either boundary set, undated
 tasks are excluded. Clearing both boundaries includes dated and undated tasks.
 The range intersects completion and priority filters without changing saved data
-or the all-task summary. Invalid or reversed ranges show an alert and preserve
+or the all-live-task summary. Invalid or reversed ranges show an alert and preserve
 the previously applied range. Task edits immediately refresh matching rows;
 creation, renames, and project-default changes preserve all applied filters.
 Range controls remain usable while archived. Applied ranges are carried in the
@@ -101,7 +101,7 @@ of ASCII spaces and horizontal tabs in queries and saved names/titles become one
 space. Other internal whitespace and non-ASCII case remain significant. Stored
 names/titles and their displayed text are unchanged. Blank queries match everything. Project
 search intersects Active/Archived; task search intersects completion, priority,
-and the applied due range. Searches preserve ordering and all-task summaries.
+and the applied due range. Searches preserve ordering and all-live-task summaries.
 Applied queries travel in URLs and forms, so filter changes and task edits retain
 them while immediately refreshing membership. Search remains usable in archived
 projects. Opening a project from the list, or returning through Projects, begins
@@ -114,3 +114,12 @@ and moves without changing other task data or remembered order. Saving retains
 all applied filters and search, and notes do not contribute to search matches.
 Archived projects display saved notes but disable editing and reject saves until
 restored. Database upgrades initialize notes to empty without replacing task data.
+
+Live task rows provide Delete task; the Deleted filter shows deleted tasks with
+Restore task. Deletion preserves every field and remembered project position,
+but removes the task from All, Open, Completed, and completion summaries.
+Deleted rows intersect the same priority, due range, and title search filters;
+their editing and move controls are read-only. Restoration reuses the reserved
+position, including ahead of tasks created later, and retains all applied filters.
+Archived projects allow viewing deleted tasks but reject deletion and restoration.
+Deletion state survives restarts; upgrades initialize existing tasks as live.

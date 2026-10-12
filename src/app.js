@@ -7,7 +7,7 @@ import { createTaskOrdering } from './task-order.js';
 import { normalizeSearch, matchesSearch } from './search.js';
 
 const taskPriorities = ['Low', 'Normal', 'High'];
-const taskFilters = ['All', 'Open', 'Completed'];
+const taskFilters = ['All', 'Open', 'Completed', 'Deleted'];
 const priorityFilters = ['All', ...taskPriorities];
 
 function readTaskFilters(parameters) {
@@ -139,6 +139,10 @@ export function createApp(databasePath) {
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
     database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   }
+  // Soft deletion retains all fields and reserved per-project positions.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'deleted')) {
+    database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN (0, 1))');
+  }
   // IDs retain task identity; positions track order within the current project.
   if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
     database.exec(`BEGIN;
@@ -151,27 +155,29 @@ export function createApp(databasePath) {
   const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id ASC');
   const listProjects = database.prepare(`SELECT projects.id, projects.name,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
-    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
+    FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.deleted = 0
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id ASC`);
   const findProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
   const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date, notes FROM tasks
-    WHERE project_id = ? AND (? = 'All' OR completed = ?)
+  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks
+    WHERE project_id = ? AND deleted = ? AND (? IN ('All', 'Deleted') OR completed = ?)
       AND (? = 'All' OR priority = ?)
       AND (? = '' OR (due_date != '' AND due_date >= ?))
       AND (? = '' OR (due_date != '' AND due_date <= ?)) ORDER BY position ASC, id ASC`);
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-  const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
+  const findTask = database.prepare('SELECT id, deleted FROM tasks WHERE id = ? AND project_id = ?');
+  const updateTaskDeletion = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
   const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
   const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
   function taskRow(task, project, destinations, filters, renameError, dueDateError) {
-    const disabled = project.archived ? ' disabled' : '';
+    const disabled = project.archived || task.deleted ? ' disabled' : '';
+    const moveDisabled = disabled || (!destinations.length ? ' disabled' : '');
     // Encode line breaks so HTML parsing preserves even a leading textarea newline.
     const notesText = escapeHtml(task.notes).replace(/\r/g, '&#13;').replace(/\n/g, '&#10;');
     return `<li data-testid="task-row"><span class="name">${escapeHtml(task.title)}</span>
@@ -203,15 +209,19 @@ ${hiddenTaskFilters(filters)}
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/move">
 ${hiddenTaskFilters(filters)}
 <label for="destination-project-${task.id}">Destination project</label>
-<select id="destination-project-${task.id}" name="destinationProject"${project.archived || !destinations.length ? ' disabled' : ''}>${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}</select>
-<button type="submit"${project.archived || !destinations.length ? ' disabled' : ''}>Move task</button>
+<select id="destination-project-${task.id}" name="destinationProject"${moveDisabled}>${destinations.map((destination) => `<option value="${destination.id}">${escapeHtml(destination.name)}</option>`).join('')}</select>
+<button type="submit"${moveDisabled}>Move task</button>
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/${task.deleted ? 'restore' : 'delete'}">
+${hiddenTaskFilters(filters)}
+<button type="submit"${project.archived ? ' disabled' : ''}>${task.deleted ? 'Restore task' : 'Delete task'}</button>
 </form></li>`;
   }
 
   function projectPage(project, filters, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '', taskDueDateError = '', taskDueDateId, dueRangeError = '', rangeFrom = filters.dueFrom, rangeThrough = filters.dueThrough } = {}) {
     const { filter, priorityFilter, dueFrom, dueThrough } = filters;
     const destinations = listDestinations.all(project.id);
-    const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0, priorityFilter, priorityFilter, dueFrom, dueFrom, dueThrough, dueThrough)
+    const tasks = listTasks.all(project.id, filter === 'Deleted' ? 1 : 0, filter, filter === 'Completed' ? 1 : 0, priorityFilter, priorityFilter, dueFrom, dueFrom, dueThrough, dueThrough)
       .filter((task) => matchesSearch(task.title, filters.search));
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
@@ -305,7 +315,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move))?|\/(archive|restore|rename|default-priority|due-range))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move|delete|restore))?|\/(archive|restore|rename|default-priority|due-range))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -404,11 +414,21 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
             return;
           }
           const taskId = Number(projectRoute[2]);
-          if (!Number.isSafeInteger(taskId) || !findTask.get(taskId, id)) {
+          const task = Number.isSafeInteger(taskId) ? findTask.get(taskId, id) : undefined;
+          if (!task) {
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
           }
-          if (projectRoute[3] === 'move') {
+          const action = projectRoute[3];
+          if (task.deleted && action !== 'restore' && action !== 'delete') {
+            sendHtml(response, 403, projectPage(findProject.get(id), readTaskFilters(form), {
+              taskError: 'Deleted task is read-only',
+            }));
+            return;
+          }
+          if (action === 'delete' || action === 'restore') {
+            updateTaskDeletion.run(action === 'delete' ? 1 : 0, taskId, id);
+          } else if (action === 'move') {
             const destinationValue = form.get('destinationProject') ?? '';
             const destinationId = /^[1-9]\d*$/.test(destinationValue) ? Number(destinationValue) : NaN;
             const destination = Number.isSafeInteger(destinationId) ? findProject.get(destinationId) : undefined;
