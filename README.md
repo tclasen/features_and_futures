@@ -79,3 +79,13 @@ the previously applied range. Task edits immediately refresh matching rows;
 creation, renames, and project-default changes preserve all applied filters.
 Range controls remain usable while archived. Applied ranges are carried in the
 project URL and forms; opening a project from the list starts with empty boundaries.
+
+Each task row provides a Destination project selector and Move task button. It
+lists only other active projects, using their current names in project creation
+order. With no eligible destinations both controls are disabled. Moving keeps
+the source page open with all applied filters, transfers the same task identity
+and saved data, and appends it after the destination's existing tasks. Project
+summaries reflect current ownership. A saved per-project task position preserves
+move order across restarts; existing databases initialize positions from task IDs.
+Archived projects disable moving and cannot be sources or destinations. Invalid
+or stale destinations are rejected without changing task data.

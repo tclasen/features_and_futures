@@ -368,7 +368,8 @@ test('existing project databases migrate to active without changing IDs or tasks
     assert.match(taskRows(detail)[0], /id="task-due-date-9" name="dueDate" type="text" value=""/);
     assert.match(taskRows(detail)[0], /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
     assert.equal((await postForm(server.baseUrl, '/projects/7/tasks/9/priority', { priority: 'High' })).status, 303);
-    assert.doesNotMatch(detail, /<(?:input|button)\b[^>]* disabled|<p>Archived project<\/p>/);
+    assert.doesNotMatch(detail, /<input\b[^>]* disabled|<p>Archived project<\/p>/);
+    assert.match(detail, /<button type="submit" disabled>Move task/);
     await postForm(server.baseUrl, '/projects/7/archive', {});
     await server.stop();
     server = await startServer(databasePath);
@@ -659,7 +660,7 @@ test('project defaults affect only future tasks and survive filters, renames, ar
     await postForm(server.baseUrl, '/projects/1/tasks', { title: 'New Normal' });
     assert.match(taskRows(await read())[4], /<option selected>Normal<\/option>/);
     assert.deepEqual(taskRows(await read()).slice(0, 3), savedTasks);
-    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks.map((row) => row.replace('<option value="1">First</option>', '<option value="1">Renamed project</option>')));
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
@@ -1004,6 +1005,105 @@ test('due ranges intersect filters and retain applied state through errors, edit
     assertRange(await read(), '', '');
     assert.deepEqual(taskTitles(await read()), ['Undated', 'Before', 'Renamed start', 'End', 'After', 'New undated']);
     assert.deepEqual(taskTitles(await read('/projects/2')), []);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('moves append tasks, preserve data and filters, update summaries, and survive restarts', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    const move = (source, task, destination, filters = {}) => postForm(server.baseUrl,
+      `/projects/${source}/tasks/${task}/move`, { destinationProject: String(destination), ...filters });
+    await createProject(server.baseUrl, 'Source');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Moving' });
+    const alone = taskRows(await read())[0];
+    assert.match(alone, /<label for="destination-project-1">Destination project<\/label>/);
+    assert.match(alone, /name="destinationProject" disabled><\/select>/);
+    assert.match(alone, /disabled>Move task<\/button>/);
+    await createProject(server.baseUrl, 'Destination');
+    await createProject(server.baseUrl, '<Third>');
+    await createProject(server.baseUrl, 'Archived');
+    await postForm(server.baseUrl, '/projects/4/archive', {});
+    await postForm(server.baseUrl, '/projects/2/rename', { name: 'Renamed destination' });
+    const options = taskRows(await read())[0].match(/name="destinationProject"[^>]*>(.*?)<\/select>/s)[1];
+    assert.equal(options, '<option value="2">Renamed destination</option><option value="3">&lt;Third&gt;</option>');
+    // The moving task predates destination tasks; order must no longer depend on IDs.
+    await postForm(server.baseUrl, '/projects/2/default-priority', { priority: 'Low' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Destination first' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Destination second' });
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Remaining' });
+    for (const task of [1, 4]) {
+      await postForm(server.baseUrl, `/projects/1/tasks/${task}/priority`, { priority: 'High' });
+      await postForm(server.baseUrl, `/projects/1/tasks/${task}/completion`, { completed: '1' });
+      await postForm(server.baseUrl, `/projects/1/tasks/${task}/due-date`, { dueDate: '2026-02-15' });
+    }
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-02-01', dueThrough: '2026-02-28' };
+    const filteredPath = `/projects/1?${new URLSearchParams(filters)}`;
+    const remaining = taskRows(await read(filteredPath))[1];
+    for (const destination of ['', '1', '4', '999', '2.0', '-2', '9007199254740993']) {
+      const response = await move(1, 1, destination, filters);
+      assert.equal(response.status, 422);
+      const html = await response.text();
+      assertTaskFilters(html, 'Completed', 'High');
+      assert.deepEqual(taskTitles(html), ['Moving', 'Remaining']);
+    }
+    assert.equal((await move(2, 1, 3)).status, 404);
+    assert.equal((await move(1, 999, 2)).status, 404);
+    const moved = await move(1, 1, 2, filters);
+    assert.equal(moved.status, 303);
+    assert.equal(moved.headers.get('location'), filteredPath);
+    assert.deepEqual(taskRows(await read(filteredPath)), [remaining]);
+    assert.deepEqual(taskTitles(await read('/projects/2')), ['Destination first', 'Destination second', 'Moving']);
+    const movedRow = taskRows(await read('/projects/2'))[2];
+    assert.match(movedRow, /action="\/projects\/2\/tasks\/1\/completion"/);
+    assert.match(movedRow, /aria-label="Complete Moving" checked/);
+    assert.match(movedRow, /<option selected>High<\/option>/);
+    assert.match(movedRow, /name="dueDate" type="text" value="2026-02-15"/);
+    let summaries = rows(await read('/'));
+    assert.match(summaries[0], /1\/1 completed/);
+    assert.match(summaries[1], /1\/3 completed/);
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'New after move' });
+    assert.deepEqual(taskTitles(await read('/projects/2')), ['Destination first', 'Destination second', 'Moving', 'New after move']);
+    const saved = taskRows(await read('/projects/2'));
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read('/projects/2')), saved);
+    assert.deepEqual(taskRows(await read(filteredPath)), [remaining]);
+    // A second move appends after the source's remaining task and retains task identity.
+    assert.equal((await move(2, 1, 1)).status, 303);
+    assert.deepEqual(taskTitles(await read()), ['Remaining', 'Moving']);
+    assert.equal((await move(2, 2, 1)).status, 303);
+    const blankDate = taskRows(await read())[2];
+    assert.match(blankDate, /name="dueDate" type="text" value=""/);
+    assert.match(blankDate, /<option selected>Low<\/option>/);
+    assert.doesNotMatch(blankDate, /aria-label="Complete Destination first" checked/);
+    summaries = rows(await read('/'));
+    assert.match(summaries[0], /2\/3 completed/);
+    assert.match(summaries[1], /0\/2 completed/);
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    const archived = await read(filteredPath);
+    assertTaskFilters(archived, 'Completed', 'High');
+    for (const row of taskRows(archived)) {
+      assert.match(row, /name="destinationProject" disabled/);
+      assert.match(row, /disabled>Move task<\/button>/);
+    }
+    assert.equal((await move(1, 1, 2, filters)).status, 403);
+    assert.equal((await move(2, 3, 1)).status, 422);
+    assert.equal(await read(filteredPath), archived);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.equal(await read(filteredPath), archived);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assert.doesNotMatch(taskRows(await read())[0], /name="destinationProject" disabled|disabled>Move task/);
+    assert.deepEqual(taskTitles(await read()), ['Remaining', 'Moving', 'Destination first']);
+    assert.equal((await move(1, 1, 2)).status, 303);
+    assert.deepEqual(taskTitles(await read('/projects/2')), ['Destination second', 'New after move', 'Moving']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
