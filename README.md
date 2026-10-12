@@ -20,8 +20,12 @@ npm test
 `GET /health` returns `{"status":"ok"}`. The application uses server-rendered
 HTML forms; project names and task titles are trimmed on the server and escaped
 for display. Each project has its own tasks, with All, Open, and Completed
-filters. Changing a checkbox saves its completion state immediately; changing
-the filter reloads the matching tasks in creation order. Browser JavaScript
+filters, combined with a Priority filter offering All, Low, Normal, and High.
+Only tasks matching both filters appear, in creation order. Both filters default
+to All when opening a project from the list. Changing a checkbox or task priority
+saves immediately and refreshes matching tasks without resetting either filter.
+Renaming also retains both selections. Filters stay usable in archived projects
+and never change saved task data or the completion summary. Browser JavaScript
 submits these controls, with explicit submit buttons available without JavaScript.
 
 The project list defaults to Active; select Archived to open or restore archived
