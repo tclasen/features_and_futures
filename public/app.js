@@ -83,6 +83,37 @@ function renderRename(project) {
   app.append(form);
 }
 
+function renderDefaultPriority(project) {
+  const controls = document.createElement('div');
+  controls.innerHTML = `
+    <label for="default-task-priority">Default task priority</label>
+    <select id="default-task-priority">
+      <option value="Low">Low</option>
+      <option value="Normal">Normal</option>
+      <option value="High">High</option>
+    </select>`;
+  const select = controls.querySelector('select');
+  select.value = project.default_priority;
+  select.disabled = project.archived;
+  select.addEventListener('change', async () => {
+    if (select.disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    select.disabled = true;
+    try {
+      const saved = await request(`/api/projects/${project.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_priority: select.value }),
+      });
+      Object.assign(project, saved);
+    } catch (error) { showError(error); }
+    finally {
+      select.value = project.default_priority;
+      select.disabled = project.archived;
+    }
+  });
+  app.append(controls);
+}
+
 async function renderTasks(project) {
   const projectId = project.id;
   const section = document.createElement('section');
@@ -269,6 +300,7 @@ async function render() {
         app.append(notice);
       }
       renderRename(project);
+      renderDefaultPriority(project);
       await renderTasks(project);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';

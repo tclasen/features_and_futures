@@ -27,7 +27,11 @@ Active project pages also let you rename projects with `New project name` and
 creation order, tasks, and completion summary. Archived projects disable renaming;
 restoration enables it again.
 Each task can also be renamed and assigned a Low, Normal, or High priority.
-Existing and new tasks default to Normal. Renaming preserves completion and
+Existing tasks default to Normal. Each project's Default task priority starts at
+Normal and can be set to Low, Normal, or High. New tasks inherit the saved default;
+changing it leaves existing tasks and both filters unchanged. Defaults persist
+independently for each project and are disabled during archival.
+Renaming preserves completion and
 priority; archived projects disable task renaming and priority changes.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.

@@ -61,7 +61,7 @@ class Element {
 }
 
 async function projectPage(archived = false) {
-  const project = { id: 1, name: 'Project', archived, total: 6, completed: 3 };
+  const project = { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' };
   const tasks = ['Low', 'Normal', 'High'].flatMap((priority, index) => [
     { id: index * 2 + 1, title: `${priority} open`, completed: false, priority },
     { id: index * 2 + 2, title: `${priority} completed`, completed: true, priority },
@@ -72,8 +72,13 @@ async function projectPage(archived = false) {
   const fetch = async (path, options) => {
     if (options) {
       assert.equal(archived, false, 'Archived controls must not write task data');
-      const task = tasks.find((task) => task.id === Number(path.split('/').at(-1)));
       const change = JSON.parse(options.body);
+      if (Object.hasOwn(change, 'default_priority')) {
+        writes.push(change);
+        Object.assign(project, change);
+        return { ok: true, json: async () => structuredClone(project) };
+      }
+      const task = tasks.find((task) => task.id === Number(path.split('/').at(-1)));
       if (change.title !== undefined) change.title = change.title.trim();
       writes.push(change);
       Object.assign(task, change);
@@ -123,7 +128,37 @@ test('completion and priority filters intersect in creation order, including arc
     assert.equal(completion.disabled, false);
     assert.equal(priority.disabled, false);
     assert.deepEqual(page.writes, []);
-    assert.deepEqual(page.project, { id: 1, name: 'Project', archived, total: 6, completed: 3 });
+    assert.deepEqual(page.project, { id: 1, name: 'Project', archived, total: 6, completed: 3, default_priority: 'Normal' });
+  }
+});
+
+test('default priority saves without changing filters or existing rows and is disabled when archived', async () => {
+  for (const archived of [false, true]) {
+    const { app, select, completion, priority, titles, tasks, project, writes } = await projectPage(archived);
+    const defaultPriority = app.querySelector('#default-task-priority');
+    assert.equal(app.querySelectorAll('label').find((label) => label.htmlFor === defaultPriority.id).textContent, 'Default task priority');
+    assert.deepEqual(defaultPriority.children.map((option) => option.textContent), ['Low', 'Normal', 'High']);
+    assert.equal(defaultPriority.value, 'Normal');
+    assert.equal(defaultPriority.disabled, archived);
+    await select(completion, 'completed');
+    await select(priority, 'Low');
+    const before = structuredClone(tasks);
+    if (archived) {
+      await defaultPriority.fire('change');
+      assert.deepEqual(writes, []);
+    } else {
+      await select(defaultPriority, 'High');
+      assert.deepEqual(writes, [{ default_priority: 'High' }]);
+      assert.equal(project.default_priority, 'High');
+      assert.equal(defaultPriority.value, 'High');
+    }
+    assert.equal(defaultPriority.disabled, archived);
+    assert.equal(completion.value, 'completed');
+    assert.equal(priority.value, 'Low');
+    assert.deepEqual(titles(), ['Low completed']);
+    assert.deepEqual(tasks, before);
+    assert.equal(project.completed, 3);
+    assert.equal(project.total, 6);
   }
 });
 
