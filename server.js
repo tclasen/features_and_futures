@@ -237,10 +237,13 @@ const server = http.createServer(async (req, res) => {
         // separately so saving the already-current date remains a successful edit.
         const existingTask = getTask.get(taskId);
         if (!existingTask || existingTask.projectId !== projectId) return json(res, 404, { error: 'Task not found' });
+        // Persist the canonical value synchronously before acknowledging the edit.
+        // Verify using the owning-project query as well as the task lookup so a
+        // stale/moved task can never appear to have saved its date successfully.
         updateDueDate.run(canonical, taskId, projectId);
         const savedTask = getTask.get(taskId);
-        if (savedTask.projectId !== projectId || savedTask.dueDate !== canonical) {
-          throw new Error('Due date was not persisted');
+        if (!savedTask || savedTask.projectId !== projectId || savedTask.dueDate !== canonical) {
+          return json(res, 409, { error: 'Due date could not be saved' });
         }
         // Read back from SQLite rather than echoing the request: subsequent reloads
         // and process restarts use this persisted value as the source of truth.
