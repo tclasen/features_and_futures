@@ -103,3 +103,19 @@ L069 archive-first task021 recovery verified: five identical b004 diagnostics, a
 L069 task021 post-recovery feedback delivery verified: all retained requests in attempts007,013,019 contain the exact packet and preceding rejection feedback with expected date and recovery wording. Model attention and causal application mechanism remain unestablished. Evidence: preflight/task021-feedback-delivery001/verified.json. No comparison change.
 
 L069 recovery delivery proof strengthened: delivery002 checks the exact recorded recovery header and message in all36 native request bodies, extending delivery001 packet/feedback byte verification. Model attention and application cause remain unestablished. No comparison change.
+
+L069 task021 recovery outcome: verified own020 restoration did not establish a behavioral fix; original019 fails011date and073Unicode ordering. Native/publication019 histories independently restored and020starts from rejected019commit. Active020 remains unassessed; no PM implementation or comparison change. Evidence: preflight/task021-recovery-outcome003.
+
+L060 resource ledger reconciliation: registered 2 additional names (1 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 retired archive coverage verified at294 native application resources (seven beyond prior287); archive rehashing, independent SQLite restore/integrity and recorded resource absence checked. Active25 retained; two PM-rescued task016 launches remain separately verified. Evidence: preflight/retired-resources-20261012T222201163940Z/verified.json. No comparison change.
+
+L062 partial021 publication verified:297 source checkpoints and594 original refs, including independently restored rejected001–018 and before-recovery006/012/018. All prior remote heads preserved, zero-finding exact-target scan, temporary snapshot removed. Accounting totals remain scoped to closed020; current and later native attempts are excluded.
+
+L062 publication002 PM transport recovery verified: initial restricted GitHub DNS lookup failed before push; exact scanned target retry with authorized access succeeded. Both original logs retained in preflight/checkpoint021partial-publication002/scan-archive001/publication-attempts001. Native execution and accounting unchanged.
