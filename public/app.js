@@ -10,6 +10,9 @@ const taskAlert = document.querySelector('#task-alert');
 const tasksNode = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
 const projectFilter = document.querySelector('#project-filter');
+const renameForm = document.querySelector('#rename-form');
+const renameInput = document.querySelector('#new-project-name');
+const renameAlert = document.querySelector('#rename-alert');
 let activeProjectId = null;
 let currentTasks = [];
 let activeProjectArchived = false;
@@ -92,6 +95,8 @@ function setProjectArchived(archived) {
   taskInput.disabled = archived;
   taskForm.querySelector('button[type="submit"]').disabled = archived;
   taskForm.setAttribute('aria-disabled', String(archived));
+  renameInput.disabled = archived;
+  renameForm.querySelector('button[type="submit"]').disabled = archived;
 }
 
 function drawTasks() {
@@ -183,6 +188,21 @@ form.addEventListener('submit', async (event) => {
 });
 
 document.querySelector('#back-button').addEventListener('click', showList);
+renameForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  renameAlert.hidden = true;
+  try {
+    const project = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/rename`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: renameInput.value })
+    });
+    document.querySelector('#detail-name').textContent = project.name;
+    renameInput.value = '';
+  } catch (error) {
+    renameAlert.textContent = error.message;
+    renameAlert.hidden = false;
+  }
+});
 taskForm.addEventListener('submit', async event => {
   event.preventDefault();
   taskAlert.hidden = true;
