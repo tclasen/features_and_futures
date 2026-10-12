@@ -122,10 +122,11 @@ function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
 }
 
-// Fold ASCII letters only; non-ASCII characters and internal whitespace stay significant.
+// Normalize only for matching; stored names/titles keep their original whitespace.
 function searchMatches(value, query) {
-  const fold = text => text.replace(/[A-Z]/g, char => char.toLowerCase());
-  return fold(value).includes(fold(query));
+  const normalize = text => text.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, char => char.toLowerCase());
+  return normalize(value).includes(normalize(query));
 }
 
 function projectList(error = '', name = '', filter = 'Active', search = '') {

@@ -27,7 +27,7 @@ test('ASCII substring search intersects filters and stays applied across edits',
     let html = await get('/?search=%20ALPHA%20%20%20');
     assert.equal((html.match(/data-testid="project-row"/g) || []).length, 2);
     html = await get('/?search=ALPHA%20%20BOARD');
-    assert.equal((html.match(/data-testid="project-row"/g) || []).length, 1);
+    assert.equal((html.match(/data-testid="project-row"/g) || []).length, 2);
     assert.match(html, /Alpha  Board/);
     assert.equal((await get('/?search=ärea')).includes('data-testid="project-row"'), false);
     await post('/projects/1/archive', { search: 'alpha' });
