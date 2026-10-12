@@ -25,4 +25,9 @@ Active project pages also let you rename a project. Names are trimmed and must
 not be blank. Renaming preserves the project URL, list position, and tasks;
 archived projects must be restored before they can be renamed.
 
+Each task row also lets you rename its task with a trimmed, nonblank title.
+Renaming preserves ownership, creation order, completion, and summaries, and
+updates the completion checkbox label. Archived tasks must be restored with their
+project before they can be renamed.
+
 Run the integration checks with `npm test`.
