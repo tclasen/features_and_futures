@@ -207,6 +207,23 @@ async function renderProject(id) {
         else await renderTasks();
       });
       row.append(priority);
+      const dueDate = element('input', undefined, { type: 'text', 'aria-label': 'Task due date', value: task.dueDate || '' });
+      const saveDueDate = element('button', 'Save due date', { type: 'button' });
+      dueDate.disabled = project.archived;
+      saveDueDate.disabled = project.archived;
+      saveDueDate.addEventListener('click', async () => {
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dueDate: dueDate.value })
+        });
+        if (!update.ok) {
+          const error = await update.json();
+          showError(error.error || 'Could not save due date');
+        } else {
+          app.querySelector('[role="alert"]')?.remove();
+          await renderTasks();
+        }
+      });
+      row.append(dueDate, saveDueDate);
       list.append(row);
     }
   };
