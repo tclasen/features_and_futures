@@ -37,6 +37,7 @@ const listProjects = database.prepare(`
 const findProject = database.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
@@ -85,6 +86,22 @@ const server = createServer(async (request, response) => {
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     setProjectArchived.run(archiveMatch[2] === 'archive' ? 1 : 0, projectId);
     return sendJson(response, 200, findProject.get(projectId));
+  }
+  const renameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/rename$/);
+  if (request.method === 'POST' && renameMatch) {
+    const projectId = Number(renameMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived projects cannot be renamed' });
+    try {
+      const payload = await readJson(request);
+      const name = typeof payload.name === 'string' ? payload.name.trim() : '';
+      if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+      renameProject.run(name, projectId);
+      return sendJson(response, 200, findProject.get(projectId));
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request' });
+    }
   }
   if (request.method === 'POST' && url.pathname === '/api/projects') {
     try {
