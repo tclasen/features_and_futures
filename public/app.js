@@ -256,6 +256,32 @@ function drawTasks() {
       }
     });
     dueDateForm.append(dueDateInput, saveDueDate);
+    const notesForm = document.createElement('form');
+    notesForm.className = 'task-notes-form';
+    const notesInput = document.createElement('textarea');
+    notesInput.value = task.notes || '';
+    notesInput.setAttribute('aria-label', 'Task notes');
+    notesInput.disabled = activeProjectArchived;
+    const saveNotes = document.createElement('button');
+    saveNotes.type = 'submit';
+    saveNotes.className = 'open-button';
+    saveNotes.textContent = 'Save notes';
+    saveNotes.disabled = activeProjectArchived;
+    notesForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ notes: notesInput.value })
+        });
+        task.notes = updated.notes;
+        taskAlert.hidden = true;
+      } catch (error) {
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
+    notesForm.append(notesInput, saveNotes);
     const destinationForm = document.createElement('form');
     destinationForm.className = 'task-move-form';
     const destination = document.createElement('select');
@@ -289,7 +315,7 @@ function drawTasks() {
     });
     destinationForm.append(destination, moveButton);
     label.append(checkbox);
-    row.append(title, renameForm, priority, dueDateForm, destinationForm, label);
+    row.append(title, renameForm, priority, dueDateForm, notesForm, destinationForm, label);
     tasksNode.append(row);
   }
 }

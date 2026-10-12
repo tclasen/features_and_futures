@@ -23,6 +23,7 @@ db.exec(`
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
+    notes TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -39,6 +40,7 @@ if (!projectColumns.includes('default_priority')) db.exec("ALTER TABLE projects 
 const taskColumns = db.prepare('PRAGMA table_info(tasks)').all().map(column => column.name);
 if (!taskColumns.includes('priority')) db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
 if (!taskColumns.includes('due_date')) db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+if (!taskColumns.includes('notes')) db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 // Record each task's position in every project it has belonged to. Existing
 // databases seed positions from their current task order exactly once.
 const seedPositions = db.prepare(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
@@ -52,11 +54,11 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_prio
 const findProject = db.prepare('SELECT id, name, archived, default_priority AS defaultPriority FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)');
 const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority,
-  t.due_date AS dueDate FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  t.due_date AS dueDate, t.notes FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position, t.created_at, t.rowid`);
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
-const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
@@ -203,6 +205,12 @@ const server = createServer(async (req, res) => {
         const dueDate = trimmed === '' ? null : trimmed;
         if (dueDate !== null && !isValidDate(dueDate)) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
         const result = updateTaskDueDate.run(dueDate, taskId, projectId);
+        if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });
+        const task = findTask.get(taskId, projectId);
+        return json(res, 200, { ...task, completed: Boolean(task.completed) });
+      }
+      if (typeof body.notes === 'string') {
+        const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(body.notes, taskId, projectId);
         if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });
         const task = findTask.get(taskId, projectId);
         return json(res, 200, { ...task, completed: Boolean(task.completed) });
