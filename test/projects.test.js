@@ -1211,3 +1211,87 @@ test('imports are atomic independent copies with persistent fields, deletion and
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('directory reads current ownership and saved order including imported, deleted and upgraded tasks without writes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Legacy owner');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Legacy task', 0);
+    `);
+    legacy.close();
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      });
+      assert.ok(response.ok, `${method} ${path}: ${response.status}`);
+      return response.json();
+    };
+    const first = await api('/api/projects/1/tasks', 'POST', { title: 'First\t  Title' });
+    const second = await api('/api/projects/1/tasks', 'POST', { title: 'Second' });
+    const other = await api('/api/projects', 'POST', { name: 'Other owner' });
+    const otherTask = await api(`/api/projects/${other.id}/tasks`, 'POST', { title: 'Other task' });
+    const notes = '  😀\r\n<script>literal</script>\nEnd  ';
+    for (const body of [{ completed: true }, { priority: 'High' }, { dueDate: '2024-02-29' }, { notes }]) {
+      await api(`/api/projects/1/tasks/${first.id}`, 'PATCH', body);
+    }
+    await api(`/api/projects/1/tasks/${first.id}`, 'PATCH', { destinationProjectId: other.id });
+    await api(`/api/projects/1/tasks/${second.id}`, 'PATCH', { destinationProjectId: other.id });
+    await api(`/api/projects/${other.id}/tasks/${second.id}`, 'PATCH', { destinationProjectId: 1 });
+    await api(`/api/projects/${other.id}/tasks/${first.id}`, 'PATCH', { destinationProjectId: 1 });
+    await api(`/api/projects/1/tasks/${first.id}`, 'PATCH', { deleted: true });
+    await api('/api/projects/1/tasks', 'POST', { title: 'Later' });
+    await api(`/api/projects/${other.id}`, 'PATCH', { name: 'Renamed owner' });
+    await api(`/api/projects/${other.id}`, 'PATCH', { archived: true });
+    const document = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Portable', archived: true, defaultPriority: 'Low', tasks: [
+        { title: 'Deleted copy', completed: true, priority: 'High', dueDate: '', notes: 'copy\r\nnotes', deleted: true },
+        { title: 'Live copy', completed: false, priority: 'Normal', dueDate: '0001-01-01', notes: '', deleted: false },
+      ] },
+    };
+    const imported = await api('/api/projects/import', 'POST', { name: 'Imported', json: JSON.stringify(document) });
+    const snapshot = async () => {
+      const projects = await api('/api/projects');
+      return Promise.all(projects.map(async (project) => ({ project, tasks: await api(`/api/projects/${project.id}/tasks`) })));
+    };
+    const before = await snapshot();
+    let expected;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rows = await api('/api/task-directory');
+      if (attempt === 0) expected = rows;
+      else assert.deepEqual(rows, expected);
+      assert.deepEqual(rows.map((task) => task.title), ['Legacy task', first.title, second.title, 'Later', otherTask.title, 'Deleted copy', 'Live copy']);
+      assert.deepEqual(rows[0], { id: 1, title: 'Legacy task', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false, projectId: 1, projectName: 'Legacy owner', archived: false });
+      assert.equal(rows[1].notes, notes);
+      assert.equal(rows[1].deleted, true);
+      assert.equal(rows[1].completed, true);
+      assert.equal(rows[1].priority, 'High');
+      assert.equal(rows[1].dueDate, '2024-02-29');
+      assert.equal(rows[4].projectName, 'Renamed owner');
+      assert.equal(rows[4].archived, true);
+      assert.equal(rows[5].projectId, imported.id);
+      assert.equal(rows[5].notes, 'copy\nnotes');
+      assert.equal(rows[5].deleted, true);
+      assert.equal(rows[6].dueDate, '0001-01-01');
+      assert.deepEqual(await snapshot(), before);
+      const page = await fetch(`${server.url}/task-directory`);
+      assert.equal(page.status, 200);
+      assert.match(await page.text(), /src="\/app.js"/);
+      if (attempt === 0) {
+        await server.stop();
+        server = await startServer(databasePath);
+      }
+    }
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

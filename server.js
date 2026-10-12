@@ -95,6 +95,13 @@ const insertImportedTask = database.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listDirectoryTasks = database.prepare(`
+  SELECT tasks.id, tasks.title, tasks.completed, tasks.priority,
+    tasks.due_date AS dueDate, tasks.notes, tasks.deleted,
+    projects.id AS projectId, projects.name AS projectName, projects.archived
+  FROM tasks JOIN projects ON projects.id = tasks.project_id
+  ORDER BY projects.id, tasks.position, tasks.id
+`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
@@ -199,6 +206,11 @@ const server = createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && pathname === '/health') {
       return json(response, 200, { status: 'ok' });
+    }
+    if (pathname === '/api/task-directory' && request.method === 'GET') {
+      return json(response, 200, listDirectoryTasks.all().map((task) => ({
+        ...taskData(task), archived: Boolean(task.archived),
+      })));
     }
     if (pathname === '/api/projects' && request.method === 'GET') {
       return json(response, 200, listProjects.all().map(projectData));
@@ -392,7 +404,7 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === 'GET') {
-      const asset = assets.get(/^\/projects\/\d+$/.test(pathname) ? '/' : pathname);
+      const asset = assets.get(pathname === '/task-directory' || /^\/projects\/\d+$/.test(pathname) ? '/' : pathname);
       if (asset) {
         response.writeHead(200, { 'Content-Type': asset[0] });
         return response.end(asset[1]);

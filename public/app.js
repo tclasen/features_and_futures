@@ -40,6 +40,90 @@ function searchForm(id, label, buttonLabel, onSearch) {
   return form;
 }
 
+function dueRangeControls(onApply) {
+  const dueRangeForm = element('form', '', { class: 'due-range' });
+  const dueFrom = element('input', '', { id: 'due-from', type: 'text', placeholder: 'YYYY-MM-DD' });
+  const dueThrough = element('input', '', { id: 'due-through', type: 'text', placeholder: 'YYYY-MM-DD' });
+  dueRangeForm.append(element('label', 'Due from', { for: 'due-from' }), dueFrom,
+    element('label', 'Due through', { for: 'due-through' }), dueThrough,
+    element('button', 'Apply due range', { type: 'submit' }));
+  dueRangeForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const range = normalizeDueRange(dueFrom.value, dueThrough.value);
+    if (range.error) return showError(range.error);
+    dueFrom.value = range.from;
+    dueThrough.value = range.through;
+    app.querySelector('[role="alert"]')?.remove();
+    onApply(range);
+  });
+  return dueRangeForm;
+}
+
+function matchesTaskFilters(task, completion, priority, dueRange, query) {
+  return (completion === 'Deleted' ? task.deleted : !task.deleted
+    && (completion === 'All' || (completion === 'Completed' ? task.completed : !task.completed)))
+    && (priority === 'All' || task.priority === priority)
+    && matchesDueRange(task.dueDate, dueRange)
+    && matchesSearch(task.title, query);
+}
+
+function filterSelect(id, label, options, controls, onChange) {
+  const select = element('select', '', { id });
+  for (const option of options) select.append(element('option', option, { value: option }));
+  select.addEventListener('change', onChange);
+  controls.append(element('label', label, { for: id }), select);
+  return select;
+}
+
+async function showDirectory() {
+  const back = element('button', 'Projects', { type: 'button' });
+  back.addEventListener('click', () => { window.location.href = '/'; });
+  app.replaceChildren(back, element('h1', 'Task directory'));
+  document.title = 'Task directory · Workboard';
+  let tasks = [];
+  let dueRange = { from: '', through: '' };
+  let query = '';
+  const controls = element('div', '', { class: 'task-filters' });
+  const scope = filterSelect('project-scope', 'Project scope', ['Active', 'Archived'], controls, render);
+  const completion = filterSelect('task-filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted'], controls, render);
+  const priority = filterSelect('priority-filter', 'Priority filter', ['All', 'Low', 'Normal', 'High'], controls, render);
+  const rangeForm = dueRangeControls((range) => { dueRange = range; render(); });
+  const search = searchForm('directory-search', 'Directory search', 'Search directory', (value) => {
+    query = value;
+    render();
+  });
+  const list = element('ul', '', { class: 'directory-tasks', 'aria-label': 'Directory tasks' });
+  app.append(controls, rangeForm, search, list);
+
+  function render() {
+    const visible = tasks.filter((task) => task.archived === (scope.value === 'Archived')
+      && matchesTaskFilters(task, completion.value, priority.value, dueRange, query));
+    list.replaceChildren(...visible.map((task) => {
+      const row = element('li', '', { 'data-testid': 'directory-task-row' });
+      for (const [field, value] of [
+        ['directory-task-title', task.title], ['directory-project-name', task.projectName],
+        ['directory-task-completion', task.completed ? 'Completed' : 'Open'],
+        ['directory-task-priority', task.priority],
+        ['directory-task-due-date', task.dueDate ?? ''], ['directory-task-notes', task.notes ?? ''],
+      ]) {
+        // textContent keeps literal markup and notes as plain text.
+        row.append(element('div', value, { 'data-testid': field }));
+      }
+      const open = element('button', 'Open project', { type: 'button' });
+      open.addEventListener('click', () => { window.location.href = `/projects/${task.projectId}`; });
+      row.append(open);
+      return row;
+    }));
+  }
+
+  try {
+    tasks = await request('/api/task-directory');
+    render();
+  } finally {
+    app.setAttribute('aria-busy', 'false');
+  }
+}
+
 function projectRow(project, onArchiveChange) {
   const row = element('li', '', { 'data-testid': 'project-row' });
   const open = element('button', 'Open project', { type: 'button' });
@@ -125,7 +209,9 @@ async function showProjects() {
     list.replaceChildren(...visible.map((project) => projectRow(project, renderProjects)));
   }
   filter.addEventListener('change', renderProjects);
-  app.append(form, filters, search, list, projectImportForm());
+  const directory = element('button', 'Task directory', { type: 'button' });
+  directory.addEventListener('click', () => { window.location.href = '/task-directory'; });
+  app.append(form, filters, search, directory, list, projectImportForm());
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
@@ -462,20 +548,8 @@ async function showTasks(projectId, archived) {
   filters.append(element('label', 'Task filter', { for: 'task-filter' }), filter,
     element('label', 'Priority filter', { for: 'priority-filter' }), priorityFilter);
   let dueRange = { from: '', through: '' };
-  const dueRangeForm = element('form', '', { class: 'due-range' });
-  const dueFrom = element('input', '', { id: 'due-from', type: 'text', placeholder: 'YYYY-MM-DD' });
-  const dueThrough = element('input', '', { id: 'due-through', type: 'text', placeholder: 'YYYY-MM-DD' });
-  dueRangeForm.append(element('label', 'Due from', { for: 'due-from' }), dueFrom,
-    element('label', 'Due through', { for: 'due-through' }), dueThrough,
-    element('button', 'Apply due range', { type: 'submit' }));
-  dueRangeForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const range = normalizeDueRange(dueFrom.value, dueThrough.value);
-    if (range.error) return showError(range.error);
+  const dueRangeForm = dueRangeControls((range) => {
     dueRange = range;
-    dueFrom.value = range.from;
-    dueThrough.value = range.through;
-    app.querySelector('[role="alert"]')?.remove();
     renderTasks();
   });
   const list = element('ul', '', { 'aria-label': 'Tasks', class: 'tasks' });
@@ -488,11 +562,7 @@ async function showTasks(projectId, archived) {
 
   function renderTasks() {
     const visible = tasks.filter((task) =>
-      (filter.value === 'Deleted' ? task.deleted : !task.deleted
-        && (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)))
-      && (priorityFilter.value === 'All' || task.priority === priorityFilter.value)
-      && matchesDueRange(task.dueDate, dueRange)
-      && matchesSearch(task.title, searchQuery));
+      matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange, searchQuery));
     list.replaceChildren(...visible.map((task) => {
       const row = element('li', '', { 'data-testid': 'task-row' });
       const readOnly = archived || Boolean(task.deleted);
@@ -568,6 +638,7 @@ async function showTasks(projectId, archived) {
 const projectRoute = window.location.pathname.match(/^\/projects\/(\d+)$/);
 try {
   if (projectRoute) await showProject(projectRoute[1]);
+  else if (window.location.pathname === '/task-directory') await showDirectory();
   else await showProjects();
 } catch (error) {
   showError(error.message);

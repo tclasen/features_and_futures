@@ -154,3 +154,14 @@ leave all saved data unchanged. `POST /api/projects/import` accepts
 `{ "name": "Copy name", "json": "<portable JSON text>" }` and returns the new
 project with HTTP 201, or HTTP 400 with `Invalid project JSON` or
 `Project name is required`.
+
+Task directory on the home page opens `/task-directory`, a read-only cross-project
+view. Project scope selects Active or Archived owners; Task filter, Priority
+filter, inclusive due range, and Directory search intersect without changing any
+saved data. Search matches task titles only with the same whitespace and ASCII
+case rules as project pages. Each opening resets all controls to their defaults.
+Rows show the original title and current owner, completion, priority, due date,
+and literal multiline notes; Open project opens the owner with default filters.
+Live and deleted tasks retain project creation order and saved task order.
+`GET /api/task-directory` returns all currently owned tasks, including archived
+and deleted records, with `projectId`, `projectName`, and Boolean `archived`.

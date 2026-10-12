@@ -1291,3 +1291,85 @@ test('home import has accessible inputs, retains rejected submissions, and opens
   await form.fire('submit');
   assert.equal(ui.window.location.href, '/projects/42');
 });
+
+test('directory intersects read-only filters, preserves literal fields, validates ranges and resets on opening', async () => {
+  const notes = '  😀\n<script>literal</script>\nEnd  ';
+  const tasks = [
+    { id: 1, projectId: 1, projectName: 'Owner match', archived: false, title: 'Match\t  One', completed: false, priority: 'High', dueDate: '2024-02-29', notes, deleted: false },
+    { id: 2, projectId: 1, projectName: 'Owner match', archived: false, title: 'Match Two', completed: true, priority: 'Low', dueDate: '', notes: '', deleted: false },
+    { id: 3, projectId: 2, projectName: 'Second', archived: false, title: 'Removed match', completed: true, priority: 'High', dueDate: '2024-03-01', notes, deleted: true },
+    { id: 4, projectId: 3, projectName: 'Archived', archived: true, title: 'Match Archive', completed: false, priority: 'High', dueDate: '2024-02-29', notes: '', deleted: false },
+    { id: 5, projectId: 3, projectName: 'Archived', archived: true, title: 'Removed archive', completed: true, priority: 'High', dueDate: '2024-03-01', notes, deleted: true },
+  ];
+  const respond = (path, options) => {
+    assert.equal(path, '/api/task-directory');
+    assert.equal(options, undefined);
+    return structuredClone(tasks);
+  };
+  const ui = await page('/task-directory', respond);
+  const rows = () => ui.rows('directory-task');
+  const field = (row, name) => find(row, (node) => node.attributes['data-testid'] === name)[0].textContent;
+  const titles = () => rows().map((row) => field(row, 'directory-task-title'));
+  for (const [id, label, options] of [
+    ['project-scope', 'Project scope', ['Active', 'Archived']],
+    ['task-filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted']],
+    ['priority-filter', 'Priority filter', ['All', 'Low', 'Normal', 'High']],
+  ]) {
+    const select = ui.byId(id);
+    assert.equal(select.value, options[0]);
+    assert.deepEqual(select.children.map((option) => option.textContent), options);
+    assert.equal(find(ui.app, (node) => node.attributes.for === id)[0].textContent, label);
+  }
+  assert.deepEqual(titles(), ['Match\t  One', 'Match Two']);
+  for (const [name, value] of [
+    ['directory-project-name', 'Owner match'], ['directory-task-completion', 'Open'],
+    ['directory-task-priority', 'High'], ['directory-task-due-date', '2024-02-29'], ['directory-task-notes', notes],
+  ]) assert.equal(field(rows()[0], name), value);
+  assert.equal(field(rows()[1], 'directory-task-due-date'), '');
+  assert.equal(find(ui.app, (node) => node.tag === 'textarea').length, 0);
+  assert.equal(find(rows()[0], (node) => ['input', 'select', 'textarea'].includes(node.tag)).length, 0);
+  assert.deepEqual(find(rows()[0], (node) => node.tag === 'button').map((node) => node.textContent), ['Open project']);
+  await applySearch(ui, 'directory', '  MATCH \t ONE ');
+  assert.deepEqual(titles(), ['Match\t  One']);
+  await applySearch(ui, 'directory', 'literal');
+  assert.equal(rows().length, 0); // Notes never match.
+  await applySearch(ui, 'directory', 'Owner');
+  assert.equal(rows().length, 0); // Owner names never match.
+  await applySearch(ui, 'directory', 'match');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  await applyDueRange(ui, ' 2024-02-29 ', '2024-03-01');
+  assert.deepEqual(titles(), ['Match\t  One']);
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  assert.equal(rows().length, 0);
+  ui.byId('task-filter').value = 'Deleted';
+  await ui.byId('task-filter').fire('change');
+  assert.deepEqual(titles(), ['Removed match']);
+  const before = rows();
+  await applyDueRange(ui, '1900-02-29', '');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Due range must use valid YYYY-MM-DD dates');
+  assert.deepEqual(rows(), before);
+  await applyDueRange(ui, '2024-03-02', '2024-03-01');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Due from must not be after Due through');
+  assert.deepEqual(rows(), before);
+  ui.byId('project-scope').value = 'Archived';
+  await ui.byId('project-scope').fire('change');
+  assert.equal(rows().length, 0); // The applied search still excludes this task.
+  await applySearch(ui, 'directory', '');
+  assert.deepEqual(titles(), ['Removed archive']);
+  assert.equal(ui.byId('task-filter').value, 'Deleted');
+  assert.equal(ui.byId('priority-filter').value, 'High');
+  await ui.button('Open project').fire('click');
+  assert.equal(ui.window.location.href, '/projects/3');
+  await ui.button('Projects').fire('click');
+  assert.equal(ui.window.location.href, '/');
+  assert.equal(ui.calls.length, 1);
+  const reopened = await page('/task-directory', respond);
+  for (const [id, value] of [['project-scope', 'Active'], ['task-filter', 'All'], ['priority-filter', 'All'], ['due-from', ''], ['due-through', ''], ['directory-search', '']]) {
+    assert.equal(reopened.byId(id).value, value);
+  }
+  const home = await page('/', () => []);
+  await home.button('Task directory').fire('click');
+  assert.equal(home.window.location.href, '/task-directory');
+});
