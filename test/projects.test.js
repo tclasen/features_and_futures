@@ -67,6 +67,72 @@ function projectRows(html) {
   }));
 }
 
+test('rename preserves project identity, tasks and summaries and respects archive state', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path = '/') => (await fetch(`${server.baseUrl}${path}`)).text();
+    await create(server.baseUrl, 'Original');
+    await create(server.baseUrl, 'Second');
+    const originalProjects = projectRows(await get());
+    const path = originalProjects[0].path;
+    await post(server.baseUrl, `${path}/tasks`, { title: 'Done' });
+    await post(server.baseUrl, `${path}/tasks`, { title: 'Open' });
+    await post(server.baseUrl, taskRows(await get(path))[0].path, { completed: '1' });
+    const originalTasks = taskRows(await get(path));
+    let html = await get(path);
+    assert.match(html, /<label for="new-project-name">New project name<\/label>/);
+    assert.match(html, /<button type="submit">Rename project<\/button>/);
+    for (const name of ['', ' \t\n ']) {
+      const invalid = await post(server.baseUrl, `${path}/rename`, { name });
+      assert.equal(invalid.status, 400);
+      html = await invalid.text();
+      assert.match(html, /role="alert">Project name is required/);
+      assert.match(html, /<h1>Original<\/h1>/);
+      assert.deepEqual(projectRows(await get()), originalProjects);
+    }
+    assert.equal((await post(server.baseUrl, '/projects/99999/rename', { name: 'Missing' })).status, 404);
+    const renamed = await post(server.baseUrl, `${path}/rename`, { name: '  Renamed <board>  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), `${path}?filter=Completed`);
+    assert.match(await get(path), /<h1>Renamed &lt;board&gt;<\/h1>/);
+    const expectedProjects = [{ name: 'Renamed &lt;board&gt;', path }, originalProjects[1]];
+    assert.deepEqual(projectRows(await get()), expectedProjects);
+    assert.deepEqual(taskRows(await get(path)), originalTasks);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(projectRows(await get()), expectedProjects);
+    assert.match(await get(path), /<h1>Renamed &lt;board&gt;<\/h1>/);
+    assert.deepEqual(taskRows(await get(path)), originalTasks);
+    await post(server.baseUrl, `${path}/archive`, {});
+    html = await get(path);
+    assert.match(html, /id="new-project-name" name="name" type="text" disabled/);
+    assert.match(html, /<button type="submit" disabled>Rename project<\/button>/);
+    assert.equal((await post(server.baseUrl, `${path}/rename`, { name: 'Blocked' })).status, 409);
+    assert.deepEqual(projectRows(await get('/?filter=Archived')), [expectedProjects[0]]);
+    await post(server.baseUrl, `${path}/restore`, {});
+    html = await get(path);
+    assert.doesNotMatch(html, / disabled/);
+    assert.equal((await post(server.baseUrl, `${path}/rename`, { name: 'Restored name' })).status, 303);
+    assert.match(await get(path), /<h1>Restored name<\/h1>/);
+    assert.deepEqual(taskRows(await get(path)), originalTasks);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(projectRows(await get()), [{ name: 'Restored name', path }, originalProjects[1]]);
+    assert.deepEqual(taskRows(await get(path)), originalTasks);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('projects validate, render safely, retain order and persist after restart', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const databasePath = join(directory, 'nested', 'projects.sqlite');
