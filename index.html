@@ -48,8 +48,16 @@
       if (!response.ok) throw new Error(data.error || 'Request failed');
       return data;
     };
+    const requestProjectArchive = async (projectId, archived) => {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
 
-    function renderList(projects) {
+    function renderList(projects, selectedFilter = 'Active') {
       app.replaceChildren();
       const heading = document.createElement('h1');
       heading.textContent = 'Workboard';
@@ -83,7 +91,25 @@
         }
       });
       app.append(form, alert);
-      for (const project of projects) {
+      const filterField = document.createElement('div');
+      filterField.className = 'filter';
+      const filterLabel = document.createElement('label');
+      filterLabel.htmlFor = 'project-filter';
+      filterLabel.textContent = 'Project filter';
+      const filter = document.createElement('select');
+      filter.id = 'project-filter';
+      for (const value of ['Active', 'Archived']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        option.selected = value === selectedFilter;
+        filter.append(option);
+      }
+      filterField.append(filterLabel, filter);
+      app.append(filterField);
+      const visibleProjects = projects.filter((project) => project.archived === (filter.value === 'Archived'));
+      filter.addEventListener('change', () => renderList(projects, filter.value));
+      for (const project of visibleProjects) {
         const row = document.createElement('section');
         row.dataset.testid = 'project-row';
         row.className = 'project-row';
@@ -96,7 +122,22 @@
           history.pushState({}, '', `/projects/${project.id}`);
           render();
         });
-        row.append(name, open);
+        const summary = document.createElement('span');
+        summary.dataset.testid = 'project-summary';
+        summary.textContent = `${project.completed_count}/${project.total_count} completed`;
+        const archive = document.createElement('button');
+        archive.type = 'button';
+        archive.textContent = project.archived ? 'Restore project' : 'Archive project';
+        archive.addEventListener('click', async () => {
+          try {
+            await requestProjectArchive(project.id, !project.archived);
+            renderList(await requestProjects(), filter.value);
+          } catch (error) {
+            alert.textContent = error.message;
+            alert.hidden = false;
+          }
+        });
+        row.append(name, summary, open, archive);
         app.append(row);
       }
     }
@@ -120,6 +161,11 @@
       heading.textContent = project ? project.name : 'Project not found';
       app.append(heading);
       if (!project) return;
+      if (project.archived) {
+        const archivedNotice = document.createElement('p');
+        archivedNotice.textContent = 'Archived project';
+        app.append(archivedNotice);
+      }
 
       const alert = document.createElement('p');
       alert.className = 'alert';
@@ -139,6 +185,7 @@
       const submit = document.createElement('button');
       submit.type = 'submit';
       submit.textContent = 'Create task';
+      submit.disabled = project.archived;
       form.append(field, submit);
       app.append(form);
 
@@ -170,6 +217,7 @@
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = task.completed;
+          checkbox.disabled = project.archived;
           checkbox.setAttribute('aria-label', `Complete ${task.title}`);
           checkbox.addEventListener('change', async () => {
             try {

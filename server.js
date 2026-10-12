@@ -8,8 +8,14 @@ const root = dirname(fileURLToPath(import.meta.url));
 const database = new DatabaseSync(process.env.DB_PATH || join(root, 'workboard.sqlite'));
 database.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 )`);
+// Upgrade databases created by earlier checkpoints without disturbing project IDs.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -36,7 +42,27 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 200, { status: 'ok' });
   }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    return sendJson(response, 200, database.prepare('SELECT id, name FROM projects ORDER BY id').all());
+    return sendJson(response, 200, database.prepare(`
+      SELECT p.id, p.name, p.archived, COUNT(t.id) AS total_count,
+        COALESCE(SUM(t.completed), 0) AS completed_count
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id
+    `).all().map((project) => ({
+      ...project,
+      archived: Boolean(project.archived),
+      total_count: Number(project.total_count),
+      completed_count: Number(project.completed_count)
+    })));
+  }
+  const projectArchive = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectArchive && request.method === 'PATCH') {
+    const projectId = Number(projectArchive[1]);
+    let body;
+    try { body = await readJson(request); } catch { return sendJson(response, 400, { error: 'Invalid request body' }); }
+    if (typeof body?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archive state is required' });
+    const result = database.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.archived), projectId);
+    if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+    return sendJson(response, 200, { id: projectId, archived: body.archived });
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     let body;
@@ -53,13 +79,14 @@ const server = createServer(async (request, response) => {
   const projectTasks = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks$/);
   if (projectTasks) {
     const projectId = Number(projectTasks[1]);
-    const project = database.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+    const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
       const tasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (request.method === 'POST') {
+      if (project.archived) return sendJson(response, 400, { error: 'Archived projects cannot be changed' });
       let body;
       try {
         body = await readJson(request);
@@ -76,6 +103,9 @@ const server = createServer(async (request, response) => {
   if (taskCompletion && request.method === 'PATCH') {
     const projectId = Number(taskCompletion[1]);
     const taskId = Number(taskCompletion[2]);
+    const project = database.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived projects cannot be changed' });
     let body;
     try {
       body = await readJson(request);
