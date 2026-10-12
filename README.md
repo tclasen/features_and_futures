@@ -59,8 +59,9 @@ task order is retained during migration; new tasks follow reserved positions eve
 when their previous occupants are elsewhere.
 Project search and Search projects apply a trimmed substring query intersecting
 Active/Archived filtering. Task search and Search tasks intersect completion,
-priority, and due-range filters. Searches ignore ASCII letter case only and retain
-internal whitespace. Applied queries survive filtering and edits, with immediate
+priority, and due-range filters. Searches ignore ASCII letter case and collapse
+runs of ASCII spaces and horizontal tabs to one space for matching only. Stored
+names and titles retain their original whitespace and case. Applied queries survive filtering and edits, with immediate
 membership updates; summaries still count all tasks. Search remains available in
 archived projects. Opening the list via Projects or opening a project from the
 list starts with an empty query.
@@ -97,7 +98,8 @@ invalid and archived moves, source filter retention, summaries, repeated moves,
 new-task ordering, preserved task data, and restart persistence. Return-order tests
 cover reverse returns, empty projects with reserved positions, first arrivals,
 project renaming, archive/restore, and current edited values across restarts.
-Search tests cover ASCII-only case matching, significant internal whitespace,
+Search tests cover ASCII-only case matching, space/tab run normalization without
+rewriting stored text, significant non-ASCII whitespace,
 combined filters, rendered form state, query retention through edits and invalid
 ranges, movement/return order, archived search, initial empty queries, unchanged
 summaries, and restart persistence.

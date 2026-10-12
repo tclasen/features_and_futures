@@ -123,7 +123,9 @@ function readRange(params, prefix = 'due') {
 }
 const searchQuery = params => (params.get('search') || '').trim();
 const asciiLower = value => value.replace(/[A-Z]/g, letter => letter.toLowerCase());
-const matchesSearch = (value, query) => asciiLower(value).includes(asciiLower(query));
+// Normalize only for matching; stored and displayed text remains untouched.
+const normalizeSearch = value => asciiLower(value).replace(/[ \t]+/g, ' ');
+const matchesSearch = (value, query) => normalizeSearch(value).includes(normalizeSearch(query));
 const searchField = query => `<input type="hidden" name="search" value="${escapeHtml(query)}">`;
 const projectsLocation = (filter, query) => query
   ? `/?filter=${filter}&search=${encodeURIComponent(query)}`

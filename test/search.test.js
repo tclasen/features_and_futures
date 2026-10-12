@@ -35,7 +35,7 @@ test('search intersects filters and survives edits, movement, archive, and resta
     await start();
     for (const name of ['Alpha  Space', 'ALPHA Space', 'Other', 'Ä']) await post('/projects', { name });
     assert.deepEqual(rows(await get('/?search=+alpha+'), 'project'), ['Alpha  Space', 'ALPHA Space']);
-    assert.deepEqual(rows(await get('/?search=alpha++space'), 'project'), ['Alpha  Space']);
+    assert.deepEqual(rows(await get('/?search=alpha++space'), 'project'), ['Alpha  Space', 'ALPHA Space']);
     assert.deepEqual(rows(await get('/?search=%C3%A4'), 'project'), []);
     let html = await get('/?search=alpha');
     let response = await post('/projects/1/archive', fields(html, '/projects/1/archive'));
@@ -54,6 +54,7 @@ test('search intersects filters and survives edits, movement, archive, and resta
     html = await get(location);
     assert.deepEqual(rows(html, 'task'), ['Find First', 'Find  Third']);
     assert.deepEqual(rows(await get('/projects/1?search=find++third'), 'task'), ['Find  Third']);
+    assert.deepEqual(rows(await get('/projects/1?search=+FIND%09+third+'), 'task'), ['Find  Third']);
     for (const [action, extra] of [
       ['/projects/1/rename', { name: 'Renamed' }],
       ['/projects/1/default-priority', { priority: 'Low' }],
@@ -100,6 +101,29 @@ test('search intersects filters and survives edits, movement, archive, and resta
     assert.ok(html.includes('id="task-search" name="search" type="text" value=""'));
     assert.ok((await get('/')).includes('1/5 completed'));
     assert.deepEqual(await (await fetch(base + '/health')).json(), { status: 'ok' });
+
+    // Normalize spaces/tabs on both sides, not other internal whitespace or data.
+    const originals = ['MiXeD \t  Spacing', 'Mixed Spacing', 'Mixed\u00a0Spacing', 'Mixed\nSpacing'];
+    for (const name of originals) await post('/projects', { name });
+    for (const title of originals) await post('/projects/5/tasks', { title });
+    const matching = originals.slice(0, 2);
+    const query = encodeURIComponent(' \t MIXED\t \tspacing \t ');
+    const projectSearch = `/?search=${query}`;
+    const taskSearch = `/projects/5?search=${query}`;
+    for (let pass = 0; pass < 2; pass++) {
+      assert.deepEqual(rows(await get(projectSearch), 'project'), matching);
+      assert.deepEqual(rows(await get(taskSearch), 'task'), matching);
+      assert.ok((await get('/projects/5')).includes(`<h1>${originals[0]}</h1>`));
+      const unfiltered = await get('/projects/5');
+      for (const title of originals) assert.ok(unfiltered.includes(`<span>${title}</span>`));
+      assert.deepEqual(rows(await get('/?search=mixed%20spacing&filter=Archived'), 'project'), []);
+      if (pass === 0) { await stop(); await start(); }
+    }
+    await post('/projects/5/archive');
+    assert.deepEqual(rows(await get(`/?filter=Archived&search=${query}`), 'project'), [originals[0]]);
+    assert.deepEqual(rows(await get(taskSearch), 'task'), matching);
+    await post('/projects/5/restore');
+    assert.deepEqual(rows(await get(taskSearch), 'task'), matching);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
