@@ -21,6 +21,12 @@ database.exec(`
   )
 `);
 
+// Add persistent priorities to databases created by earlier versions of Workboard.
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+
 // Add the archive flag to databases created by earlier versions of Workboard.
 const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
 if (!projectColumns.some((column) => column.name === 'archived')) {
@@ -38,10 +44,11 @@ const findProject = database.prepare('SELECT id, name, archived FROM projects WH
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, value) {
@@ -141,8 +148,14 @@ const server = createServer(async (request, response) => {
     try {
       if (findProject.get(projectId).archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
       const payload = await readJson(request);
-      if (typeof payload.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
-      const result = updateTaskCompletion.run(payload.completed ? 1 : 0, taskId, projectId);
+      let result;
+      if (typeof payload.completed === 'boolean') {
+        result = updateTaskCompletion.run(payload.completed ? 1 : 0, taskId, projectId);
+      } else if (['Low', 'Normal', 'High'].includes(payload.priority)) {
+        result = updateTaskPriority.run(payload.priority, taskId, projectId);
+      } else {
+        return sendJson(response, 400, { error: 'A valid completion or priority is required' });
+      }
       if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, findTask.get(taskId, projectId));
     } catch {
