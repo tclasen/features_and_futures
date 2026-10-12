@@ -111,10 +111,12 @@
         let project;
         try {
           const response = await fetch('/api/projects');
-          project = (await response.json()).find(item => item.id === decodeURIComponent(match[1]));
+          const projects = await response.json();
+          project = projects.find(item => item.id === decodeURIComponent(match[1]));
+          if (project) project._destinationProjects = projects.filter(item => !item.archived && item.id !== project.id);
         } catch {}
         if (!project) { history.replaceState({}, '', '/'); return render(); }
-        const destinationProjects = (await (await fetch('/api/projects')).json()).filter(item => !item.archived && item.id !== project.id);
+        const destinationProjects = project._destinationProjects;
         app.innerHTML = `<button id="back" type="button">Projects</button> <button id="download-project" type="button">Download project</button><h1>${escapeHtml(project.name)}</h1>
           ${project.archived ? '<p>Archived project</p>' : ''}
           <form id="rename-form" novalidate>
@@ -174,6 +176,7 @@
         const filter = document.querySelector('#task-filter');
         const priorityFilter = document.querySelector('#priority-filter');
         const defaultPriority = document.querySelector('#default-task-priority');
+        let taskRefreshSequence = 0;
         let appliedTaskQuery = '';
         document.querySelector('#task-search-form').addEventListener('submit', event => {
           event.preventDefault();
@@ -209,8 +212,10 @@
           await fetch(`/api/projects/${encodeURIComponent(project.id)}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ defaultPriority: defaultPriority.value }) });
         });
         async function refreshTasks() {
+          const sequence = ++taskRefreshSequence;
           const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/tasks`);
           const allTasks = await response.json();
+          if (sequence !== taskRefreshSequence) return;
           const visible = allTasks.filter(task =>
             (filter.value === 'Deleted' ? !!task.deleted : !task.deleted && (filter.value === 'All' || (filter.value === 'Open' ? !task.completed : !!task.completed))) &&
             (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
