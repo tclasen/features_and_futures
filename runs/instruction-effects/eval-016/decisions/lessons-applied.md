@@ -123,3 +123,9 @@ L062 publication002 PM transport recovery verified: initial restricted GitHub DN
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L069 archive-first task021 recovery verified: five identical b004 diagnostics, all twenty-four original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt025 start. Effective task021 repair remains pending; no comparison change or implementation hint.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 task021 recovery outcome: verified own020 restoration did not establish a behavioral fix; original025 fails011date and073Unicode ordering. Native/publication025 histories independently restored and026starts from rejected025commit. Active026 remains unassessed; no PM implementation or comparison change. Evidence: preflight/task021-recovery-outcome004.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
