@@ -72,6 +72,9 @@ const listProjects = database.prepare(`
   WHERE p.archived = ? GROUP BY p.id ORDER BY p.id
 `);
 const findProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
+const exportProjectTasks = database.prepare(`SELECT t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
+  FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
+  WHERE t.project_id = ? ORDER BY p.position`);
 const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
@@ -153,6 +156,33 @@ async function handleRequest(request, response) {
 
   if (request.method === 'GET' && url.pathname === '/health') {
     return sendJson(response, 200, { status: 'ok' });
+  }
+  const projectExportMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/export$/);
+  if (request.method === 'GET' && projectExportMatch) {
+    const project = findProject.get(Number(projectExportMatch[1]));
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.default_task_priority || 'Normal',
+        tasks: exportProjectTasks.all(project.id).map((task) => ({
+          title: task.title,
+          completed: Boolean(task.completed),
+          priority: task.priority || 'Normal',
+          dueDate: task.due_date || '',
+          notes: (task.notes || '').replace(/\r\n?/g, '\n'),
+          deleted: Boolean(task.deleted),
+        })),
+      },
+    };
+    response.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="workboard-project.json"',
+    });
+    return response.end(JSON.stringify(document));
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     return sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
