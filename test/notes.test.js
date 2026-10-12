@@ -47,7 +47,8 @@ test('notes migrate, preserve plain text and filters, travel with tasks, and res
     const notesValue = (html) => html.match(/<textarea[^>]*>\n([\s\S]*?)<\/textarea>/)?.[1];
     assert.equal(notesValue(await get('/projects/1')), '');
     await post('/projects/1/tasks', { title: 'Second' });
-    const notes = '\n  Unicode: café 😀\n<script>alert("x")</script> & </textarea>\n  ';
+    // Native browser form submissions serialize textarea line breaks as CRLF.
+    const notes = '\r\n  Unicode: café 😀\r\n<script>alert("x")</script> & </textarea>\r\n  ';
     const filters = { filter: 'Completed', priorityFilter: 'Normal', dueFrom: '2024-01-01', dueThrough: '2024-12-31', search: 'original' };
     await post('/projects/1/tasks/1/due-date', { dueDate: '2024-06-01' });
     const saved = await post('/projects/1/tasks/1/notes', { notes, ...filters });

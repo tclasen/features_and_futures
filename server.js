@@ -314,7 +314,7 @@ function renderProjectPage(project, filter = 'All', error = '', priority = 'All'
           <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
             ${filterFields}
             <label for="task-notes-${task.id}">Task notes</label>
-            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>\n${escapeHtml(task.notes).replace(/\n/g, '&#10;')}</textarea>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>\n${escapeHtml(task.notes).replace(/\r\n?|\n/g, '&#10;')}</textarea>
             <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
           </form>
           <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
