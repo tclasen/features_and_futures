@@ -40,6 +40,7 @@ async function loadProjects() {
 async function showRoute() {
   const match = location.pathname.match(/^\/projects\/(\d+)\/?$/);
   if (!match) {
+    activeProjectId = null;
     listSection.hidden = false;
     detailSection.hidden = true;
     await loadProjects();
@@ -51,6 +52,10 @@ async function showRoute() {
   if (!project) {
     navigate('/', true);
     return;
+  }
+  if (String(activeProjectId) !== match[1]) {
+    document.querySelector('#task-filter').value = 'All';
+    document.querySelector('#priority-filter').value = 'All';
   }
   document.querySelector('#detail-name').textContent = project.name;
   document.querySelector('#archived-notice').hidden = !project.archived;
