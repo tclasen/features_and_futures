@@ -48,9 +48,11 @@ summaries, schema migration, and restart persistence.
 Moves preserve task identity and all saved attributes, independently of destination defaults.
 Each project remembers task positions even while tasks are elsewhere; new tasks and first
 arrivals follow all previously established positions. Migration preserves current task order.
-Project and task searches use trimmed, ASCII-case-insensitive substrings and intersect
-all existing filters without changing saved data or summary counts. Applied queries
+Project and task searches use trimmed, ASCII-case-insensitive substrings, collapsing
+runs of ASCII spaces and horizontal tabs in queries and names/titles for matching only.
+They intersect all existing filters without changing saved text, data or summary counts. Applied queries
 are retained through filtering and edits; list/project navigation starts with empty queries.
-Search tests cover internal whitespace, non-ASCII case sensitivity, HTML/URL escaping,
+Search tests cover space/tab normalization, original-text preservation, non-ASCII
+case and whitespace sensitivity, HTML/URL escaping,
 filter intersections, edit-driven membership, validation, movement and return order,
 archived searching, and restart persistence of task data.

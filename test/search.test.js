@@ -45,7 +45,7 @@ test('ASCII substring searches intersect filters, survive edits and reset on nav
     }
     await post('/projects/3/archive');
     assert.deepEqual(projectNames(await get('/?search=%20aLPHa%20')), ['Alpha  Team', 'alpha Team']);
-    assert.deepEqual(projectNames(await get('/?search=alpha%20%20team')), ['Alpha  Team']);
+    assert.deepEqual(projectNames(await get('/?search=alpha%20%20team')), ['Alpha  Team', 'alpha Team']);
     assert.deepEqual(projectNames(await get('/?search=%C3%A4lpha')), []);
     assert.deepEqual(projectNames(await get('/?search=%C3%84lpha')), ['Älpha']);
     assert.deepEqual(projectNames(await get('/?filter=Archived&search=ALPHA')), ['ALPHA archive']);
@@ -148,6 +148,55 @@ test('ASCII substring searches intersect filters, survive edits and reset on nav
     assert.ok(special.headers.get('location').endsWith('&search=%26%22%3C%2B'));
     body = await get(special.headers.get('location'));
     assert.match(body, /name="search" value="&amp;&quot;&lt;\+"/);
+
+    // Space/tab runs normalize on both sides without rewriting displayed or saved text.
+    const names = ['MiXeD \t\t  Team', 'mixed Team', 'mixed\u00a0Team'];
+    const ids = [];
+    for (const name of names) {
+      const response = await post('/projects', { name });
+      // Newly created projects redirect to the list; discover their stable IDs there.
+      assert.equal(response.status, 303);
+    }
+    body = await get('/');
+    for (const match of body.matchAll(/data-testid="project-row">\s*<span>(mixed[^<]*|MiXeD[^<]*)<\/span>[\s\S]*?action="\/projects\/(\d+)"/g)) {
+      ids.push(match[2]);
+    }
+    assert.equal(ids.length, 3);
+    const source = ids[0];
+    const destination = ids[1];
+    const query = encodeURIComponent(' \tmIXed\t  \tteam\t ');
+    assert.deepEqual(projectNames(await get('/?search=' + query)), names.slice(0, 2));
+    assert.deepEqual(projectNames(await get('/?search=mixed%20team')), names.slice(0, 2));
+    assert.deepEqual(projectNames(await get('/?search=mixed%C2%A0team')), [names[2]]);
+    const title = 'WoRk\t \t  Item';
+    await post(`/projects/${source}/tasks`, { title });
+    body = await get(`/projects/${source}`);
+    const taskId = body.match(/action="\/projects\/\d+\/tasks\/(\d+)"/)[1];
+    await post(`/projects/${source}/tasks/${taskId}/priority`, { priority: 'High' });
+    await post(`/projects/${source}/tasks/${taskId}/due-date`, { dueDate: '2024-02-29' });
+    const normalizedState = { filter: 'Open', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-02-29', search: 'work\t  item' };
+    const normalizedLocation = `/projects/${source}?${new URLSearchParams(normalizedState)}`.replaceAll('+', '%20');
+    assert.deepEqual(rows(await get(normalizedLocation)), [title]);
+    assert.deepEqual(rows(await get(`/projects/${source}?search=work%20item`)), [title]);
+    const renamed = 'WORK  \tItem revised';
+    const rename = await post(`/projects/${source}/tasks/${taskId}/rename`, { ...normalizedState, title: renamed });
+    assert.equal(rename.headers.get('location'), normalizedLocation);
+    assert.deepEqual(rows(await get(normalizedLocation)), [renamed]);
+    await post(`/projects/${source}/tasks/${taskId}/move`, { ...normalizedState, destination });
+    assert.deepEqual(rows(await get(normalizedLocation)), []);
+    await post(`/projects/${destination}/tasks/${taskId}/move`, { destination: source });
+    assert.deepEqual(rows(await get(normalizedLocation)), [renamed]);
+    await post(`/projects/${source}/archive`);
+    assert.deepEqual(projectNames(await get('/?filter=Archived&search=' + query)), [names[0]]);
+    assert.deepEqual(rows(await get(normalizedLocation)), [renamed]);
+    await stop();
+    await start();
+    assert.deepEqual(rows(await get(normalizedLocation)), [renamed]);
+    assert.deepEqual(rows(await get(`/projects/${source}`)), [renamed]);
+    assert.deepEqual(projectNames(await get('/?filter=Archived&search=' + query)), [names[0]]);
+    await post(`/projects/${source}/restore`);
+    assert.deepEqual(projectNames(await get('/?search=' + query)), names.slice(0, 2));
+    assert.deepEqual(projectNames(await get('/')).slice(-3), names);
   } finally {
     if (child) await stop();
     await rm(directory, { recursive: true, force: true });
