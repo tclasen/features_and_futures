@@ -73,7 +73,12 @@ async function projectPage(archived = false, dates = [], destinations = [], init
     task.deleted = initialDeleted[index] ?? false;
   });
   const app = new Element('main');
-  const document = { querySelector: () => app, createElement: (tag) => new Element(tag) };
+  const downloads = [];
+  const document = { querySelector: () => app, createElement: (tag) => {
+    const element = new Element(tag);
+    if (tag === 'a') element.click = () => downloads.push({ href: element.href, download: element.download });
+    return element;
+  } };
   const writes = [];
   const fetch = async (path, options) => {
     if (options) {
@@ -120,8 +125,35 @@ async function projectPage(archived = false, dates = [], destinations = [], init
   const rows = () => app.querySelector('#tasks').children;
   const titles = () => rows().map((row) => row.children[0].textContent);
   const select = async (element, value) => { element.value = value; await element.fire('change'); };
-  return { app, completion, priority, rows, titles, select, tasks, writes, project };
+  return { app, completion, priority, rows, titles, select, tasks, writes, project, downloads };
 }
+
+test('Download project stays enabled and preserves page controls for active and archived projects', async () => {
+  for (const archived of [false, true]) {
+    const page = await projectPage(archived, ['2024-03-01'], [], [], ['Exact notes'], [true]);
+    const { app, completion, priority, select, downloads, tasks, project } = page;
+    await select(completion, 'deleted');
+    await select(priority, 'Low');
+    await applyRange(page, '2024-03-01', '2024-03-01');
+    await searchTasks(page, 'Low open');
+    const beforeTasks = structuredClone(tasks);
+    const beforeProject = structuredClone(project);
+    const download = app.querySelectorAll('button').find((button) => button.textContent === 'Download project');
+    assert.equal(download.type, 'button');
+    assert.equal(download.disabled, false);
+    await download.fire('click');
+    assert.deepEqual(downloads, [{ href: '/api/projects/1/export', download: 'workboard-project.json' }]);
+    assert.equal(completion.value, 'deleted');
+    assert.equal(priority.value, 'Low');
+    assert.equal(app.querySelector('#due-from').value, '2024-03-01');
+    assert.equal(app.querySelector('#due-through').value, '2024-03-01');
+    assert.equal(app.querySelector('#task-search').value, 'Low open');
+    assert.deepEqual(page.titles(), ['Low open']);
+    assert.deepEqual(tasks, beforeTasks);
+    assert.deepEqual(project, beforeProject);
+    assert.deepEqual(page.writes, []);
+  }
+});
 
 test('completion and priority filters intersect in creation order, including archived projects', async () => {
   for (const archived of [false, true]) {

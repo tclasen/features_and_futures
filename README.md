@@ -83,3 +83,11 @@ due range and title search controls. Summaries count only live tasks. Deleted ro
 show saved data with editing and movement disabled until restoration. Archived
 projects also disable deletion and restoration. Database upgrades keep existing
 tasks live.
+
+Every project page offers Download project, including archived projects. It downloads
+UTF-8 JSON as `workboard-project.json` with format `workboard-project`, version 1,
+and the current project name, archive state, default priority, and all live and
+deleted tasks in stored order. Exports include task title, completion, priority,
+due date, notes and deletion state, independently of page filters. Notes line
+breaks use LF in the portable document; exporting leaves saved data and page
+controls unchanged.

@@ -489,6 +489,16 @@ async function render() {
       const project = await request(`/api/projects/${projectPath[1]}`);
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = 'Download project';
+      download.addEventListener('click', () => {
+        const link = document.createElement('a');
+        link.href = `/api/projects/${project.id}/export`;
+        link.download = 'workboard-project.json';
+        link.click();
+      });
+      app.append(download);
       if (project.archived) {
         const notice = document.createElement('p');
         notice.textContent = 'Archived project';
