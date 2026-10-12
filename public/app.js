@@ -10,13 +10,17 @@ let appliedDueRange = { from: '', through: '' };
 let appliedProjectQuery = '';
 let appliedTaskQuery = '';
 
+function normalizeSearch(value) {
+  return value.replace(/[ \\t]+/g, ' ').toLowerCase();
+}
+
 async function loadProjects() {
   const response = await fetch('/api/projects');
   if (!response.ok) throw new Error('Could not load projects');
   const projects = await response.json();
   projectContainer.replaceChildren();
   const filter = document.querySelector('#project-filter').value;
-  for (const project of projects.filter(p => Boolean(p.archived) === (filter === 'Archived') && p.name.toLowerCase().includes(appliedProjectQuery))) {
+  for (const project of projects.filter(p => Boolean(p.archived) === (filter === 'Archived') && normalizeSearch(p.name).includes(appliedProjectQuery))) {
     const row = document.createElement('div');
     row.className = 'project-row';
     row.dataset.testid = 'project-row';
@@ -124,7 +128,7 @@ function renderTasks() {
   const priorityFilter = document.querySelector('#priority-filter').value;
   taskContainer.replaceChildren();
   for (const task of projectTasks) {
-    if (!task.title.toLowerCase().includes(appliedTaskQuery)) continue;
+    if (!normalizeSearch(task.title).includes(appliedTaskQuery)) continue;
     if ((filter === 'Open' && task.completed) || (filter === 'Completed' && !task.completed)) continue;
     if (priorityFilter !== 'All' && task.priority !== priorityFilter) continue;
     if ((appliedDueRange.from || appliedDueRange.through) && !task.dueDate) continue;
@@ -279,11 +283,11 @@ document.querySelector('#apply-due-range').addEventListener('click', () => {
 });
 document.querySelector('#project-filter').addEventListener('change', loadProjects);
 document.querySelector('#search-projects').addEventListener('click', () => {
-  appliedProjectQuery = document.querySelector('#project-search').value.trim().toLowerCase();
+  appliedProjectQuery = normalizeSearch(document.querySelector('#project-search').value.trim());
   loadProjects();
 });
 document.querySelector('#search-tasks').addEventListener('click', () => {
-  appliedTaskQuery = document.querySelector('#task-search').value.trim().toLowerCase();
+  appliedTaskQuery = normalizeSearch(document.querySelector('#task-search').value.trim());
   renderTasks();
 });
 document.querySelector('#task-form').addEventListener('submit', async event => {
