@@ -68,13 +68,17 @@ export function createApplication(dbPath) {
   if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'archived')) {
     db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
   }
-  // Backfill older tasks with the same default used for new tasks.
+  // Project defaults affect only subsequent task creation, never existing tasks.
+  if (!db.prepare('PRAGMA table_info(projects)').all().some(column => column.name === 'default_priority')) {
+    db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_priority IN ('Low', 'Normal', 'High'))");
+  }
+  // Backfill older tasks with Normal regardless of their project's default.
   if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
     db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
   }
   const priorities = ['Low', 'Normal', 'High'];
   const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-  const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
+  const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
   const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
@@ -82,7 +86,8 @@ export function createApplication(dbPath) {
     COUNT(t.id) AS total, COALESCE(SUM(t.completed), 0) AS completed
     FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
     WHERE p.archived = ? GROUP BY p.id ORDER BY p.id`);
-  const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
+  const findProject = db.prepare('SELECT id, name, archived, default_priority FROM projects WHERE id = ?');
+  const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
   const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
   const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
@@ -127,6 +132,13 @@ export function createApplication(dbPath) {
         <label for="new-project-name">New project name</label>
         <input id="new-project-name" name="name" value="${escapeHtml(project.name)}"${project.archived ? ' disabled' : ''}>
         <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </form>
+      <form class="filter" method="post" action="/projects/${project.id}/default-priority">
+        ${filterFields}
+        <label for="default-task-priority">Default task priority</label>
+        <select id="default-task-priority" name="priority"${project.archived ? ' disabled' : ''} data-auto-submit>
+          ${priorities.map(value => `<option${project.default_priority === value ? ' selected' : ''}>${value}</option>`).join('')}
+        </select>
       </form>
       <form class="create" method="post" action="/projects/${project.id}/tasks">
         ${filterFields}
@@ -237,7 +249,7 @@ export function createApplication(dbPath) {
         }
         sendHtml(200, projectPage(project, taskFilter(url.searchParams.get('filter')),
           priorityFilterValue(url.searchParams.get('priorityFilter'))));
-      } else if (request.method === 'POST' && /^\/projects\/\d+\/rename$/.test(pathname)) {
+      } else if (request.method === 'POST' && /^\/projects\/\d+\/(rename|default-priority)$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
         if (!project) {
@@ -251,12 +263,21 @@ export function createApplication(dbPath) {
           sendHtml(403, projectPage(project, filter, priorityFilter, 'Archived projects cannot be changed'));
           return;
         }
-        const name = (body.get('name') ?? '').trim();
-        if (!name) {
-          sendHtml(400, projectPage(project, filter, priorityFilter, 'Project name is required'));
-          return;
+        if (pathname.endsWith('/default-priority')) {
+          const priority = body.get('priority');
+          if (!priorities.includes(priority)) {
+            sendHtml(400, projectPage(project, filter, priorityFilter, 'Invalid task priority'));
+            return;
+          }
+          setDefaultPriority.run(priority, id);
+        } else {
+          const name = (body.get('name') ?? '').trim();
+          if (!name) {
+            sendHtml(400, projectPage(project, filter, priorityFilter, 'Project name is required'));
+            return;
+          }
+          renameProject.run(name, id);
         }
-        renameProject.run(name, id);
         response.writeHead(303, { Location: projectLocation(id, filter, priorityFilter) });
         response.end();
       } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+\/(?:completion|rename|priority))?$/.test(pathname)) {
@@ -280,7 +301,7 @@ export function createApplication(dbPath) {
             sendHtml(400, projectPage(project, filter, priorityFilter, 'Task title is required'));
             return;
           }
-          insertTask.run(projectId, title);
+          insertTask.run(projectId, title, project.default_priority);
         } else if (parts[5] === 'priority') {
           const taskId = Number(parts[4]);
           const priority = body.get('priority');

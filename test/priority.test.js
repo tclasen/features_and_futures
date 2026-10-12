@@ -56,7 +56,9 @@ test('priorities migrate, persist independently, preserve task data, and respect
     assert.equal(response.status, 303);
     assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
     const changed = await html('/projects/1');
-    assert.equal(changed, original.replace('<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>'));
+    const originalControl = priorityControl(rows(original)[0]);
+    assert.equal(changed, original.replace(originalControl, originalControl.replace(
+      '<option selected>Normal</option><option>High</option>', '<option>Normal</option><option selected>High</option>')));
     assert.equal(await html('/projects/2'), other);
     assert.equal(await html('/'), summary);
     assert.equal(rows(await html('/projects/1?filter=Completed')).length, 1);
