@@ -22,6 +22,11 @@ database.exec(`CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1))
 )`);
+// Add task priority to databases created by earlier checkpoints.
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const page = await readFile(join(root, 'index.html'));
@@ -94,7 +99,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (request.method === 'POST') {
@@ -108,7 +113,7 @@ const server = createServer(async (request, response) => {
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
       const result = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)').run(projectId, title);
-      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false });
+      return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: 'Normal' });
     }
   }
   const taskCompletion = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)$/);
@@ -135,6 +140,11 @@ const server = createServer(async (request, response) => {
       const result = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
       if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, { id: taskId, title });
+    }
+    if (['Low', 'Normal', 'High'].includes(body?.priority)) {
+      const result = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(body.priority, taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, priority: body.priority });
     }
     return sendJson(response, 400, { error: 'Task update is required' });
   }
