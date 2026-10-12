@@ -9,6 +9,7 @@ const taskInput = document.querySelector('#task-title');
 const taskAlert = document.querySelector('#task-alert');
 const tasksNode = document.querySelector('#tasks');
 const taskFilter = document.querySelector('#task-filter');
+const priorityFilter = document.querySelector('#priority-filter');
 const projectFilter = document.querySelector('#project-filter');
 const renameForm = document.querySelector('#rename-form');
 const renameInput = document.querySelector('#new-project-name');
@@ -102,7 +103,11 @@ function setProjectArchived(archived) {
 function drawTasks() {
   tasksNode.replaceChildren();
   const filter = taskFilter.value;
-  const visible = currentTasks.filter(task => filter === 'All' || (filter === 'Open' ? !task.completed : task.completed));
+  const selectedPriority = priorityFilter.value;
+  const visible = currentTasks.filter(task =>
+    (filter === 'All' || (filter === 'Open' ? !task.completed : task.completed)) &&
+    (selectedPriority === 'All' || (task.priority || 'Normal') === selectedPriority)
+  );
   if (!visible.length) {
     const empty = document.createElement('div');
     empty.className = 'task-empty';
@@ -178,6 +183,7 @@ function drawTasks() {
           body: JSON.stringify({ priority: priority.value })
         });
         task.priority = updated.priority;
+        drawTasks();
       } catch (error) {
         priority.value = previous;
         taskAlert.textContent = error.message;
@@ -270,6 +276,7 @@ taskForm.addEventListener('submit', async event => {
   }
 });
 taskFilter.addEventListener('change', drawTasks);
+priorityFilter.addEventListener('change', drawTasks);
 projectFilter.addEventListener('change', loadProjects);
 window.addEventListener('popstate', renderRoute);
 renderRoute();
