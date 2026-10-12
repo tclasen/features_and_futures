@@ -42,6 +42,7 @@ const listTasks = database.prepare('SELECT id, title, completed FROM tasks WHERE
 const createTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = database.prepare('SELECT id, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, value) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -142,6 +143,24 @@ const server = createServer(async (request, response) => {
       const payload = await readJson(request);
       if (typeof payload.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be a boolean' });
       const result = updateTaskCompletion.run(payload.completed ? 1 : 0, taskId, projectId);
+      if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, findTask.get(taskId, projectId));
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request' });
+    }
+  }
+  const renameTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/rename$/);
+  if (request.method === 'POST' && renameTaskMatch) {
+    const projectId = Number(renameTaskMatch[1]);
+    const taskId = Number(renameTaskMatch[2]);
+    const project = findProject.get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
+    if (project.archived) return sendJson(response, 400, { error: 'Archived project tasks cannot be changed' });
+    try {
+      const payload = await readJson(request);
+      const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      const result = renameTask.run(title, taskId, projectId);
       if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, findTask.get(taskId, projectId));
     } catch {
