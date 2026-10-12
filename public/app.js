@@ -261,6 +261,38 @@ function taskPriorityControl(task, path, archived, onPriorityChange) {
   return control;
 }
 
+function taskDueDateForm(task, path, archived) {
+  const form = element('form', '', { class: 'task-due-date' });
+  const inputId = `task-due-date-${task.id}`;
+  const input = element('input', '', { id: inputId, name: 'dueDate', type: 'text', placeholder: 'YYYY-MM-DD' });
+  const save = element('button', 'Save due date', { type: 'submit' });
+  input.value = task.dueDate ?? '';
+  input.disabled = archived;
+  save.disabled = archived;
+  form.append(element('label', 'Task due date', { for: inputId }), input, save);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (save.disabled) return;
+    save.disabled = true;
+    try {
+      const saved = await request(`${path}/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dueDate: input.value }),
+      });
+      // Preserve any concurrent changes saved by the other task controls.
+      task.dueDate = saved.dueDate;
+      input.value = task.dueDate;
+      app.querySelector('[role="alert"]')?.remove();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      save.disabled = archived;
+    }
+  });
+  return form;
+}
+
 async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -314,7 +346,7 @@ async function showTasks(projectId, archived) {
       });
       const details = element('div', '', { class: 'task-details' });
       details.append(element('span', task.title), taskRenameForm(task, path, archived, renderTasks),
-        taskPriorityControl(task, path, archived, renderTasks));
+        taskPriorityControl(task, path, archived, renderTasks), taskDueDateForm(task, path, archived));
       row.append(checkbox, details);
       return row;
     }));

@@ -36,7 +36,8 @@ Each task row provides New task title and Rename task. Titles are trimmed and
 must be nonblank. Renaming preserves task identity, ownership, creation order,
 completion state, and completion counts. Archived projects disable task renaming
 until restored. `PATCH /api/projects/<project-id>/tasks/<task-id>` accepts either
-`{ "title": "New title" }`, `{ "completed": true }`, or `{ "priority": "High" }` in separate requests.
+`{ "title": "New title" }`, `{ "completed": true }`, `{ "priority": "High" }`,
+or `{ "dueDate": "2024-02-29" }` in separate requests.
 Renamed titles persist across restarts; archived task writes return HTTP 409.
 
 Each task has a Task priority select with Low, Normal, and High options. Existing
@@ -54,5 +55,16 @@ projects show the saved default with editing disabled. The project API exposes
 separately from rename or archive requests. Invalid priorities return HTTP 400;
 default edits on archived projects return HTTP 409.
 
-Run the integration tests with `npm test`. Tests use temporary databases outside
+Each task row has a Task due date textbox and Save due date button. Dates are
+optional: empty or whitespace-only input clears the date. Other input is trimmed
+and must be a real Gregorian day in YYYY-MM-DD format, with a year from 0001
+through 9999. Dates are stored as calendar days without timezone conversion.
+Invalid input shows an alert and preserves the saved date and other task data.
+New tasks and migrated tasks have no due date. Saved dates persist through
+renaming, restart, archive, and restoration, independently of other tasks.
+Saving dates preserves both filters and completion counts. Archived projects
+disable date editing, and the API rejects it with HTTP 409. The task API exposes
+`dueDate` as a string, using `""` for no date; invalid values return HTTP 400.
+
+Run the tests with `npm test`. Tests use temporary databases outside
 the repository and clean up their server processes and files.

@@ -509,3 +509,62 @@ test('failed default priority writes restore saved selection and preserve filter
   assert.deepEqual(ui.rows('task'), rows);
   assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Unable to save default');
 });
+
+test('due date controls save and clear without changing filters, rows, or other data', async () => {
+  const project = { id: 1, name: 'Dates', archived: false, defaultPriority: 'Normal' };
+  const tasks = [
+    { id: 1, title: 'First', completed: true, priority: 'High', dueDate: '' },
+    { id: 2, title: 'Second', completed: false, priority: 'Normal', dueDate: '2025-12-31' },
+  ];
+  const respond = (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    assert.equal(path, '/api/projects/1/tasks/1');
+    const body = JSON.parse(options.body);
+    if (body.dueDate === '2025-02-29') throw new Error('Due date must be a valid YYYY-MM-DD date');
+    tasks[0].dueDate = body.dueDate.trim();
+    return { ...tasks[0] };
+  };
+  const ui = await page('/projects/1', respond);
+  assert.equal(ui.byId('task-due-date-1').value, '');
+  assert.equal(ui.byId('task-due-date-2').value, '2025-12-31');
+  ui.byId('task-filter').value = 'Completed';
+  await ui.byId('task-filter').fire('change');
+  ui.byId('priority-filter').value = 'High';
+  await ui.byId('priority-filter').fire('change');
+  const rows = ui.rows('task');
+  const input = ui.byId('task-due-date-1');
+  const form = find(rows[0], (node) => node.attributes.class === 'task-due-date')[0];
+  assert.equal(input.attributes.type, 'text');
+  assert.equal(find(rows[0], (node) => node.attributes.for === input.attributes.id)[0].textContent, 'Task due date');
+  for (const [value, expected] of [['  2024-02-29  ', '2024-02-29'], ['2025-02-29', '2024-02-29'], [' \t ', '']]) {
+    input.value = value;
+    await form.fire('submit');
+    assert.equal(tasks[0].dueDate, expected);
+    if (value === '2025-02-29') {
+      assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Due date must be a valid YYYY-MM-DD date');
+    } else {
+      assert.equal(input.value, expected);
+      assert.equal(ui.app.querySelector('[role="alert"]'), null);
+    }
+    assert.deepEqual(ui.rows('task'), rows);
+    assert.equal(ui.byId('task-filter').value, 'Completed');
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.button('Save due date').disabled, false);
+    assert.equal(tasks[0].title, 'First');
+    assert.equal(tasks[0].completed, true);
+    assert.equal(tasks[0].priority, 'High');
+    assert.equal(tasks[1].dueDate, '2025-12-31');
+  }
+  for (const archived of [true, false]) {
+    project.archived = archived;
+    const reloaded = await page('/projects/1', respond);
+    assert.equal(reloaded.byId('task-due-date-2').value, '2025-12-31');
+    assert.equal(reloaded.byId('task-due-date-1').disabled, archived);
+    assert.equal(reloaded.button('Save due date').disabled, archived);
+    if (archived) {
+      reloaded.byId('task-due-date-1').value = '2024-02-29';
+      await find(reloaded.rows('task')[0], (node) => node.attributes.class === 'task-due-date')[0].fire('submit');
+      assert.equal(reloaded.calls.length, 2);
+    }
+  }
+});

@@ -287,8 +287,8 @@ test('archive and restore preserve tasks, summaries, and IDs through migration a
     const path = '/api/projects/1';
     const project = { id: 1, name: 'Existing project', archived: false, defaultPriority: 'Normal', totalCount: 2, completedCount: 1 };
     const tasks = [
-      { id: 1, title: 'Done task', completed: true, priority: 'Normal' },
-      { id: 2, title: 'Open task', completed: false, priority: 'Normal' },
+      { id: 1, title: 'Done task', completed: true, priority: 'Normal', dueDate: '' },
+      { id: 2, title: 'Open task', completed: false, priority: 'Normal', dueDate: '' },
     ];
     assert.deepEqual((await api(path)).body, project);
     assert.deepEqual((await api(`${path}/tasks`)).body, tasks);
@@ -426,10 +426,10 @@ test('priorities migrate and persist independently through rename, completion, a
     };
     const path = '/api/projects/1/tasks';
     const tasks = [
-      { id: 1, title: 'Done', completed: true, priority: 'Normal' },
-      { id: 2, title: 'Open', completed: false, priority: 'Normal' },
+      { id: 1, title: 'Done', completed: true, priority: 'Normal', dueDate: '' },
+      { id: 2, title: 'Open', completed: false, priority: 'Normal', dueDate: '' },
     ];
-    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal' }];
+    const otherTasks = [{ id: 3, title: 'Other task', completed: false, priority: 'Normal', dueDate: '' }];
     const summaries = (await api('/api/projects')).body;
     assert.deepEqual((await api(path)).body, tasks);
     for (const priority of ['', 'normal', 'Urgent', ' High ', null, 1, true, {}]) {
@@ -572,6 +572,73 @@ test('project defaults migrate and apply only to future owned tasks through rena
     assert.deepEqual((await api(path)).body, summary);
     assert.deepEqual((await api(`${path}/tasks`)).body, tasks);
     assert.equal((await api(`${path}/tasks`, 'POST', { title: 'Saved low default' })).body.priority, 'Low');
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('due dates persist independently through edits, restart, archive, and restore', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-due-date-test-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method,
+        ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      return { status: response.status, body: await response.json() };
+    };
+    const project = (await api('/api/projects', 'POST', { name: 'Dates' })).body;
+    const other = (await api('/api/projects', 'POST', { name: 'Other' })).body;
+    const projectPath = `/api/projects/${project.id}`;
+    const path = `${projectPath}/tasks`;
+    const first = (await api(path, 'POST', { title: 'First' })).body;
+    const second = (await api(path, 'POST', { title: 'Second' })).body;
+    const otherTask = (await api(`/api/projects/${other.id}/tasks`, 'POST', { title: 'Other' })).body;
+    assert.equal(first.dueDate, '');
+    assert.equal(second.dueDate, '');
+    const taskPath = `${path}/${first.id}`;
+    const summary = (await api(projectPath)).body;
+    let saved = { ...first, dueDate: '0001-01-01' };
+    assert.deepEqual(await api(taskPath, 'PATCH', { dueDate: ' \t0001-01-01\n' }), { status: 200, body: saved });
+    for (const dueDate of ['1900-02-29', '2024-04-31', '0000-01-01', '9999-13-01', '2025-1-01', null, 1]) {
+      assert.deepEqual(await api(taskPath, 'PATCH', { dueDate }), {
+        status: 400, body: { error: 'Due date must be a valid YYYY-MM-DD date' },
+      });
+      assert.deepEqual((await api(path)).body, [saved, second]);
+    }
+    for (const edit of [{ title: 'Changed' }, { priority: 'High' }, { completed: true }]) {
+      assert.equal((await api(taskPath, 'PATCH', { dueDate: '2024-02-29', ...edit })).status, 400);
+    }
+    assert.equal((await api(`/api/projects/${other.id}/tasks/${first.id}`, 'PATCH', { dueDate: '2024-02-29' })).status, 404);
+    assert.deepEqual((await api(projectPath)).body, summary);
+    assert.deepEqual((await api(`/api/projects/${other.id}/tasks`)).body, [otherTask]);
+    for (const edit of [{ title: 'Renamed' }, { priority: 'High' }, { completed: true }]) {
+      saved = { ...saved, ...edit };
+      assert.deepEqual((await api(taskPath, 'PATCH', edit)).body, saved);
+    }
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [saved, second]);
+    const completedSummary = (await api(projectPath)).body;
+    assert.equal(completedSummary.completedCount, 1);
+    await api(projectPath, 'PATCH', { archived: true });
+    assert.equal((await api(taskPath, 'PATCH', { dueDate: '' })).status, 409);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [saved, second]);
+    await api(projectPath, 'PATCH', { archived: false });
+    assert.deepEqual((await api(taskPath, 'PATCH', { dueDate: '2000-02-29' })).body, { ...saved, dueDate: '2000-02-29' });
+    assert.deepEqual((await api(taskPath, 'PATCH', { dueDate: ' \t\n' })).body, { ...saved, dueDate: '' });
+    assert.deepEqual((await api(projectPath)).body, completedSummary);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(path)).body, [{ ...saved, dueDate: '' }, second]);
   } finally {
     await server?.stop();
     await rm(directory, { recursive: true, force: true });

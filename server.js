@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -19,7 +20,8 @@ database.exec(`
     project_id INTEGER NOT NULL REFERENCES projects(id),
     title TEXT NOT NULL CHECK (length(trim(title)) > 0),
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
-    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
+    priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
+    due_date TEXT NOT NULL DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS tasks_by_project ON tasks(project_id, id);
 `);
@@ -35,6 +37,10 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => colu
 if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
   database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
 }
+// Existing tasks have no due date; this migration preserves every other field.
+if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
 const projectSelection = `
   SELECT projects.id, projects.name, projects.archived, projects.default_priority AS defaultPriority,
     COUNT(tasks.id) AS totalCount, COALESCE(SUM(tasks.completed), 0) AS completedCount
@@ -46,8 +52,8 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-const listTasks = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
-const findTask = database.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? AND id = ?');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
+const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority)
   SELECT id, ?, default_priority FROM projects WHERE id = ?
@@ -55,6 +61,7 @@ const insertTask = database.prepare(`
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE project_id = ? AND id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE project_id = ? AND id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE project_id = ? AND id = ?');
+const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE project_id = ? AND id = ?');
 
 function projectData(project) {
   return { ...project, archived: Boolean(project.archived) };
@@ -182,6 +189,17 @@ const server = createServer(async (request, response) => {
           if (!title) return json(response, 400, { error: 'Task title is required' });
           const result = insertTask.run(title, projectId);
           return json(response, 201, taskData(findTask.get(projectId, result.lastInsertRowid)));
+        }
+        if (body && Object.hasOwn(body, 'dueDate')) {
+          if (['priority', 'title', 'completed'].some((field) => Object.hasOwn(body, field))) {
+            return json(response, 400, { error: 'Due date and other task edits must be separate requests' });
+          }
+          const dueDate = normalizeDueDate(body.dueDate);
+          if (dueDate === null) {
+            return json(response, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
+          }
+          updateTaskDueDate.run(dueDate, projectId, taskId);
+          return json(response, 200, taskData(findTask.get(projectId, taskId)));
         }
         if (body && Object.hasOwn(body, 'priority')) {
           if (Object.hasOwn(body, 'title') || Object.hasOwn(body, 'completed')) {
