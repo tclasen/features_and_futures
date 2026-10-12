@@ -364,12 +364,98 @@ test('existing project databases migrate to active without changing IDs or tasks
     assert.match(rows(list)[0], /1\/1 completed/);
     const detail = await (await fetch(server.baseUrl + '/projects/7')).text();
     assert.match(taskRows(detail)[0], /Complete Saved task" checked/);
+    assert.match(taskRows(detail)[0], /<option>Low<\/option><option selected>Normal<\/option><option>High<\/option>/);
+    assert.equal((await postForm(server.baseUrl, '/projects/7/tasks/9/priority', { priority: 'High' })).status, 303);
     assert.doesNotMatch(detail, /<(?:input|button)\b[^>]* disabled|<p>Archived project<\/p>/);
     await postForm(server.baseUrl, '/projects/7/archive', {});
     await server.stop();
     server = await startServer(databasePath);
     assert.equal(rows(await (await fetch(server.baseUrl)).text()).length, 0);
     assert.match(rows(await (await fetch(server.baseUrl + '/?filter=Archived')).text())[0], /1\/1 completed/);
+    const savedTask = taskRows(await (await fetch(server.baseUrl + '/projects/7')).text())[0];
+    assert.match(savedTask, /Complete Saved task" checked disabled/);
+    assert.match(savedTask, /id="task-priority-9"[^>]* disabled/);
+    assert.match(savedTask, /<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('priorities are independent, validated, persistent, and read-only while archived', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    await createProject(server.baseUrl, 'First');
+    await createProject(server.baseUrl, 'Second');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Done' });
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Pending' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Other' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    const originalTasks = taskRows(await read());
+    const otherTasks = taskRows(await read('/projects/2'));
+    const originalProjects = rows(await read('/'));
+    const normalOptions = '<option>Low</option><option selected>Normal</option><option>High</option>';
+    const highOptions = '<option>Low</option><option>Normal</option><option selected>High</option>';
+    const lowOptions = '<option selected>Low</option><option>Normal</option><option>High</option>';
+    for (const row of [...originalTasks, ...otherTasks]) {
+      assert.match(row, /<label for="task-priority-\d+">Task priority<\/label>/);
+      const options = row.match(/<select[^>]*name="priority"[^>]*>(.*?)<\/select>/s)[1];
+      assert.equal(options, normalOptions);
+    }
+    const changed = await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(changed.status, 303);
+    assert.equal(changed.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/2/priority', { priority: 'Low', filter: 'Open' })).status, 303);
+    const expectedTasks = [originalTasks[0].replace(normalOptions, highOptions), originalTasks[1].replace(normalOptions, lowOptions)];
+    assert.deepEqual(taskRows(await read()), expectedTasks);
+    assert.deepEqual(taskRows(await read('/projects/1?filter=Completed')), [expectedTasks[0].replaceAll('value="All"', 'value="Completed"')]);
+    assert.deepEqual(taskRows(await read('/projects/1?filter=Open')), [expectedTasks[1].replaceAll('value="All"', 'value="Open"')]);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+
+    for (const values of [{}, { priority: '' }, { priority: 'Urgent' }, { priority: 'high' }]) {
+      const invalid = await postForm(server.baseUrl, '/projects/1/tasks/1/priority', values);
+      assert.equal(invalid.status, 422);
+      assert.match(await invalid.text(), /role="alert">Task priority must be Low, Normal, or High/);
+      assert.deepEqual(taskRows(await read()), expectedTasks);
+    }
+    for (const path of ['/projects/2/tasks/1/priority', '/projects/1/tasks/999/priority', '/projects/999/tasks/1/priority']) {
+      assert.equal((await postForm(server.baseUrl, path, { priority: 'Low' })).status, 404);
+    }
+    await postForm(server.baseUrl, '/projects/1/tasks/1/rename', { title: '  Renamed  ' });
+    expectedTasks[0] = expectedTasks[0].replaceAll('Done', 'Renamed');
+    assert.deepEqual(taskRows(await read()), expectedTasks);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), expectedTasks);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    const archivedTasks = taskRows(await read());
+    assert.ok(archivedTasks.every((row) => /<select id="task-priority-\d+"[^>]* disabled/.test(row)));
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 403);
+    assert.deepEqual(taskRows(await read()), archivedTasks);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), archivedTasks);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assert.deepEqual(taskRows(await read()), expectedTasks);
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'Normal' })).status, 303);
+    expectedTasks[0] = expectedTasks[0].replace(highOptions, normalOptions);
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'New task' });
+    const finalTasks = taskRows(await read());
+    assert.deepEqual(finalTasks.slice(0, 2), expectedTasks);
+    assert.ok(finalTasks[2].includes(normalOptions));
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), finalTasks);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.match(rows(await read('/'))[0], /1\/3 completed/);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

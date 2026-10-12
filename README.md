@@ -35,6 +35,13 @@ Renaming trims whitespace and preserves the project's identity, creation order,
 tasks, and summary. Empty names are rejected. Archived projects disable renaming
 and reject rename requests until restored.
 
+Each task row has a Task priority selector with Low, Normal, and High options.
+New and existing tasks default to Normal. Changing priority saves immediately
+and preserves task ownership, order, title, and completion. Priorities persist
+across restarts and task renames. Archived projects disable priority controls
+and reject priority changes until restored. Database upgrades add the default
+priority without replacing existing projects or tasks.
+
 Each task row provides a New task title field and Rename task button. Renaming
 trims whitespace and preserves the task's project, creation order, completion
 state, and filter membership. Empty titles are rejected with an alert. Renamed

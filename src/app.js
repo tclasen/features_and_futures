@@ -3,6 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+const taskPriorities = ['Low', 'Normal', 'High'];
+
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[character]));
@@ -25,7 +27,7 @@ function page(title, content) {
   input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
   select { padding: 10px; font: inherit; }
   .filter { margin-top: 24px; }
-  button:disabled, input:disabled { cursor: default; opacity: 0.6; }
+  button:disabled, input:disabled, select:disabled { cursor: default; opacity: 0.6; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   button { padding: 12px 18px; border: 1px solid #2056ad; border-radius: 6px; background: #2056ad; color: white; font: inherit; cursor: pointer; }
   :focus-visible { outline: 3px solid #d38b13; outline-offset: 3px; }
@@ -81,6 +83,10 @@ export function createApp(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
     database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
   }
+  // Default legacy tasks to Normal while preserving their identity and other state.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK(priority IN ('Low', 'Normal', 'High'))");
+  }
   const listProjects = database.prepare(`SELECT projects.id, projects.name,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -89,17 +95,24 @@ export function createApp(databasePath) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare(`SELECT id, title, completed FROM tasks
+  const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?) ORDER BY id ASC`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
   const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+  const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
   function taskRow(task, project, filter, renameError) {
     const disabled = project.archived ? ' disabled' : '';
     return `<li data-testid="task-row"><span class="name">${escapeHtml(task.title)}</span>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion"><input type="hidden" name="filter" value="${filter}"><input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${disabled} onchange="this.form.requestSubmit()"><noscript><button type="submit"${disabled}>Save completion</button></noscript></form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+<input type="hidden" name="filter" value="${filter}">
+<label for="task-priority-${task.id}">Task priority</label>
+<select id="task-priority-${task.id}" name="priority"${disabled} onchange="this.form.requestSubmit()">${taskPriorities.map((priority) => `<option${priority === task.priority ? ' selected' : ''}>${priority}</option>`).join('')}</select>
+<noscript><button type="submit"${disabled}>Save priority</button></noscript>
+</form>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
 <input type="hidden" name="filter" value="${filter}">
 <label for="new-task-title-${task.id}">New task title</label>
@@ -108,7 +121,7 @@ ${renameError ? `<p id="task-rename-error-${task.id}" role="alert">${escapeHtml(
 </form></li>`;
   }
 
-  function projectPage(project, filter, { taskError = '', renameError = '', taskRenameError = '', taskRenameId } = {}) {
+  function projectPage(project, filter, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '' } = {}) {
     const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0);
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
@@ -120,6 +133,7 @@ ${project.archived ? '<p>Archived project</p>' : ''}
 ${renameError ? `<p id="rename-error" role="alert">${escapeHtml(renameError)}</p>` : ''}
 </form>
 <h2>Tasks</h2>
+${priorityError ? `<p role="alert">${escapeHtml(priorityError)}</p>` : ''}
 <form method="post" action="/projects/${project.id}/tasks">
 <input type="hidden" name="filter" value="${filter}">
 <label for="task-title">Task title</label>
@@ -158,7 +172,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename))?|\/(archive|restore|rename))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?|\/(archive|restore|rename))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -239,6 +253,15 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
               return;
             }
             renameTask.run(title, taskId, id);
+          } else if (projectRoute[3] === 'priority') {
+            const priority = form.get('priority');
+            if (!taskPriorities.includes(priority)) {
+              sendHtml(response, 422, projectPage(findProject.get(id), normalizeFilter(form.get('filter')), {
+                priorityError: 'Task priority must be Low, Normal, or High',
+              }));
+              return;
+            }
+            updateTaskPriority.run(priority, taskId, id);
           } else {
             updateTask.run(form.get('completed') === '1' ? 1 : 0, taskId, id);
           }
