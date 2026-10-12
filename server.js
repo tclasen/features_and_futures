@@ -392,7 +392,8 @@ const page = `<!doctype html>
       function render() {
         list.replaceChildren();
         for (const task of tasks) {
-          if (task.archived !== (projectScope.value === 'Archived')) continue;
+          // SQLite returns 0/1 for this column; compare its boolean meaning.
+          if (Boolean(task.archived) !== (projectScope.value === 'Archived')) continue;
           if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
           if (taskFilter.value === 'Open' && task.completed) continue;
           if (taskFilter.value === 'Completed' && !task.completed) continue;
