@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { normalizeDueDate, normalizeDueRange } from './due-date.js';
 import { createTaskOrdering } from './task-order.js';
 import { normalizeSearch, matchesSearch } from './search.js';
+import { projectDocument } from './project-export.js';
 
 const taskPriorities = ['Low', 'Normal', 'High'];
 const taskFilters = ['All', 'Open', 'Completed', 'Deleted'];
@@ -158,6 +159,8 @@ export function createApp(databasePath) {
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id AND tasks.deleted = 0
     WHERE projects.archived = ? GROUP BY projects.id ORDER BY projects.id ASC`);
   const findProject = database.prepare('SELECT id, name, archived, default_task_priority FROM projects WHERE id = ?');
+  const exportTasks = database.prepare(`SELECT title, completed, priority, due_date, notes, deleted
+    FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC`);
   const updateDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
@@ -225,6 +228,7 @@ ${hiddenTaskFilters(filters)}
       .filter((task) => matchesSearch(task.title, filters.search));
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
 <form action="/" method="get"><button type="submit">Projects</button></form>
+<form action="/projects/${project.id}/download" method="get">${hiddenTaskFilters(filters)}<button type="submit">Download project</button></form>
 ${project.archived ? '<p>Archived project</p>' : ''}
 <form method="post" action="/projects/${project.id}/rename">
 ${hiddenTaskFilters(filters)}
@@ -315,7 +319,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move|delete|restore))?|\/(archive|restore|rename|default-priority|due-range))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date|notes|move|delete|restore))?|\/(archive|restore|rename|default-priority|due-range|download))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -340,6 +344,12 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
         }
         if (request.method === 'GET' && pathname === `/projects/${id}`) {
           sendHtml(response, 200, projectPage(project, readTaskFilters(url.searchParams)));
+        } else if (request.method === 'GET' && projectRoute[4] === 'download') {
+          response.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="workboard-project.json"',
+          });
+          response.end(JSON.stringify(projectDocument(project, exportTasks.all(id))));
         } else if (request.method === 'POST' && projectRoute[4] === 'due-range') {
           const form = await readForm(request);
           const filters = readTaskFilters(form);
@@ -386,7 +396,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
           renameProject.run(name, id);
           response.writeHead(303, { Location: projectLocation(id, filters) });
           response.end();
-        } else if (request.method === 'POST' && projectRoute[4]) {
+        } else if (request.method === 'POST' && ['archive', 'restore'].includes(projectRoute[4])) {
           const form = await readForm(request);
           updateArchive.run(projectRoute[4] === 'archive' ? 1 : 0, id);
           response.writeHead(303, { Location: projectsLocation(projectRoute[4] === 'archive' ? 'Active' : 'Archived', normalizeSearch(form.get('search'))) });

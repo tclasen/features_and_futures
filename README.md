@@ -123,3 +123,13 @@ their editing and move controls are read-only. Restoration reuses the reserved
 position, including ahead of tasks created later, and retains all applied filters.
 Archived projects allow viewing deleted tasks but reject deletion and restoration.
 Deletion state survives restarts; upgrades initialize existing tasks as live.
+
+Every project page provides Download project, including archived and empty
+projects. `GET /projects/:id/download` returns a UTF-8 JSON attachment named
+`workboard-project.json`, with format `workboard-project` and numeric version 1.
+Its project object includes name, archived, defaultPriority, and all currently
+owned live and deleted tasks in stored order, independent of page filters.
+Task objects contain title, completed, priority, dueDate, notes, and deleted;
+internal IDs and remembered positions are not part of the portable document.
+Notes line endings become LF only in the export; stored notes and all other
+characters remain unchanged. Downloading does not alter saved data or page state.

@@ -1703,3 +1703,124 @@ literal <b>markup</b>  ', 4), (3, 2, 'Moved task', 0, 'Low', '', '', 8);
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('project downloads include portable unfiltered state without changing data or return positions', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    server = await startServer(databasePath);
+    const read = async (path) => (await fetch(server.baseUrl + path)).text();
+    const download = async (id) => {
+      const response = await fetch(`${server.baseUrl}/projects/${id}/download?filter=Open&priorityFilter=Low&dueFrom=9999-12-31&search=missing`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+      assert.equal(response.headers.get('content-disposition'), 'attachment; filename="workboard-project.json"');
+      return response.json();
+    };
+    await createProject(server.baseUrl, '  MiXeD  Project\t名 <b>  ');
+    await createProject(server.baseUrl, 'Other');
+    await createProject(server.baseUrl, 'Empty');
+    assert.deepEqual(await download(3), {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Empty', archived: false, defaultPriority: 'Normal', tasks: [] },
+    });
+    for (const title of ['FiRsT  Task\t名 <script>', 'Second', 'Third']) {
+      await postForm(server.baseUrl, '/projects/1/tasks', { title });
+    }
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Not exported' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '0001-01-01' });
+    const notes = '  \r\nUnicode 日本語 😀\rMarkup <script>&"\nend  ';
+    await postForm(server.baseUrl, '/projects/1/tasks/1/notes', { notes });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/move', { destinationProject: '2' });
+    await postForm(server.baseUrl, '/projects/2/tasks/1/move', { destinationProject: '1' });
+    await postForm(server.baseUrl, '/projects/1/tasks/2/delete', {});
+    await postForm(server.baseUrl, '/projects/1/tasks/3/priority', { priority: 'Low' });
+    await postForm(server.baseUrl, '/projects/1/default-priority', { priority: 'Low' });
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: {
+        name: 'MiXeD  Project\t名 <b>', archived: false, defaultPriority: 'Low',
+        tasks: [
+          { title: 'FiRsT  Task\t名 <script>', completed: true, priority: 'High', dueDate: '0001-01-01', notes: notes.replace(/\r\n?/g, '\n'), deleted: false },
+          { title: 'Second', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: true },
+          { title: 'Third', completed: false, priority: 'Low', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    const path = '/projects/1?filter=Completed&priorityFilter=High&dueFrom=0001-01-01&dueThrough=0001-01-01&search=first';
+    const beforePage = await read(path);
+    const beforeSummary = await read('/');
+    assert.match(beforePage, /<button type="submit">Download project<\/button>/);
+    assert.deepEqual(await download(1), expected);
+    assert.equal(await read(path), beforePage);
+    assert.equal(await read('/'), beforeSummary);
+    // Wrong methods and missing IDs cannot mutate a project.
+    assert.equal((await postForm(server.baseUrl, '/projects/1/download', {})).status, 404);
+    assert.equal((await fetch(server.baseUrl + '/projects/999/download')).status, 404);
+    assert.equal(await read(path), beforePage);
+    for (const id of [1, 3]) await postForm(server.baseUrl, `/projects/1/tasks/${id}/delete`, {});
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    expected.project.archived = true;
+    expected.project.tasks.forEach((task) => { task.deleted = true; });
+    assert.match(await read('/projects/1?filter=Deleted'), /<button type="submit">Download project<\/button>/);
+    assert.deepEqual(await download(1), expected);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await download(1), expected);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    await postForm(server.baseUrl, '/projects/1/tasks/1/restore', {});
+    await postForm(server.baseUrl, '/projects/1/tasks/1/move', { destinationProject: '2' });
+    assert.deepEqual((await download(2)).project.tasks.map((task) => task.title), ['Not exported', expected.project.tasks[0].title]);
+    await postForm(server.baseUrl, '/projects/2/tasks/1/move', { destinationProject: '1' });
+    expected.project.archived = false;
+    expected.project.tasks[0].deleted = false;
+    assert.deepEqual(await download(1), expected);
+    // Export normalization never rewrites the saved CR/LF characters.
+    await server.stop();
+    server = undefined;
+    const { DatabaseSync } = await import('node:sqlite');
+    const database = new DatabaseSync(databasePath);
+    try {
+      assert.equal(database.prepare('SELECT notes FROM tasks WHERE id = 1').get().notes, notes);
+    } finally {
+      database.close();
+    }
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('legacy project downloads use migrated public defaults and preserve original data', { timeout: 15000 }, async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-export-upgrade-'));
+  let server;
+  try {
+    const databasePath = join(directory, 'workboard.sqlite');
+    const database = new DatabaseSync(databasePath);
+    database.exec(`CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects VALUES (8, 'Legacy  Name');
+      INSERT INTO tasks VALUES (6, 8, 'Earlier', 1), (2, 8, 'First', 0);`);
+    database.close();
+    server = await startServer(databasePath);
+    const expected = {
+      format: 'workboard-project', version: 1,
+      project: { name: 'Legacy  Name', archived: false, defaultPriority: 'Normal', tasks: [
+        { title: 'First', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        { title: 'Earlier', completed: true, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+      ] },
+    };
+    assert.deepEqual(await (await fetch(server.baseUrl + '/projects/8/download')).json(), expected);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await (await fetch(server.baseUrl + '/projects/8/download')).json(), expected);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
