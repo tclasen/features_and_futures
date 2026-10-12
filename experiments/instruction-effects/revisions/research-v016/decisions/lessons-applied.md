@@ -5,3 +5,5 @@ Directory generic actions now independently verified:30positivecases and22genuin
 Focused future-owner002revealed dynamic Complete/Reopen protection role narrowing and PMworkspace-export GET omission. Original source/results retained; full030002and040001drained through owned cleanup. Scoped helper correction and synthetic GET/POST support prepared with31exact-suite recheck002and4targeted PMcases. Full196PM and corrected030003/040002/owner003browser gates pending; do not freeze on prior partial proofs.
 
 Corrected future candidate uses future031040-role-preparation002 with10identical requirements and scoped suite002bindings. All40future phase listings independently verified; collection scope only. Original preparation001retained. Browser positives/faults/full gates and per-builder native lifecycle remain required.
+
+Corrected future owner focused003independently passes16positivecases and16genuinefaultvariants, zero skips/flakes. Combined focused role gates total132checks (48exports+52directory+32futureowners); broad full030/040remaining. Original faulty001/002andcanceledpartialtrace limitations retained.
