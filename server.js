@@ -41,6 +41,7 @@ const listTasks = db.prepare('SELECT id, project_id AS projectId, title, complet
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function sendJson(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -287,7 +288,33 @@ const page = `<!doctype html>
             });
             const title = document.createElement('span');
             title.textContent = task.title;
-            row.append(checkbox, title);
+            const renameInput = document.createElement('input');
+            renameInput.type = 'text';
+            renameInput.setAttribute('aria-label', 'New task title');
+            renameInput.disabled = Boolean(project.archived);
+            const renameButton = document.createElement('button');
+            renameButton.type = 'button';
+            renameButton.textContent = 'Rename task';
+            renameButton.disabled = Boolean(project.archived);
+            renameButton.addEventListener('click', async () => {
+              const newTitle = renameInput.value.trim();
+              if (!newTitle) {
+                alert.textContent = 'Task title is required';
+                alert.hidden = false;
+                renameInput.focus();
+                return;
+              }
+              const renamed = await fetch('/api/projects/' + escId(id) + '/tasks/' + escId(task.id), {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: newTitle })
+              });
+              if (renamed.ok) {
+                const updatedTask = await renamed.json();
+                task.title = updatedTask.title;
+                renderTasks();
+              }
+            });
+            row.append(checkbox, title, renameInput, renameButton);
             list.append(row);
           }
         }
@@ -363,8 +390,15 @@ const server = createServer(async (request, response) => {
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (project.archived) return sendJson(response, 409, { error: 'Archived project tasks cannot be changed' });
     const body = await readJson(request);
-    if (typeof body?.completed !== 'boolean') return sendJson(response, 400, { error: 'completed must be a boolean' });
-    updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+    if (typeof body?.title === 'string') {
+      const title = body.title.trim();
+      if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+      renameTask.run(title, taskId, projectId);
+    } else if (typeof body?.completed === 'boolean') {
+      updateTask.run(body.completed ? 1 : 0, taskId, projectId);
+    } else {
+      return sendJson(response, 400, { error: 'A task title or completion state is required' });
+    }
     const task = findTask.get(taskId, projectId);
     return task ? sendJson(response, 200, task) : sendJson(response, 404, { error: 'Task not found' });
   }
