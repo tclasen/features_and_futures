@@ -72,3 +72,11 @@ Remembered positions persist separately for each project across restarts,
 project renames, archival and restoration. Existing databases retain their
 current task order on upgrade. Newly created tasks follow all established
 positions, including positions belonging to tasks currently in another project.
+
+Project search and Task search apply trimmed substring queries, ignoring ASCII
+letter case while preserving internal whitespace. Project search intersects the
+Active/Archived filter. Task search intersects completion, priority and applied
+due range; edits retain every applied filter and immediately update matching
+rows. Searching never changes saved data or summary counts. Archived pages still
+allow searching. Opening a project or returning with Projects starts a fresh
+search; reloading a filtered URL retains its query.
