@@ -56,6 +56,7 @@ async function showRoute() {
     document.querySelector('#directory-scope').value = 'Active';
     document.querySelector('#directory-task-filter').value = 'All';
     document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-order').value = 'Original';
     document.querySelector('#directory-search').value = '';
     document.querySelector('#directory-due-from').value = '';
     document.querySelector('#directory-due-through').value = '';
@@ -110,7 +111,21 @@ function renderDirectory() {
   const out = document.querySelector('#directory-results'); out.replaceChildren();
   const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
   const matching = [];
-  for (const task of directoryRows) {
+  const originalIndex = new Map(directoryRows.map((task, index) => [task.id, index]));
+  const order = document.querySelector('#directory-order').value;
+  const priorityRank = { High: 0, Normal: 1, Low: 2 };
+  const orderedRows = [...directoryRows].sort((a, b) => {
+    let comparison = 0;
+    if (order === 'Priority') comparison = priorityRank[a.priority || 'Normal'] - priorityRank[b.priority || 'Normal'];
+    else if (order === 'Due date') comparison = !a.dueDate ? (!b.dueDate ? 0 : 1) : (!b.dueDate ? -1 : a.dueDate.localeCompare(b.dueDate));
+    else if (order === 'Title') {
+      const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
+      const right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
+      comparison = left < right ? -1 : left > right ? 1 : 0;
+    }
+    return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
+  });
+  for (const task of orderedRows) {
     if (Boolean(task.projectArchived) !== (scope === 'Archived')) continue;
     if (filter === 'Deleted' ? !task.deleted : task.deleted) continue;
     if (filter === 'Open' && task.completed) continue;
@@ -428,7 +443,7 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
 document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
-for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter', 'directory-order']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
 document.querySelector('#complete-visible').addEventListener('click', () => bulkDirectory(true));
 document.querySelector('#reopen-visible').addEventListener('click', () => bulkDirectory(false));
