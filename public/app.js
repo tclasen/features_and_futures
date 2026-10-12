@@ -196,8 +196,36 @@ function drawTasks() {
         taskAlert.hidden = false;
       }
     });
+    const dueDateForm = document.createElement('form');
+    dueDateForm.className = 'task-due-date-form';
+    const dueDateInput = document.createElement('input');
+    dueDateInput.type = 'text';
+    dueDateInput.value = task.dueDate || '';
+    dueDateInput.setAttribute('aria-label', 'Task due date');
+    dueDateInput.disabled = activeProjectArchived;
+    const saveDueDate = document.createElement('button');
+    saveDueDate.type = 'submit';
+    saveDueDate.className = 'open-button';
+    saveDueDate.textContent = 'Save due date';
+    saveDueDate.disabled = activeProjectArchived;
+    dueDateForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const updated = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ dueDate: dueDateInput.value })
+        });
+        task.dueDate = updated.dueDate || null;
+        dueDateInput.value = task.dueDate || '';
+        taskAlert.hidden = true;
+      } catch (error) {
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
+    dueDateForm.append(dueDateInput, saveDueDate);
     label.append(checkbox);
-    row.append(title, renameForm, priority, label);
+    row.append(title, renameForm, priority, dueDateForm, label);
     tasksNode.append(row);
   }
 }
