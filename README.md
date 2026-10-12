@@ -101,3 +101,13 @@ Imports preserve task order, exact titles, completion, explicit priorities, due
 dates, notes (with LF line endings), deletion status, project archival and default
 priority. Imported copies receive new identities and remembered ordering positions;
 editing or restoring a copy never changes the original.
+
+The home page's Task directory opens `/task-directory`, a read-only view across
+projects. Project scope (Active/Archived), Task filter, Priority filter, inclusive
+due range and title-only Directory search intersect without changing saved data.
+Each opening resets the controls to Active, All, All and empty range/search.
+Results follow project creation order and each owner's stored task order, with
+literal titles, owner names, completion, priority, due dates and multiline notes.
+Deleted tasks appear only under Deleted. Open project navigates to the owner with
+the usual project-page defaults; Projects returns home. Directory rows have no
+editing controls, including for archived or deleted tasks.

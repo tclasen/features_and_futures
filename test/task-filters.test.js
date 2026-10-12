@@ -918,3 +918,126 @@ test('project import retains submitted fields on errors and opens the independen
   assert.equal(location.href, '/projects/42');
   assert.deepEqual(writes.at(-1), { name: '  Copy  ', document: '{"format":"workboard-project"}' });
 });
+
+async function directoryPage(tasks) {
+  const app = new Element('main');
+  const location = { pathname: '/task-directory' };
+  const requests = [];
+  const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  await runInNewContext(source, {
+    document: { querySelector: () => app, createElement: (tag) => new Element(tag) },
+    window: { location },
+    fetch: async (path, options) => {
+      requests.push({ path, options });
+      assert.equal(options, undefined, 'Directory must never write');
+      return { ok: true, json: async () => structuredClone(tasks) };
+    },
+  });
+  const rows = () => app.querySelector('#directory-tasks').children;
+  const titles = () => rows().map((row) => row.children[0].textContent);
+  const select = async (id, value) => { const control = app.querySelector(id); control.value = value; await control.fire('change'); };
+  const search = async (value) => {
+    app.querySelector('#directory-search').value = value;
+    await app.querySelector('#directory-search-form').fire('submit');
+  };
+  const range = async (from, through) => {
+    app.querySelector('#due-from').value = from;
+    app.querySelector('#due-through').value = through;
+    await app.querySelector('#due-range').fire('submit');
+  };
+  return { app, location, requests, rows, titles, select, search, range };
+}
+
+test('directory intersects all controls, validates ranges and reads literal fields without writes', async () => {
+  const tasks = [
+    { title: 'Alpha \t  TEAM Ω', completed: false, priority: 'High', due_date: '2024-02-29',
+      notes: '  <b>literal</b> Ω\n\tlast  \n', deleted: false, archived: false, project_id: 1, project_name: 'Owner keyword' },
+    { title: 'ALPHA Team Ω', completed: true, priority: 'High', due_date: '2024-03-01',
+      notes: '', deleted: false, archived: false, project_id: 1, project_name: 'Owner keyword' },
+    { title: 'Alpha team Ω removed', completed: true, priority: 'High', due_date: '2024-02-29',
+      notes: 'notes keyword', deleted: true, archived: false, project_id: 1, project_name: 'Owner keyword' },
+    { title: 'Undated', completed: false, priority: 'Normal', due_date: '',
+      notes: '', deleted: false, archived: false, project_id: 2, project_name: 'Second' },
+    { title: 'Alpha team Ω archived', completed: true, priority: 'High', due_date: '2024-02-29',
+      notes: 'Archive notes', deleted: false, archived: true, project_id: 3, project_name: 'Archived' },
+    { title: 'Alpha team Ω archived removed', completed: false, priority: 'High', due_date: '2024-02-29',
+      notes: '', deleted: true, archived: true, project_id: 3, project_name: 'Archived' },
+  ];
+  const before = structuredClone(tasks);
+  const page = await directoryPage(tasks);
+  const { app, rows, titles, select, search, range } = page;
+  for (const [id, label, options] of [
+    ['project-scope', 'Project scope', ['Active', 'Archived']],
+    ['task-filter', 'Task filter', ['All', 'Open', 'Completed', 'Deleted']],
+    ['priority-filter', 'Priority filter', ['All', 'Low', 'Normal', 'High']],
+  ]) {
+    assert.equal(app.querySelectorAll('label').find((item) => item.htmlFor === id).textContent, label);
+    assert.deepEqual(app.querySelector(`#${id}`).children.map((option) => option.textContent), options);
+  }
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title, tasks[3].title]);
+  assert.deepEqual(rows()[0].children.slice(0, 6).map((field) => [field.dataset.testid, field.textContent]), [
+    ['directory-task-title', tasks[0].title], ['directory-project-name', tasks[0].project_name],
+    ['directory-task-completion', 'Open'], ['directory-task-priority', 'High'],
+    ['directory-task-due-date', '2024-02-29'], ['directory-task-notes', tasks[0].notes],
+  ]);
+  assert.ok(rows().every((row) => row.dataset.testid === 'directory-task-row'));
+  for (const tag of ['input', 'textarea', 'select', 'form']) assert.equal(rows()[0].querySelectorAll(tag).length, 0);
+  assert.equal(rows()[2].children[4].textContent, '');
+  await search('owner keyword');
+  assert.deepEqual(titles(), []);
+  await search('literal');
+  assert.deepEqual(titles(), []);
+  await search('  aLPHa\t \tTEAM Ω  ');
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title]);
+  await select('#priority-filter', 'High');
+  await range(' 2024-02-29 ', '2024-02-29 ');
+  assert.deepEqual(titles(), [tasks[0].title]);
+  await select('#task-filter', 'completed');
+  assert.deepEqual(titles(), []);
+  await select('#task-filter', 'deleted');
+  assert.deepEqual(titles(), [tasks[2].title]);
+  for (const [from, through, message] of [
+    ['2023-02-29', '', 'Due range must use valid YYYY-MM-DD dates'],
+    ['', '0000-01-01', 'Due range must use valid YYYY-MM-DD dates'],
+    ['2024-03-01', '2024-02-29', 'Due from must not be after Due through'],
+  ]) {
+    await range(from, through);
+    assert.equal(app.querySelector('[role="alert"]').textContent, message);
+    assert.deepEqual(titles(), [tasks[2].title]);
+  }
+  await select('#project-scope', 'archived');
+  assert.deepEqual(titles(), [tasks[5].title]);
+  assert.equal(app.querySelector('#task-filter').value, 'deleted');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  assert.equal(app.querySelector('#directory-search').value, 'aLPHa\t \tTEAM Ω');
+  await select('#task-filter', 'all');
+  assert.deepEqual(titles(), [tasks[4].title]);
+  await rows()[0].children.at(-1).fire('click');
+  assert.equal(page.location.href, '/projects/3');
+  await select('#project-scope', 'active');
+  await search('');
+  await select('#priority-filter', 'all');
+  await range('', '2024-03-01');
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title]);
+  await range('2024-03-01', '');
+  assert.deepEqual(titles(), [tasks[1].title]);
+  await range('', '');
+  assert.deepEqual(titles(), [tasks[0].title, tasks[1].title, tasks[3].title]);
+  assert.deepEqual(tasks, before);
+  assert.deepEqual(page.requests, [{ path: '/api/task-directory', options: undefined }]);
+  await app.querySelector('#back').fire('click');
+  assert.equal(page.location.href, '/');
+  const reopened = await directoryPage(tasks);
+  assert.equal(reopened.app.querySelector('#project-scope').value, 'active');
+  assert.equal(reopened.app.querySelector('#task-filter').value, 'all');
+  assert.equal(reopened.app.querySelector('#priority-filter').value, 'all');
+  for (const id of ['directory-search', 'due-from', 'due-through']) assert.equal(reopened.app.querySelector(`#${id}`).value, '');
+});
+
+test('home Task directory control opens the directory', async () => {
+  const page = await projectList();
+  const button = page.app.querySelector('#task-directory');
+  assert.equal(button.textContent, 'Task directory');
+  await button.fire('click');
+  assert.equal(page.window.location.href, '/task-directory');
+});

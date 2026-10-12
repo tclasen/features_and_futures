@@ -36,6 +36,122 @@ function validRangeDate(value) {
   return day >= 1 && day <= days[month - 1];
 }
 
+function matchesTask(task, completion, priority, from, through, query) {
+  return matchesSearch(task.title, query) &&
+    (completion === 'deleted' ? task.deleted : !task.deleted &&
+      (completion === 'all' || (completion === 'completed' ? task.completed : !task.completed))) &&
+    (priority === 'all' || task.priority === priority) &&
+    ((!from && !through) || (task.due_date !== '' &&
+      (!from || task.due_date >= from) && (!through || task.due_date <= through)));
+}
+
+async function renderDirectory() {
+  document.title = 'Task directory · Workboard';
+  app.innerHTML = `
+    <button type="button" id="back">Projects</button>
+    <h1>Task directory</h1>
+    <label for="project-scope">Project scope</label>
+    <select id="project-scope">
+      <option value="active">Active</option>
+      <option value="archived">Archived</option>
+    </select>
+    <label for="task-filter">Task filter</label>
+    <select id="task-filter">
+      <option value="all">All</option>
+      <option value="open">Open</option>
+      <option value="completed">Completed</option>
+      <option value="deleted">Deleted</option>
+    </select>
+    <label for="priority-filter">Priority filter</label>
+    <select id="priority-filter">
+      <option value="all">All</option>
+      <option value="Low">Low</option>
+      <option value="Normal">Normal</option>
+      <option value="High">High</option>
+    </select>
+    <form id="directory-search-form">
+      <label for="directory-search">Directory search</label>
+      <input id="directory-search" type="text" autocomplete="off">
+      <button type="submit">Search directory</button>
+    </form>
+    <form id="due-range">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
+    <p id="empty-directory">No tasks to show.</p>
+    <ul id="directory-tasks" aria-label="Task directory"></ul>`;
+  app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
+  const scope = app.querySelector('#project-scope');
+  const completion = app.querySelector('#task-filter');
+  const priority = app.querySelector('#priority-filter');
+  const search = app.querySelector('#directory-search');
+  const from = app.querySelector('#due-from');
+  const through = app.querySelector('#due-through');
+  const list = app.querySelector('#directory-tasks');
+  let query = '';
+  let appliedFrom = '';
+  let appliedThrough = '';
+  let tasks = [];
+  function draw() {
+    list.replaceChildren();
+    const visible = tasks.filter((task) => task.archived === (scope.value === 'archived') &&
+      matchesTask(task, completion.value, priority.value, appliedFrom, appliedThrough, query));
+    app.querySelector('#empty-directory').hidden = visible.length > 0;
+    for (const task of visible) {
+      const row = document.createElement('li');
+      row.dataset.testid = 'directory-task-row';
+      for (const [field, value] of [
+        ['task-title', task.title], ['project-name', task.project_name],
+        ['task-completion', task.completed ? 'Completed' : 'Open'],
+        ['task-priority', task.priority], ['task-due-date', task.due_date],
+        ['task-notes', task.notes],
+      ]) {
+        const text = document.createElement('span');
+        text.dataset.testid = `directory-${field}`;
+        text.textContent = value;
+        row.append(text);
+      }
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.textContent = 'Open project';
+      open.addEventListener('click', () => { window.location.href = `/projects/${task.project_id}`; });
+      row.append(open);
+      list.append(row);
+    }
+  }
+  for (const select of [scope, completion, priority]) select.addEventListener('change', draw);
+  app.querySelector('#directory-search-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    query = search.value.trim();
+    search.value = query;
+    draw();
+  });
+  app.querySelector('#due-range').addEventListener('submit', (event) => {
+    event.preventDefault();
+    app.querySelector('[role="alert"]')?.remove();
+    const start = from.value.trim();
+    const end = through.value.trim();
+    if (!validRangeDate(start) || !validRangeDate(end)) {
+      return showError(new Error('Due range must use valid YYYY-MM-DD dates'));
+    }
+    if (start && end && start > end) {
+      return showError(new Error('Due from must not be after Due through'));
+    }
+    appliedFrom = start;
+    appliedThrough = end;
+    from.value = start;
+    through.value = end;
+    draw();
+  });
+  try {
+    tasks = await request('/api/task-directory');
+    draw();
+  } catch (error) { showError(error); }
+}
+
 function appendProject(project, onArchive) {
   const row = document.createElement('li');
   row.dataset.testid = 'project-row';
@@ -194,15 +310,8 @@ async function renderTasks(project) {
 
   function drawTasks() {
     list.replaceChildren();
-    const visible = tasks.filter((task) =>
-      matchesSearch(task.title, appliedQuery) &&
-      (filter.value === 'deleted' ? task.deleted : !task.deleted &&
-        (filter.value === 'all' ||
-          (filter.value === 'completed' ? task.completed : !task.completed))) &&
-      (priorityFilter.value === 'all' || task.priority === priorityFilter.value) &&
-      ((!appliedFrom && !appliedThrough) || (task.due_date !== '' &&
-        (!appliedFrom || task.due_date >= appliedFrom) &&
-        (!appliedThrough || task.due_date <= appliedThrough))));
+    const visible = tasks.filter((task) => matchesTask(task, filter.value,
+      priorityFilter.value, appliedFrom, appliedThrough, appliedQuery));
     section.querySelector('#empty-tasks').hidden = visible.length > 0;
     for (const task of visible) {
       const readOnly = project.archived || Boolean(task.deleted);
@@ -481,6 +590,11 @@ async function renderTasks(project) {
 }
 
 async function render() {
+  if (window.location.pathname === '/task-directory') {
+    await renderDirectory();
+    app.setAttribute('aria-busy', 'false');
+    return;
+  }
   const projectPath = window.location.pathname.match(/^\/projects\/(\d+)$/);
   if (projectPath) {
     app.innerHTML = '<button type="button" id="back">Projects</button><h1>Loading project…</h1>';
@@ -514,6 +628,7 @@ async function render() {
   } else {
     app.innerHTML = `
       <h1>Workboard</h1>
+      <button type="button" id="task-directory">Task directory</button>
       <form>
         <label for="project-name">Project name</label>
         <div class="create-controls">
@@ -541,6 +656,9 @@ async function render() {
       </select>
       <p id="empty">No projects yet.</p>
       <ul id="projects" aria-label="Projects"></ul>`;
+    app.querySelector('#task-directory').addEventListener('click', () => {
+      window.location.href = '/task-directory';
+    });
     const form = app.querySelector('form');
     const input = app.querySelector('input');
     const submit = form.querySelector('button');

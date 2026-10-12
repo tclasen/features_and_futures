@@ -154,15 +154,45 @@ test('validated imports are atomic, independent, ordered and persistent', async 
     const emptyProject = (await imported(empty, 'Empty')).body;
     assert.equal(emptyProject.total, 0);
     assert.deepEqual(await read(`/${emptyProject.id}/tasks`), []);
+    await write(`/${archived.id}/tasks/${archivedTasks[0].id}`, 'PATCH', { deleted: true });
+    await write(`/${archived.id}`, 'PATCH', { archived: true });
     const snapshotProjects = await read('');
     const snapshotTasks = await read(`/${copy.id}/tasks`);
+    const readDirectory = async () => {
+      const response = await fetch(`${base}/api/task-directory`);
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const snapshotDirectory = await readDirectory();
+    const expectedDirectory = [];
+    for (const project of snapshotProjects) {
+      for (const task of await read(`/${project.id}/tasks`)) {
+        expectedDirectory.push({ ...task, project_id: project.id,
+          project_name: project.name, archived: project.archived });
+      }
+    }
+    assert.deepEqual(snapshotDirectory, expectedDirectory);
+    assert.ok(snapshotDirectory.some((task) => task.deleted));
+    assert.ok(snapshotDirectory.some((task) => task.archived));
+    assert.equal(snapshotDirectory.find((task) => task.id === tasks[0].id).notes, tasks[0].notes);
+    assert.equal((await fetch(`${base}/task-directory`)).status, 200);
+    assert.deepEqual(await read(''), snapshotProjects);
+    assert.deepEqual(await read(`/${copy.id}/tasks`), snapshotTasks);
     await stop();
     await start();
     assert.deepEqual(await read(''), snapshotProjects);
     assert.deepEqual(await read(`/${copy.id}/tasks`), snapshotTasks);
+    assert.deepEqual(await readDirectory(), snapshotDirectory);
     await write(deletedPath, 'PATCH', { destination_project_id: original.id });
+    assert.equal((await readDirectory()).find((task) => task.id === tasks[0].id).project_id, original.id);
     await write(`/${original.id}/tasks/${tasks[0].id}`, 'PATCH', { destination_project_id: copy.id });
     assert.deepEqual(await read(`/${copy.id}/tasks`), snapshotTasks);
+    assert.deepEqual(await readDirectory(), snapshotDirectory);
+    await write(`/${copy.id}`, 'PATCH', { name: 'Renamed directory owner' });
+    await write(`/${copy.id}`, 'PATCH', { archived: true });
+    const archivedDirectory = (await readDirectory()).filter((task) => task.project_id === copy.id);
+    assert.deepEqual(archivedDirectory.map((task) => task.id), snapshotTasks.map((task) => task.id));
+    assert.ok(archivedDirectory.every((task) => task.archived && task.project_name === 'Renamed directory owner'));
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
