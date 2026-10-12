@@ -35,6 +35,8 @@ const insertProject = db.prepare('INSERT INTO projects (id, name, created_at) VA
 const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid');
 const insertTask = db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
+const findTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ? AND project_id = ?');
+const updateTaskTitle = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateProjectArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const updateProjectName = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 
@@ -113,9 +115,19 @@ const server = createServer(async (req, res) => {
   if (req.method === 'PATCH' && taskMatch) {
     const projectId = decodeURIComponent(taskMatch[1]);
     const taskId = decodeURIComponent(taskMatch[2]);
-    if (findProject.get(projectId)?.archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
+    const project = findProject.get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    if (project.archived) return json(res, 409, { error: 'Archived project tasks cannot be changed' });
     try {
       const body = await readJson(req);
+      if (typeof body.title === 'string') {
+        const title = body.title.trim();
+        if (!title) return json(res, 400, { error: 'Task title is required' });
+        const result = updateTaskTitle.run(title, taskId, projectId);
+        if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });
+        const task = findTask.get(taskId, projectId);
+        return json(res, 200, { ...task, completed: Boolean(task.completed) });
+      }
       if (typeof body.completed !== 'boolean') return json(res, 400, { error: 'Invalid completion state' });
       const result = updateTask.run(body.completed ? 1 : 0, taskId, projectId);
       if (!Number(result.changes)) return json(res, 404, { error: 'Task not found' });

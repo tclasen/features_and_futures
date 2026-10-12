@@ -133,8 +133,35 @@ function drawTasks() {
         drawTasks();
       } catch { checkbox.checked = task.completed; }
     });
+    const renameForm = document.createElement('form');
+    renameForm.className = 'task-rename-form';
+    const renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.value = task.title;
+    renameInput.setAttribute('aria-label', 'New task title');
+    renameInput.disabled = activeProjectArchived;
+    const renameButton = document.createElement('button');
+    renameButton.type = 'submit';
+    renameButton.className = 'open-button';
+    renameButton.textContent = 'Rename task';
+    renameButton.disabled = activeProjectArchived;
+    renameForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const renamed = await request(`/api/projects/${encodeURIComponent(activeProjectId)}/tasks/${encodeURIComponent(task.id)}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: renameInput.value })
+        });
+        task.title = renamed.title;
+        drawTasks();
+      } catch (error) {
+        taskAlert.textContent = error.message;
+        taskAlert.hidden = false;
+      }
+    });
+    renameForm.append(renameInput, renameButton);
     label.append(checkbox);
-    row.append(title, label);
+    row.append(title, renameForm, label);
     tasksNode.append(row);
   }
 }
