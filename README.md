@@ -34,3 +34,9 @@ Active project pages provide a New project name field and Rename project button.
 Renaming trims whitespace and preserves the project's identity, creation order,
 tasks, and summary. Empty names are rejected. Archived projects disable renaming
 and reject rename requests until restored.
+
+Each task row provides a New task title field and Rename task button. Renaming
+trims whitespace and preserves the task's project, creation order, completion
+state, and filter membership. Empty titles are rejected with an alert. Renamed
+titles persist across restarts. Archived projects disable task rename controls
+and reject rename requests until restored.

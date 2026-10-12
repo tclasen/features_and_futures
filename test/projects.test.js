@@ -97,7 +97,7 @@ test('tasks validate, filter, remain project-owned, and persist completion acros
     assert.match(originalRows[0], /type="checkbox".*aria-label="Complete First task"/);
     assert.match(originalRows[1], /aria-label="Complete &lt;b&gt;Second&lt;\/b&gt; &amp; &quot;task&quot;"/);
     assert.ok(originalRows.every((row) => !row.includes(' checked')));
-    assert.deepEqual(taskRows(await readProject('/projects/1?filter=Open')), originalRows.map((row) => row.replace('value="All"', 'value="Open"')));
+    assert.deepEqual(taskRows(await readProject('/projects/1?filter=Open')), originalRows.map((row) => row.replaceAll('value="All"', 'value="Open"')));
     assert.equal(taskRows(await readProject('/projects/1?filter=Completed')).length, 0);
     assert.equal(taskRows(await readProject('/projects/2')).length, 0);
 
@@ -370,6 +370,87 @@ test('existing project databases migrate to active without changing IDs or tasks
     server = await startServer(databasePath);
     assert.equal(rows(await (await fetch(server.baseUrl)).text()).length, 0);
     assert.match(rows(await (await fetch(server.baseUrl + '/?filter=Archived')).text())[0], /1\/1 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('task renames preserve ownership, order, completion, filters, and persistence', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path = '/projects/1') => (await fetch(server.baseUrl + path)).text();
+    await createProject(server.baseUrl, 'First');
+    await createProject(server.baseUrl, 'Second');
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Original' });
+    await postForm(server.baseUrl, '/projects/1/tasks', { title: 'Pending' });
+    await postForm(server.baseUrl, '/projects/2/tasks', { title: 'Other project' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    const originalTasks = taskRows(await read());
+    const originalProjects = rows(await read('/'));
+    const otherTasks = taskRows(await read('/projects/2'));
+    assert.match(originalTasks[0], /<label for="new-task-title-1">New task title<\/label>/);
+    assert.match(originalTasks[0], /<input id="new-task-title-1" name="title" type="text" value="Original">/);
+    assert.match(originalTasks[0], /<button type="submit">Rename task<\/button>/);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await postForm(server.baseUrl, '/projects/1/tasks/1/rename', { title, filter: 'Completed' });
+      assert.equal(invalid.status, 422);
+      const html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.match(html, /id="new-task-title-1"[^>]*aria-invalid="true"/);
+      assert.doesNotMatch(html, /id="task-title"[^>]*aria-invalid/);
+      assert.equal(taskRows(html).length, 1);
+      assert.match(taskRows(html)[0], /Complete Original" checked/);
+      assert.deepEqual(taskRows(await read()), originalTasks);
+    }
+    for (const path of ['/projects/2/tasks/1/rename', '/projects/1/tasks/999/rename', '/projects/999/tasks/1/rename']) {
+      assert.equal((await postForm(server.baseUrl, path, { title: 'Wrong owner' })).status, 404);
+    }
+    const renamed = await postForm(server.baseUrl, '/projects/1/tasks/1/rename', {
+      title: '  Updated <title> & "task"  ', filter: 'Completed',
+    });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed');
+    const escapedTitle = 'Updated &lt;title&gt; &amp; &quot;task&quot;';
+    const renamedTasks = taskRows(await read());
+    assert.equal(renamedTasks[0], originalTasks[0].replaceAll('Original', escapedTitle));
+    assert.equal(renamedTasks[1], originalTasks[1]);
+    assert.deepEqual(taskRows(await read('/projects/1?filter=Completed')), [renamedTasks[0].replaceAll('value="All"', 'value="Completed"')]);
+    assert.deepEqual(taskRows(await read('/projects/1?filter=Open')), [renamedTasks[1].replaceAll('value="All"', 'value="Open"')]);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), renamedTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    const archivedTasks = taskRows(await read());
+    assert.ok(archivedTasks.every((row) => /id="new-task-title-\d+"[^>]* disabled/.test(row)));
+    assert.ok(archivedTasks.every((row) => /<button type="submit" disabled>Rename task<\/button>/.test(row)));
+    assert.equal((await postForm(server.baseUrl, '/projects/1/tasks/1/rename', { title: 'Blocked' })).status, 403);
+    assert.deepEqual(taskRows(await read()), archivedTasks);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), archivedTasks);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assert.deepEqual(taskRows(await read()), renamedTasks);
+    const restoredRename = await postForm(server.baseUrl, '/projects/1/tasks/2/rename', { title: '  Renamed open task  ', filter: 'Open' });
+    assert.equal(restoredRename.status, 303);
+    assert.equal(restoredRename.headers.get('location'), '/projects/1?filter=Open');
+    const finalTasks = taskRows(await read());
+    assert.equal(finalTasks[0], renamedTasks[0]);
+    assert.equal(finalTasks[1], originalTasks[1].replaceAll('Pending', 'Renamed open task'));
+    assert.doesNotMatch(finalTasks[1], / checked/);
+    assert.deepEqual(rows(await read('/')), originalProjects);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await read()), finalTasks);
+    assert.deepEqual(taskRows(await read('/projects/2')), otherTasks);
+    assert.deepEqual(rows(await read('/')), originalProjects);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });
