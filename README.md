@@ -37,3 +37,7 @@ and archive/restore protection.
 Due-date tests cover empty defaults and migration, strict Gregorian calendar validation,
 trimming and clearing, independent values, unchanged filters and summaries, rename preservation,
 restart persistence, and archive/restore protection.
+Due-range tests cover inclusive and one-sided boundaries, undated tasks, intersections
+with completion and priority filters, invalid-range preservation, edit-driven membership
+changes, restart persistence of task data, and usable archived filtering. Applied ranges
+are kept in the project URL; opening a project from the list starts with empty boundaries.
