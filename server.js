@@ -32,6 +32,7 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0,
     priority TEXT NOT NULL DEFAULT 'Normal',
     due_date TEXT,
+    notes TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0
   )
 `);
@@ -45,6 +46,9 @@ if (!taskColumns.some(column => column.name === 'due_date')) {
 if (!taskColumns.some(column => column.name === 'position')) {
   database.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
   database.exec('UPDATE tasks SET position = id');
+}
+if (!taskColumns.some(column => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 database.exec(`
   CREATE TABLE IF NOT EXISTS task_project_positions (
@@ -66,7 +70,7 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const setProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = database.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const moveTask = database.prepare('UPDATE tasks SET project_id = ?, position = ? WHERE id = ? AND project_id = ?');
 const getRememberedTaskPosition = database.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
@@ -77,6 +81,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function isValidDueDate(value) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -125,6 +130,7 @@ function sendPage(response) {
     [data-testid="task-row"] input { width: auto; }
     [data-testid="task-row"] select { max-width: 120px; }
     [data-testid="task-row"] .due-date { width: 145px; }
+    [data-testid="task-row"] .task-notes { box-sizing: border-box; width: 180px; min-height: 72px; resize: vertical; font: inherit; }
     .task-title { flex: 1; }
     #detail { margin-bottom: 20px; }
     @media (max-width: 520px) { form { align-items: stretch; flex-direction: column; } input { width: 100%; } button { align-self: start; } }
@@ -408,7 +414,24 @@ function sendPage(response) {
           if (!moved.ok) throw new Error('Unable to move task');
           await renderTasks();
         });
-        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, moveButton);
+        const notes = document.createElement('textarea');
+        notes.className = 'task-notes';
+        notes.setAttribute('aria-label', 'Task notes');
+        notes.value = task.notes || '';
+        notes.disabled = currentProjectArchived;
+        const saveNotes = document.createElement('button');
+        saveNotes.type = 'button';
+        saveNotes.textContent = 'Save notes';
+        saveNotes.disabled = currentProjectArchived;
+        saveNotes.addEventListener('click', async () => {
+          const updated = await fetch('/api/projects/' + encodeURIComponent(currentProjectId) + '/tasks/' + task.id + '/notes', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: notes.value })
+          });
+          if (!updated.ok) throw new Error('Unable to save task notes');
+          error.hidden = true;
+        });
+        row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, notes, saveNotes, destination, moveButton);
         taskList.append(row);
       }
     }
@@ -639,6 +662,7 @@ const server = createServer(async (request, response) => {
   const taskRenameMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/title$/);
   const taskPriorityMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/priority$/);
   const taskDueDateMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/due-date$/);
+  const taskNotesMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/notes$/);
   const taskMoveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
   if (taskMoveMatch && request.method === 'PATCH') {
     try {
@@ -677,6 +701,22 @@ const server = createServer(async (request, response) => {
       if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
       updateTaskDueDate.run(dueDate || null, taskId, projectId);
       sendJson(response, 200, { ...task, due_date: dueDate || null });
+    } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
+    return;
+  }
+  if (taskNotesMatch && request.method === 'PATCH') {
+    try {
+      const projectId = Number(taskNotesMatch[1]);
+      const taskId = Number(taskNotesMatch[2]);
+      const project = getProject.get(projectId);
+      if (!project) { sendJson(response, 404, { error: 'Project not found' }); return; }
+      if (project.archived) { sendJson(response, 409, { error: 'Archived projects cannot change task notes' }); return; }
+      const body = await readRequestBody(request);
+      if (typeof body.notes !== 'string') { sendJson(response, 400, { error: 'Notes must be text' }); return; }
+      const task = getTask.get(taskId, projectId);
+      if (!task) { sendJson(response, 404, { error: 'Task not found' }); return; }
+      updateTaskNotes.run(body.notes, taskId, projectId);
+      sendJson(response, 200, { id: taskId, notes: body.notes });
     } catch { sendJson(response, 400, { error: 'Invalid request body' }); }
     return;
   }
