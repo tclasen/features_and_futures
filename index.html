@@ -101,6 +101,7 @@
       const rangeAlert = document.querySelector('#range-alert');
       let appliedRange = { from: '', through: '' };
       const archived = Boolean(window.initialProject.archived);
+      let activeProjects = [];
       const defaultPriority = document.querySelector('#default-task-priority');
       defaultPriority.value = window.initialProject.default_task_priority || 'Normal';
       defaultPriority.disabled = archived;
@@ -130,7 +131,9 @@
             && (!appliedRange.through || task.due_date <= appliedRange.through));
           return matchesCompletion && matchesPriority && matchesDate;
         });
-        list.innerHTML = visibleTasks.map((task) => `
+        list.innerHTML = visibleTasks.map((task) => {
+          const destinations = activeProjects.filter((project) => project.id !== projectId);
+          return `
           <div class="task-row${task.completed ? ' completed' : ''}" data-testid="task-row">
             <input type="checkbox" data-task-id="${task.id}" aria-label="Complete ${escapeText(task.title)}"${task.completed ? ' checked' : ''}${archived ? ' disabled' : ''}>
             <span class="task-title">${escapeText(task.title)}</span>
@@ -147,7 +150,12 @@
               <label>Task due date<input type="text" name="due_date" value="${escapeText(task.due_date || '')}" placeholder="YYYY-MM-DD"${archived ? ' disabled' : ''}></label>
               <button type="submit"${archived ? ' disabled' : ''}>Save due date</button>
             </form>
-          </div>`).join('');
+            <label>Destination project<select data-destination="${task.id}"${archived || destinations.length === 0 ? ' disabled' : ''}>
+              ${destinations.map((project) => `<option value="${project.id}">${escapeText(project.name)}</option>`).join('')}
+            </select></label>
+            <button type="button" data-move-task="${task.id}"${archived || destinations.length === 0 ? ' disabled' : ''}>Move task</button>
+          </div>`;
+        }).join('');
       };
       const loadTasks = async () => {
         const response = await fetch(`/api/projects/${projectId}/tasks`);
@@ -156,6 +164,10 @@
           renderTasks();
         }
       };
+      fetch('/api/projects?filter=Active').then((response) => response.json()).then((projects) => {
+        activeProjects = projects;
+        renderTasks();
+      });
       loadTasks();
       defaultPriority.addEventListener('change', async () => {
         const response = await fetch(`/api/projects/${projectId}/default-priority`, {
@@ -306,6 +318,25 @@
           renderTasks();
         } else {
           await loadTasks();
+        }
+      });
+      list.addEventListener('click', async (event) => {
+        const button = event.target.closest('button[data-move-task]');
+        if (!button) return;
+        const taskId = button.dataset.moveTask;
+        const destination = list.querySelector(`select[data-destination="${taskId}"]`);
+        if (!destination || !destination.value) return;
+        const response = await fetch(`/api/projects/${projectId}/tasks/${taskId}/move`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ destination_project_id: Number(destination.value) }),
+        });
+        if (response.ok) {
+          tasks = tasks.filter((task) => task.id !== Number(taskId));
+          renderTasks();
+        } else {
+          const result = await response.json();
+          alert.textContent = result.error || 'Unable to move task';
+          alert.hidden = false;
         }
       });
     } else {

@@ -61,6 +61,24 @@ const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE 
 const updateTaskCompletion = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+function moveTask(taskId, sourceProjectId, destinationProjectId) {
+  const task = findTask.get(taskId, sourceProjectId);
+  if (!task) return null;
+  database.exec('BEGIN');
+  try {
+    const result = database.prepare(`
+      INSERT INTO tasks (project_id, title, completed, priority, due_date)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(destinationProjectId, task.title, task.completed, task.priority, task.due_date);
+    database.prepare('DELETE FROM tasks WHERE id = ? AND project_id = ?').run(taskId, sourceProjectId);
+    const movedTask = findTask.get(result.lastInsertRowid, destinationProjectId);
+    database.exec('COMMIT');
+    return movedTask;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
 
 function isValidDueDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -237,6 +255,27 @@ const server = createServer(async (request, response) => {
       const result = renameTask.run(title, taskId, projectId);
       if (!Number(result.changes)) return sendJson(response, 404, { error: 'Task not found' });
       return sendJson(response, 200, findTask.get(taskId, projectId));
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid request' });
+    }
+  }
+  const moveTaskMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/tasks\/(\d+)\/move$/);
+  if (request.method === 'POST' && moveTaskMatch) {
+    const sourceProjectId = Number(moveTaskMatch[1]);
+    const taskId = Number(moveTaskMatch[2]);
+    const source = findProject.get(sourceProjectId);
+    if (!source) return sendJson(response, 404, { error: 'Project not found' });
+    if (source.archived) return sendJson(response, 400, { error: 'Archived projects cannot move tasks' });
+    try {
+      const payload = await readJson(request);
+      const destinationProjectId = Number(payload.destination_project_id);
+      const destination = findProject.get(destinationProjectId);
+      if (!destination || destination.archived || destinationProjectId === sourceProjectId) {
+        return sendJson(response, 400, { error: 'A different active destination project is required' });
+      }
+      const movedTask = moveTask(taskId, sourceProjectId, destinationProjectId);
+      if (!movedTask) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, movedTask);
     } catch {
       return sendJson(response, 400, { error: 'Invalid request' });
     }
