@@ -35,3 +35,5 @@ L055 task014 observation: b004/b011 original submissions fail frozen task/projec
 L069 task015 observed: two b004 sources fail the same011 due-date seed assertion. Retain measured originals and generic feedback; hold the common round under unchanged correction/five-identical-failure rules. Failure at seeding does not establish an actual-restart defect, and recovery remains unverified.
 
 L069 archive-first task015 recovery verified: five identical b004 diagnostics, all five original histories and working trees plus before-restore bundle independently restored. The recorded own-task014 restoration matches attempt006 start. Effective task015 repair remains pending; no comparison change or implementation hint.
+
+L069 post-restoration outcome: task015 b004attempt006 still fails the same011 due-date seed assertion. Archive/control verification is valid, but effective implementation recovery is not established. Continue unchanged measured repairs; no PM fix or new hint.
