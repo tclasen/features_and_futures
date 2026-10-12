@@ -23,13 +23,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const updatePriority = db.prepare("UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ? AND ? IN ('Low', 'Normal', 'High')");
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.completed = 1) AS completedCount,
   (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS totalCount
@@ -111,7 +114,12 @@ const server = http.createServer(async (req, res) => {
       const projectId = Number(taskMatch[1]);
       if (getProject.get(projectId).archived) return json(res, 403, { error: 'Archived project' });
       const taskId = Number(taskMatch[2]);
-      if (typeof data.title === 'string') {
+      if (!getProject.get(projectId)) return json(res, 404, { error: 'Project not found' });
+      if (typeof data.priority === 'string') {
+        if (!['Low', 'Normal', 'High'].includes(data.priority)) return json(res, 400, { error: 'Invalid priority' });
+        const result = updatePriority.run(data.priority, taskId, projectId, data.priority);
+        if (!result.changes) return json(res, 404, { error: 'Task not found' });
+      } else if (typeof data.title === 'string') {
         const title = data.title.trim();
         if (!title) return json(res, 400, { error: 'Task title is required' });
         const result = renameTask.run(title, taskId, projectId);

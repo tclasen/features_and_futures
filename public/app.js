@@ -150,7 +150,24 @@ function renderTasks() {
       task.title = updated.title;
       renderTasks();
     });
-    row.append(title, checkbox, renameInput, renameButton);
+    const priority = document.createElement('select');
+    priority.setAttribute('aria-label', 'Task priority');
+    for (const value of ['Low', 'Normal', 'High']) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      priority.append(option);
+    }
+    priority.value = task.priority || 'Normal';
+    priority.disabled = archived;
+    priority.addEventListener('change', async () => {
+      const response = await fetch(`/api/projects/${activeProjectId}/tasks/${task.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: priority.value })
+      });
+      if (response.ok) task.priority = (await response.json()).priority;
+    });
+    row.append(title, checkbox, renameInput, renameButton, priority);
     taskContainer.append(row);
   }
 }
