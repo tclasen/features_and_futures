@@ -154,6 +154,21 @@ async function renderProject(id) {
         else await renderTasks();
       });
       row.append(checkbox);
+      const renameInput = element('input', undefined, { type: 'text', 'aria-label': 'New task title', value: task.title });
+      const renameButton = element('button', 'Rename task', { type: 'button' });
+      renameInput.disabled = project.archived;
+      renameButton.disabled = project.archived;
+      renameButton.addEventListener('click', async () => {
+        const title = renameInput.value.trim();
+        if (!title) { showError('Task title is required'); renameInput.focus(); return; }
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}`, {
+          method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title })
+        });
+        if (!update.ok) { const error = await update.json(); showError(error.error || 'Could not rename task'); return; }
+        app.querySelector('[role="alert"]')?.remove();
+        await renderTasks();
+      });
+      row.append(renameInput, renameButton);
       list.append(row);
     }
   };

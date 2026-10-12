@@ -68,6 +68,13 @@ const server = createServer(async (request, response) => {
       if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
       const body = await readBody(request);
       if (body.error) return sendJson(response, 400, { error: body.error });
+      if (typeof body.value?.title === 'string') {
+        const title = body.value.title.trim();
+        if (!title) return sendJson(response, 400, { error: 'Task title is required' });
+        const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?').run(title, taskId, projectId);
+        if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+        return sendJson(response, 200, { id: taskId, title });
+      }
       if (typeof body.value?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be boolean' });
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.value.completed), taskId, projectId);
       if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
