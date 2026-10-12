@@ -85,7 +85,16 @@ async function render() {
             try { await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ priority: priority.value })); await refreshTasks(); }
             catch (error) { alert.textContent = error.message; await refreshTasks(); }
           });
-          row.append(renameInput, renameButton, priority); return row;
+          const dueDate = document.createElement('input'); dueDate.type = 'text'; dueDate.value = task.dueDate || ''; dueDate.setAttribute('aria-label', 'Task due date'); dueDate.disabled = Boolean(project.archived);
+          const saveDueDate = element('button', 'Save due date'); saveDueDate.type = 'button'; saveDueDate.disabled = Boolean(project.archived);
+          saveDueDate.addEventListener('click', async () => {
+            try {
+              const value = dueDate.value.trim();
+              await request(`/api/projects/${project.id}/tasks/${task.id}`, json({ dueDate: value || null }));
+              alert.textContent = ''; await refreshTasks();
+            } catch (error) { alert.textContent = error.message; }
+          });
+          row.append(renameInput, renameButton, priority, dueDate, saveDueDate); return row;
         }));
       }
       filter.addEventListener('change', refreshTasks);

@@ -29,16 +29,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'"); } catch {}
+try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch {}
 const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE id = ? AND project_id = ?');
+const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const updatePriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -111,6 +113,10 @@ const server = createServer(async (req, res) => {
         result = updateTask.run(body.completed ? 1 : 0, taskId, Number(taskUpdateMatch[1]));
       } else if (typeof body.priority === 'string' && ['Low', 'Normal', 'High'].includes(body.priority)) {
         result = updatePriority.run(body.priority, taskId, Number(taskUpdateMatch[1]));
+      } else if (Object.hasOwn(body, 'dueDate') && (body.dueDate === null || typeof body.dueDate === 'string')) {
+        const date = body.dueDate === null ? '' : body.dueDate.trim();
+        if (date && !validDate(date)) return send(400, JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
+        result = updateDueDate.run(date || null, taskId, Number(taskUpdateMatch[1]));
       } else if (typeof body.title === 'string' && body.title.trim()) {
         renameTask.run(body.title.trim(), taskId, Number(taskUpdateMatch[1]));
         result = { changes: db.prepare('SELECT changes() AS count').get().count };
@@ -170,6 +176,16 @@ const server = createServer(async (req, res) => {
   }
   return send(404, JSON.stringify({ error: 'Not found' }));
 });
+
+function validDate(value) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+  if (year < 1 || month < 1 || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= days[month - 1];
+}
 
 const port = Number(process.env.PORT || 8080);
 server.listen(port, '0.0.0.0');
