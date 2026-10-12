@@ -35,6 +35,10 @@ function asciiLower(value) {
   return value.replace(/[A-Z]/g, character => character.toLowerCase());
 }
 
+function normalizeSearch(value) {
+  return asciiLower(value.replace(/[ \t]+/g, ' '));
+}
+
 async function request(path, options) {
   const response = await fetch(path, options);
   const data = await response.json();
@@ -54,9 +58,9 @@ function showList() {
 async function loadProjects() {
   const projects = await request('/api/projects');
   projectsNode.replaceChildren();
-  const query = asciiLower(appliedProjectQuery);
+  const query = normalizeSearch(appliedProjectQuery);
   const visibleProjects = projects.filter(project => project.archived === (projectFilter.value === 'Archived') &&
-    asciiLower(project.name).includes(query));
+    normalizeSearch(project.name).includes(query));
   document.querySelector('#project-count').textContent = visibleProjects.length ? String(visibleProjects.length).padStart(2, '0') : '';
   if (!visibleProjects.length) {
     const empty = document.createElement('div');
@@ -139,7 +143,7 @@ function drawTasks() {
     (!appliedDueFrom && !appliedDueThrough || Boolean(task.dueDate)) &&
     (!appliedDueFrom || (task.dueDate || '') >= appliedDueFrom) &&
     (!appliedDueThrough || (task.dueDate || '') <= appliedDueThrough) &&
-    asciiLower(task.title).includes(asciiLower(appliedTaskQuery))
+    normalizeSearch(task.title).includes(normalizeSearch(appliedTaskQuery))
   );
   if (!visible.length) {
     const empty = document.createElement('div');
