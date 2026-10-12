@@ -227,3 +227,13 @@ const server = http.createServer(async (req, res) => {
 
 const port = Number(process.env.PORT) || 8080;
 server.listen(port, '0.0.0.0');
+
+// Flush SQLite's connection state when the shared launcher stops the process.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    server.close(() => {
+      db.close();
+      process.exit(0);
+    });
+  });
+}
