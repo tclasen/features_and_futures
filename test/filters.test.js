@@ -60,6 +60,7 @@ async function projectPage(archived = false) {
   }
   tasks.push({ id: 7, title: 'Second high open', completed: false, priority: 'High' });
   const requests = [];
+  const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
   const context = {
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     location: { pathname: '/projects/1' },
@@ -67,11 +68,11 @@ async function projectPage(archived = false) {
       requests.push({ path, options });
       let data;
       if (options?.method === 'PATCH') {
-        const task = tasks.find(task => task.id === Number(path.split('/').at(-1)));
-        Object.assign(task, JSON.parse(options.body));
-        data = task;
+        const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
+        Object.assign(target, JSON.parse(options.body));
+        data = target;
       } else if (path.endsWith('/tasks')) data = tasks;
-      else data = { id: 1, name: 'Project', archived, totalCount: 7, completedCount: 3 };
+      else data = project;
       return { ok: true, json: async () => structuredClone(data) };
     },
   };
@@ -82,7 +83,7 @@ async function projectPage(archived = false) {
   const rows = () => app.querySelector('#task-list').children;
   const titles = () => rows().map(row => row.children[0].textContent);
   async function select(element, value) { element.value = value; await element.trigger('change'); }
-  return { app, tasks, requests, completion, priority, rows, titles, select };
+  return { app, tasks, project, requests, completion, priority, rows, titles, select };
 }
 
 test('combined filters preserve selections, creation order and data across all combinations', async () => {
@@ -139,6 +140,8 @@ test('archived pages allow both filters while disabling editing; fresh pages def
   const page = await projectPage(true);
   assert.equal(page.completion.disabled, false);
   assert.equal(page.priority.disabled, false);
+  assert.equal(page.app.querySelector('#default-task-priority').disabled, true);
+  assert.equal(page.app.querySelector('#default-task-priority').value, 'Normal');
   await page.select(page.completion, 'Completed');
   await page.select(page.priority, 'Normal');
   assert.deepEqual(page.titles(), ['Normal done']);
@@ -149,7 +152,31 @@ test('archived pages allow both filters while disabling editing; fresh pages def
   assert.equal(restored.completion.value, 'All');
   assert.equal(restored.priority.value, 'All');
   assert.equal(restored.rows().length, 7);
+  assert.equal(restored.app.querySelector('#default-task-priority').disabled, false);
   for (const tag of ['input', 'select', 'button']) {
     assert.ok(restored.rows()[0].querySelectorAll(tag).every(control => !control.disabled));
+  }
+});
+
+test('saving a project default leaves task rows and both filters unchanged', async () => {
+  const page = await projectPage();
+  const control = page.app.querySelector('#default-task-priority');
+  assert.deepEqual(control.children.map(option => option.textContent), ['Low', 'Normal', 'High']);
+  assert.equal(control.value, 'Normal');
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  const originalTasks = structuredClone(page.tasks);
+  const originalRows = [...page.rows()];
+  for (const value of ['Low', 'High', 'Normal']) {
+    await page.select(control, value);
+    assert.equal(control.value, value);
+    assert.equal(page.project.defaultPriority, value);
+    assert.equal(control.disabled, false);
+    assert.equal(page.completion.value, 'Open');
+    assert.equal(page.priority.value, 'High');
+    assert.deepEqual(page.tasks, originalTasks);
+    assert.deepEqual(page.rows(), originalRows);
+    assert.equal(page.project.totalCount, 7);
+    assert.equal(page.project.completedCount, 3);
   }
 });

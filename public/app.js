@@ -45,6 +45,12 @@ async function renderProject(projectId) {
         <button type="submit" disabled>Rename project</button>
       </div>
     </form>
+    <div class="task-filter">
+      <label for="default-task-priority">Default task priority</label>
+      <select id="default-task-priority" disabled>
+        <option>Low</option><option selected>Normal</option><option>High</option>
+      </select>
+    </div>
     <form id="create-task">
       <label for="task-title">Task title</label>
       <div class="create-fields">
@@ -76,10 +82,12 @@ async function renderProject(projectId) {
   const alert = app.querySelector('[role="alert"]');
   const filter = app.querySelector('#task-filter');
   const priorityFilter = app.querySelector('#priority-filter');
+  const defaultPriority = app.querySelector('#default-task-priority');
   const list = app.querySelector('#task-list');
   const tasksPath = `/api/projects/${projectId}/tasks`;
   let tasks = [];
   let archived = false;
+  let savedDefaultPriority;
 
   function displayTasks() {
     const matching = tasks.filter(task =>
@@ -202,6 +210,8 @@ async function renderProject(projectId) {
   try {
     const project = await request(`/api/projects/${projectId}`);
     archived = project.archived;
+    savedDefaultPriority = project.defaultPriority;
+    defaultPriority.value = savedDefaultPriority;
     app.querySelector('#archived-notice').hidden = !archived;
     app.querySelector('h1').textContent = project.name;
     document.title = `${project.name} · Workboard`;
@@ -215,6 +225,25 @@ async function renderProject(projectId) {
   }
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
+  defaultPriority.disabled = archived;
+  defaultPriority.addEventListener('change', async () => {
+    if (archived) return;
+    defaultPriority.disabled = true;
+    alert.hidden = true;
+    try {
+      const saved = await request(`/api/projects/${projectId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultPriority: defaultPriority.value }),
+      });
+      savedDefaultPriority = saved.defaultPriority;
+    } catch (error) {
+      showError(alert, error.message);
+    } finally {
+      defaultPriority.value = savedDefaultPriority;
+      defaultPriority.disabled = archived;
+    }
+  });
   renameInput.disabled = archived;
   renameButton.disabled = archived;
   renameForm.addEventListener('submit', async event => {

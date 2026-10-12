@@ -70,6 +70,7 @@ test('projects and tasks validate, rename, save priorities, remain isolated and 
     assert.equal(first.archived, false);
     assert.equal(first.totalCount, 0);
     assert.equal(first.completedCount, 0);
+    assert.equal(first.defaultPriority, 'Normal');
     const second = await (await create('<Second> & project')).json();
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
@@ -251,6 +252,58 @@ test('projects and tasks validate, rename, save priorities, remain isolated and 
     assert.equal(thirdTask.priority, 'Normal');
     const third = await (await create('Third project')).json();
     assert.ok(third.id > second.id);
+    assert.equal(third.defaultPriority, 'Normal');
+    async function setDefault(defaultPriority, projectId = first.id, extra = {}) {
+      return fetch(`${base}/api/projects/${projectId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultPriority, ...extra }),
+      });
+    }
+    const existingTasks = [firstTask, secondTask, thirdTask];
+    first.totalCount = 3;
+    for (const value of ['', 'Urgent', 'high', null, 1]) {
+      assert.equal((await setDefault(value, first.id, { name: 'Invalid edit' })).status, 400);
+      assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    }
+    assert.equal((await setDefault('High', 999999)).status, 404);
+    for (const value of ['Low', 'Normal', 'High']) {
+      const response = await setDefault(value);
+      assert.equal(response.status, 200);
+      first.defaultPriority = value;
+      assert.deepEqual(await response.json(), first);
+      assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), existingTasks);
+      assert.equal((await (await fetch(`${base}/api/projects/${second.id}`)).json()).defaultPriority, 'Normal');
+    }
+    const inherited = await (await createTask('Inherited high')).json();
+    assert.equal(inherited.priority, 'High');
+    assert.equal(inherited.completed, false);
+    existingTasks.push(inherited);
+    first.totalCount++;
+    assert.equal((await setDefault('Low', second.id)).status, 200);
+    second.defaultPriority = 'Low';
+    const otherInherited = await (await createTask('Inherited low', `/api/projects/${second.id}/tasks`)).json();
+    assert.equal(otherInherited.priority, 'Low');
+    second.totalCount++;
+    assert.equal((await renameProject('  Default preserved  ')).status, 200);
+    first.name = 'Default preserved';
+    assert.equal((await archiveProject(true)).status, 200);
+    first.archived = true;
+    assert.equal((await setDefault('Low')).status, 409);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second, third]);
+    assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), existingTasks);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}/tasks`)).json(), [otherTask, otherInherited]);
+    assert.equal((await archiveProject(false)).status, 200);
+    first.archived = false;
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await setDefault('Normal')).status, 200);
+    first.defaultPriority = 'Normal';
+    assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), existingTasks);
+    await stop();
+    await start();
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.equal((await (await createTask('Restored default')).json()).priority, 'Normal');
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });
@@ -283,7 +336,7 @@ test('migrates an existing database without changing project IDs or tasks', asyn
     assert.ok(response, 'Server became ready');
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
-      id: 42, name: 'Existing project', archived: false, totalCount: 1, completedCount: 1,
+      id: 42, name: 'Existing project', archived: false, defaultPriority: 'Normal', totalCount: 1, completedCount: 1,
     });
     const tasks = await fetch(`http://127.0.0.1:${port}/api/projects/42/tasks`);
     assert.deepEqual(await tasks.json(), [{ id: 51, title: 'Existing task', completed: true, priority: 'Normal' }]);
