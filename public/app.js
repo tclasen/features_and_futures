@@ -81,6 +81,8 @@ async function loadProjects() {
 
 async function openProject(id) {
   const project = await request(`/api/projects/${encodeURIComponent(id)}`);
+  taskFilter.value = 'All';
+  priorityFilter.value = 'All';
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
   setProjectArchived(project.archived);
