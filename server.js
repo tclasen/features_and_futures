@@ -96,6 +96,9 @@ const directoryTasks = db.prepare(`SELECT tasks.id, tasks.title, tasks.completed
   projects.id AS project_id, projects.name AS project_name, projects.archived
   FROM tasks JOIN projects ON projects.id = tasks.project_id
   ORDER BY projects.id, tasks.position, tasks.id`);
+const directoryJSON = () => directoryTasks.all().map((task) => ({
+  ...taskJSON(task), archived: Boolean(task.archived),
+}));
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
@@ -149,9 +152,46 @@ const server = http.createServer(async (request, response) => {
     const path = new URL(request.url, 'http://localhost').pathname;
     if (request.method === 'GET' && path === '/health') return json(response, 200, { status: 'ok' });
     if (request.method === 'GET' && path === '/api/task-directory') {
-      return json(response, 200, directoryTasks.all().map((task) => ({
-        ...taskJSON(task), archived: Boolean(task.archived),
-      })));
+      return json(response, 200, directoryJSON());
+    }
+    if (request.method === 'POST' && path === '/api/task-directory/completion') {
+      const input = await readJSON(request);
+      if (typeof input?.completed !== 'boolean' ||
+          !['active', 'archived'].includes(input.scope) ||
+          !['all', 'open', 'completed', 'deleted'].includes(input.filter) ||
+          !['all', 'Low', 'Normal', 'High'].includes(input.priority) ||
+          typeof input.from !== 'string' || typeof input.through !== 'string' ||
+          typeof input.query !== 'string') {
+        return json(response, 400, { error: 'Invalid directory filters' });
+      }
+      const from = input.from.trim();
+      const through = input.through.trim();
+      if (!validDueDate(from) || !validDueDate(through)) {
+        return json(response, 400, { error: 'Due range must use valid YYYY-MM-DD dates' });
+      }
+      if (from && through && from > through) {
+        return json(response, 400, { error: 'Due from must not be after Due through' });
+      }
+      if (input.scope !== 'active' || input.filter === 'deleted') {
+        return json(response, 409, { error: 'Only live tasks in active projects can be changed' });
+      }
+      const normalize = (value) => value.replace(/[ \t]+/g, ' ')
+        .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+      const query = normalize(input.query.trim());
+      const results = transaction(() => {
+        // Resolve the complete intersection from saved state within the write transaction.
+        for (const task of directoryTasks.all()) {
+          if (task.archived || task.deleted ||
+              (input.filter !== 'all' && Boolean(task.completed) !== (input.filter === 'completed')) ||
+              (input.priority !== 'all' && task.priority !== input.priority) ||
+              ((from || through) && (!task.due_date ||
+                (from && task.due_date < from) || (through && task.due_date > through))) ||
+              !normalize(task.title).includes(query) || Boolean(task.completed) === input.completed) continue;
+          updateTask.run(Number(input.completed), task.project_id, task.id);
+        }
+        return directoryJSON();
+      });
+      return json(response, 200, results);
     }
     if (request.method === 'GET' && path === '/api/projects') return json(response, 200, listProjects.all().map(projectJSON));
     if (request.method === 'POST' && path === '/api/projects/import') {

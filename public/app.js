@@ -81,7 +81,9 @@ async function renderDirectory() {
       <input id="due-through" type="text" autocomplete="off">
       <button type="submit">Apply due range</button>
     </form>
-    <p id="empty-directory">No tasks to show.</p>
+    <button type="button" id="complete-visible" disabled>Complete visible tasks</button>
+    <button type="button" id="reopen-visible" disabled>Reopen visible tasks</button>
+    <p id="empty-directory" role="status" hidden>No matching tasks</p>
     <ul id="directory-tasks" aria-label="Task directory"></ul>`;
   app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
   const scope = app.querySelector('#project-scope');
@@ -91,15 +93,23 @@ async function renderDirectory() {
   const from = app.querySelector('#due-from');
   const through = app.querySelector('#due-through');
   const list = app.querySelector('#directory-tasks');
+  const complete = app.querySelector('#complete-visible');
+  const reopen = app.querySelector('#reopen-visible');
   let query = '';
   let appliedFrom = '';
   let appliedThrough = '';
   let tasks = [];
+  let loading = true;
+  let resolved = false;
   function draw() {
     list.replaceChildren();
     const visible = tasks.filter((task) => task.archived === (scope.value === 'archived') &&
       matchesTask(task, completion.value, priority.value, appliedFrom, appliedThrough, query));
-    app.querySelector('#empty-directory').hidden = visible.length > 0;
+    app.querySelector('#empty-directory').hidden = loading || !resolved || visible.length > 0;
+    list.setAttribute('aria-busy', String(loading));
+    const readOnly = loading || scope.value === 'archived' || completion.value === 'deleted';
+    complete.disabled = readOnly || !visible.some((task) => !task.completed);
+    reopen.disabled = readOnly || !visible.some((task) => task.completed);
     for (const task of visible) {
       const row = document.createElement('li');
       row.dataset.testid = 'directory-task-row';
@@ -122,6 +132,24 @@ async function renderDirectory() {
       list.append(row);
     }
   }
+  async function setVisibleCompletion(value) {
+    if ((value ? complete : reopen).disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    const filters = { completed: value, scope: scope.value, filter: completion.value,
+      priority: priority.value, from: appliedFrom, through: appliedThrough, query };
+    loading = true;
+    draw();
+    try {
+      tasks = await request('/api/task-directory/completion', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters),
+      });
+      resolved = true;
+    } catch (error) { showError(error); }
+    finally { loading = false; draw(); }
+  }
+  complete.addEventListener('click', () => setVisibleCompletion(true));
+  reopen.addEventListener('click', () => setVisibleCompletion(false));
   for (const select of [scope, completion, priority]) select.addEventListener('change', draw);
   app.querySelector('#directory-search-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -146,10 +174,12 @@ async function renderDirectory() {
     through.value = end;
     draw();
   });
+  draw();
   try {
     tasks = await request('/api/task-directory');
-    draw();
+    resolved = true;
   } catch (error) { showError(error); }
+  finally { loading = false; draw(); }
 }
 
 function appendProject(project, onArchive) {

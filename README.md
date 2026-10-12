@@ -102,7 +102,7 @@ dates, notes (with LF line endings), deletion status, project archival and defau
 priority. Imported copies receive new identities and remembered ordering positions;
 editing or restoring a copy never changes the original.
 
-The home page's Task directory opens `/task-directory`, a read-only view across
+The home page's Task directory opens `/task-directory`, a directory across
 projects. Project scope (Active/Archived), Task filter, Priority filter, inclusive
 due range and title-only Directory search intersect without changing saved data.
 Each opening resets the controls to Active, All, All and empty range/search.
@@ -111,3 +111,11 @@ literal titles, owner names, completion, priority, due dates and multiline notes
 Deleted tasks appear only under Deleted. Open project navigates to the owner with
 the usual project-page defaults; Projects returns home. Directory rows have no
 editing controls, including for archived or deleted tasks.
+
+Complete visible tasks and Reopen visible tasks update completion for the current
+intersection across active projects, retaining every filter, search and applied
+range. Changes are saved atomically and preserve all other fields and remembered
+positions. Archived scope and Deleted disable both actions; each action is also
+disabled when no matching live task needs that change. Summaries reflect the saved
+completion state. Empty resolved results show No matching tasks; this announcement
+stays hidden while directory results are loading or a bulk update is pending.

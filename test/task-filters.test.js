@@ -919,7 +919,7 @@ test('project import retains submitted fields on errors and opens the independen
   assert.deepEqual(writes.at(-1), { name: '  Copy  ', document: '{"format":"workboard-project"}' });
 });
 
-async function directoryPage(tasks) {
+async function directoryPage(tasks, bulkRequest) {
   const app = new Element('main');
   const location = { pathname: '/task-directory' };
   const requests = [];
@@ -929,6 +929,7 @@ async function directoryPage(tasks) {
     window: { location },
     fetch: async (path, options) => {
       requests.push({ path, options });
+      if (options && bulkRequest) return bulkRequest(path, options);
       assert.equal(options, undefined, 'Directory must never write');
       return { ok: true, json: async () => structuredClone(tasks) };
     },
@@ -1040,4 +1041,87 @@ test('home Task directory control opens the directory', async () => {
   assert.equal(button.textContent, 'Task directory');
   await button.fire('click');
   assert.equal(page.window.location.href, '/task-directory');
+});
+
+test('directory bulk controls preserve intersections and hide empty announcements during updates', async () => {
+  const tasks = [
+    { id: 1, title: 'Match\t task', completed: false, priority: 'High', due_date: '2024-02-29',
+      notes: 'literal notes', deleted: false, archived: false, project_id: 1, project_name: 'First' },
+    { id: 2, title: 'Match task', completed: true, priority: 'High', due_date: '2024-02-29',
+      notes: '', deleted: false, archived: false, project_id: 2, project_name: 'Second' },
+    { id: 3, title: 'Match task deleted', completed: false, priority: 'High', due_date: '',
+      notes: '', deleted: true, archived: false, project_id: 1, project_name: 'First' },
+    { id: 4, title: 'Match task archived', completed: false, priority: 'High', due_date: '',
+      notes: '', deleted: false, archived: true, project_id: 3, project_name: 'Archive' },
+  ];
+  let finish;
+  let submitted;
+  const page = await directoryPage(tasks, async (path, options) => {
+    assert.equal(path, '/api/task-directory/completion');
+    submitted = JSON.parse(options.body);
+    await new Promise((resolve) => { finish = resolve; });
+    for (const task of tasks) {
+      if (!task.archived && !task.deleted && task.due_date === '2024-02-29' &&
+          (submitted.filter === 'all' || task.completed === (submitted.filter === 'completed'))) {
+        task.completed = submitted.completed;
+      }
+    }
+    return { ok: true, json: async () => structuredClone(tasks) };
+  });
+  const { app, select, titles, search, range } = page;
+  const complete = app.querySelector('#complete-visible');
+  const reopen = app.querySelector('#reopen-visible');
+  const empty = app.querySelector('#empty-directory');
+  assert.equal(empty.textContent, 'No matching tasks');
+  assert.equal(empty.hidden, true);
+  assert.equal(complete.disabled, false);
+  assert.equal(reopen.disabled, false);
+  await select('#task-filter', 'open');
+  await select('#priority-filter', 'High');
+  await search('  MATCH  task  ');
+  await range('2024-02-29', '2024-02-29');
+  assert.equal(reopen.disabled, true);
+  const pending = complete.fire('click');
+  assert.equal(complete.disabled, true);
+  assert.equal(reopen.disabled, true);
+  assert.equal(empty.hidden, true);
+  // Filters remain usable during a request; even an empty intermediate result
+  // must not announce an empty result until the saved results arrive.
+  await select('#task-filter', 'completed');
+  await search('no match');
+  assert.deepEqual(titles(), []);
+  assert.equal(empty.hidden, true);
+  await search('MATCH  task');
+  await select('#task-filter', 'open');
+  finish();
+  await pending;
+  assert.deepEqual(submitted, { completed: true, scope: 'active', filter: 'open',
+    priority: 'High', from: '2024-02-29', through: '2024-02-29', query: 'MATCH  task' });
+  assert.deepEqual(titles(), []);
+  assert.equal(empty.hidden, false);
+  assert.equal(app.querySelector('#task-filter').value, 'open');
+  assert.equal(app.querySelector('#priority-filter').value, 'High');
+  assert.equal(app.querySelector('#due-from').value, '2024-02-29');
+  await select('#task-filter', 'completed');
+  assert.equal(complete.disabled, true);
+  assert.equal(reopen.disabled, false);
+  const reopening = reopen.fire('click');
+  finish();
+  await reopening;
+  assert.deepEqual(titles(), []);
+  assert.equal(app.querySelector('#task-filter').value, 'completed');
+  assert.equal(empty.hidden, false);
+  assert.equal(complete.disabled, true);
+  assert.equal(reopen.disabled, true);
+  await select('#task-filter', 'deleted');
+  assert.equal(complete.disabled, true);
+  assert.equal(reopen.disabled, true);
+  await select('#project-scope', 'archived');
+  await select('#task-filter', 'all');
+  assert.equal(complete.disabled, true);
+  assert.equal(reopen.disabled, true);
+  const count = page.requests.length;
+  await complete.fire('click');
+  await reopen.fire('click');
+  assert.equal(page.requests.length, count);
 });
