@@ -34,6 +34,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name =
 if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'position')) {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER NOT NULL DEFAULT 0; UPDATE tasks SET position = id');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 // Keep established slots even while their tasks belong to another project.
 // Seed existing databases without changing their current task order.
 db.exec(`
@@ -59,7 +62,7 @@ const setDefaultPriority = db.prepare('UPDATE projects SET default_priority = ? 
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const createTask = db.prepare(`INSERT INTO tasks (project_id, title, priority, position)
   VALUES (?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM task_positions WHERE project_id = ?))`);
 const destinationsFor = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
@@ -86,6 +89,7 @@ const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = 
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
+const setTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 
 function validDueDate(value) {
@@ -153,9 +157,9 @@ function page(title, content) {
     main { max-width: 760px; margin: 64px auto; padding: 32px; background: white; border: 1px solid #dfe5ee; border-radius: 12px; }
     h1 { margin-top: 0; overflow-wrap: anywhere; }
     label { display: block; font-weight: 600; margin-bottom: 8px; }
-    input { width: 100%; padding: 12px; border: 1px solid #8493aa; border-radius: 6px; font: inherit; }
+    input, textarea { width: 100%; padding: 12px; border: 1px solid #8493aa; border-radius: 6px; font: inherit; }
     button { padding: 10px 16px; background: #244dc2; color: white; border: 0; border-radius: 6px; font: inherit; cursor: pointer; }
-    input:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid #e99513; outline-offset: 3px; }
+    input:focus-visible, textarea:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid #e99513; outline-offset: 3px; }
     select { padding: 10px; font: inherit; }
     .filter { margin-top: 24px; }
     .task { padding: 16px 0; border-top: 1px solid #dfe5ee; overflow-wrap: anywhere; }
@@ -306,6 +310,12 @@ function renderProjectPage(project, filter = 'All', error = '', priority = 'All'
             <label for="task-due-date-${task.id}">Task due date</label>
             <input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${project.archived ? ' disabled' : ''}>
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
+          </form>
+          <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/notes">
+            ${filterFields}
+            <label for="task-notes-${task.id}">Task notes</label>
+            <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>\n${escapeHtml(task.notes).replace(/\n/g, '&#10;')}</textarea>
+            <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
           </form>
           <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
             ${filterFields}
@@ -465,7 +475,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       html(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter')), '', priorityFilter(url.searchParams.get('priorityFilter'))));
-    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move|notes))?)?$/.test(url.pathname)) {
       const [, , projectId, , taskId, action] = url.pathname.split('/');
       const id = Number(projectId);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : null;
@@ -495,6 +505,12 @@ const server = http.createServer(async (request, response) => {
           rememberDestination.run(Number(taskId), destinationId, destinationId);
           moveTask.run(destinationId, Number(taskId), destinationId, Number(taskId), id);
         });
+      } else if (action === 'notes') {
+        if (!findTask.get(Number(taskId), id)) {
+          html(response, 404, page('Not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        setTaskNotes.run(form.get('notes') || '', Number(taskId), id);
       } else if (action === 'due-date') {
         if (!findTask.get(Number(taskId), id)) {
           html(response, 404, page('Not found', '<h1>Task not found</h1>'));
