@@ -37,3 +37,9 @@ L069 task015 observed: two b004 sources fail the same011 due-date seed assertion
 L069 archive-first task015 recovery verified: five identical b004 diagnostics, all five original histories and working trees plus before-restore bundle independently restored. The recorded own-task014 restoration matches attempt006 start. Effective task015 repair remains pending; no comparison change or implementation hint.
 
 L069 post-restoration outcome: task015 b004attempt006 still fails the same011 due-date seed assertion. Archive/control verification is valid, but effective implementation recovery is not established. Continue unchanged measured repairs; no PM fix or new hint.
+
+L060 resource ledger reconciliation: inventory-only polling omitted 22 historical native names; original ledger retained and tracker002 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 task015 completion: b004attempt008 accepted and common015 deployed. Trace007 confirms date fill, Save button detachment/retry and empty date PATCH; accepted008 frontend is byte-identical. Measured acceptance is verified, causal race repair and observer-defect attribution are not established. Preserve all seven rejections and future independent timing-sensitive observations.
+
+L060 clarification and restoration verification:22new ledger names comprise12retired resources missed between polls and10ordinary newly live resources. All12retrospective names now covered by187independent archive/SQLite restorations. Prior173subset proof preserved; tracker002 reconciliation remains adopted.
