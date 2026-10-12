@@ -75,6 +75,94 @@ function priorityControls(html) {
   }));
 }
 
+test('deletion migrates live tasks, preserves fields and positions, filters and archive restrictions', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-deletion-'));
+  const databasePath = join(directory, 'board.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL, title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects VALUES (1, 'Source'), (2, 'Destination');
+    INSERT INTO tasks VALUES (1, 1, 'Original', 1), (2, 1, 'Second', 0);
+  `);
+  legacy.close();
+  let server;
+  const readTask = () => {
+    const db = new DatabaseSync(databasePath);
+    try { return { ...db.prepare('SELECT * FROM tasks WHERE id = 1').get() }; }
+    finally { db.close(); }
+  };
+  try {
+    server = await startServer(databasePath);
+    const get = async (path) => (await fetch(`${server.baseUrl}${path}`)).text();
+    const titles = async (query = '') => taskRows(await get(`/projects/1${query}`)).map((row) => row.title);
+    assert.equal(readTask().deleted, 0);
+    await post(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await post(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '2026-03-05' });
+    await post(server.baseUrl, '/projects/1/tasks/1/notes', { notes: '  notes\n<literal> 📝' });
+    // Remember a second project's position before deletion.
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    const before = readTask();
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-03-01', dueThrough: '2026-03-31', search: 'orig' };
+    const deleted = await post(server.baseUrl, '/projects/1/tasks/1/delete', filters);
+    assert.equal(deleted.status, 303);
+    const location = new URL(deleted.headers.get('location'), server.baseUrl);
+    for (const [key, value] of Object.entries(filters)) assert.equal(location.searchParams.get(key), value);
+    assert.deepEqual(readTask(), { ...before, deleted: 1 });
+    assert.deepEqual(await titles(), ['Second']);
+    assert.deepEqual(await titles('?filter=Completed'), []);
+    assert.deepEqual(projectSummaries(await get('/')), ['0/1 completed', '0/0 completed']);
+    const query = '?filter=Deleted&priorityFilter=High&dueFrom=2026-03-01&dueThrough=2026-03-31&search=orig';
+    const html = await get(`/projects/1${query}`);
+    assert.deepEqual(taskRows(html).map((row) => row.title), ['Original']);
+    const row = html.match(/<li data-testid="task-row">([\s\S]*?)<\/li>/)[1];
+    for (const control of row.matchAll(/<(?:input|select|textarea)\b[^>]*>/g)) {
+      if (!/type="hidden"/.test(control[0])) assert.match(control[0], / disabled/);
+    }
+    for (const button of row.matchAll(/<button[^>]*>(.*?)<\/button>/g)) {
+      if (button[1] === 'Restore task') assert.doesNotMatch(button[0], / disabled/);
+      else assert.match(button[0], / disabled/);
+    }
+    assert.deepEqual(await titles('?filter=Deleted&priorityFilter=Low'), []);
+    assert.deepEqual(await titles('?filter=Deleted&dueFrom=2026-04-01'), []);
+    assert.deepEqual(await titles('?filter=Deleted&search=notes'), []);
+    for (const [action, fields] of Object.entries({ rename: { title: 'Blocked' }, completion: {}, priority: { priority: 'Low' }, 'due-date': { dueDate: '' }, notes: { notes: '' }, move: { destination: '2' }, delete: {} })) {
+      assert.equal((await post(server.baseUrl, `/projects/1/tasks/1/${action}`, fields)).status, 409);
+    }
+    assert.equal((await post(server.baseUrl, '/projects/2/tasks/1/restore', {})).status, 404);
+    await post(server.baseUrl, '/projects/1/tasks/2/delete', {});
+    assert.deepEqual(projectSummaries(await get('/')), ['0/0 completed', '0/0 completed']);
+    await post(server.baseUrl, '/projects/1/tasks', { title: 'Third' });
+    await post(server.baseUrl, '/projects/1/default-priority', { priority: 'Low' });
+    await post(server.baseUrl, '/projects/1/archive', {});
+    assert.match(await get(`/projects/1${query}`), /disabled>Restore task/);
+    assert.equal((await post(server.baseUrl, '/projects/1/tasks/1/restore', {})).status, 409);
+    assert.equal((await post(server.baseUrl, '/projects/1/tasks/3/delete', {})).status, 409);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(readTask(), { ...before, deleted: 1 });
+    await post(server.baseUrl, '/projects/1/restore', {});
+    // Restore in reverse order; reserved positions, not restoration time, determine order.
+    await post(server.baseUrl, '/projects/1/tasks/2/restore', { filter: 'Deleted' });
+    const restored = await post(server.baseUrl, '/projects/1/tasks/1/restore', { ...filters, filter: 'Deleted' });
+    assert.equal(new URL(restored.headers.get('location'), server.baseUrl).searchParams.get('filter'), 'Deleted');
+    assert.deepEqual(await titles('?filter=Deleted'), []);
+    assert.deepEqual(await titles(), ['Original', 'Second', 'Third']);
+    assert.deepEqual(readTask(), before);
+    assert.deepEqual(projectSummaries(await get('/')), ['1/3 completed', '0/0 completed']);
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(await titles(), ['Original', 'Second', 'Third']);
+    assert.deepEqual(readTask(), before);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('notes migrate, preserve plain text and filters, travel with tasks, and respect archival', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
   const databasePath = join(directory, 'board.sqlite');
