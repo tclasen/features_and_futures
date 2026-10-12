@@ -46,6 +46,9 @@ if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name ===
 if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -120,7 +123,7 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(projectTasks[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return send(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate
+      return send(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes
         FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
         WHERE t.project_id = ? ORDER BY COALESCE(p.position, t.created_at), t.created_at, t.rowid`).all(projectId));
     }
@@ -198,6 +201,12 @@ const server = createServer(async (req, res) => {
       const result = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?').run(dueDate, taskId, projectId);
       if (!result.changes) return send(res, 404, { error: 'Task not found' });
       return send(res, 200, { id: taskId, projectId, dueDate });
+    }
+    if (Object.hasOwn(payload, 'notes')) {
+      if (typeof payload.notes !== 'string') return send(res, 400, { error: 'Notes must be text' });
+      const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?').run(payload.notes, taskId, projectId);
+      if (!result.changes) return send(res, 404, { error: 'Task not found' });
+      return send(res, 200, { id: taskId, projectId, notes: payload.notes });
     }
     if (typeof payload.title === 'string') {
       const title = payload.title.trim();
