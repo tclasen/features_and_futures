@@ -31,6 +31,96 @@ function appendProject(project) {
   app.querySelector('#empty').hidden = true;
 }
 
+async function renderTasks(projectId) {
+  const section = document.createElement('section');
+  section.innerHTML = `
+    <form>
+      <label for="task-title">Task title</label>
+      <div class="create-controls">
+        <input id="task-title" name="title" type="text" autocomplete="off">
+        <button type="submit" disabled>Create task</button>
+      </div>
+    </form>
+    <h2>Tasks</h2>
+    <label for="task-filter">Task filter</label>
+    <select id="task-filter">
+      <option value="all">All</option>
+      <option value="open">Open</option>
+      <option value="completed">Completed</option>
+    </select>
+    <p id="empty-tasks">No tasks to show.</p>
+    <ul id="tasks" aria-label="Tasks"></ul>`;
+  app.append(section);
+  const form = section.querySelector('form');
+  const input = section.querySelector('input');
+  const submit = form.querySelector('button');
+  const filter = section.querySelector('select');
+  const list = section.querySelector('ul');
+  const endpoint = `/api/projects/${projectId}/tasks`;
+  let tasks = [];
+
+  function drawTasks() {
+    list.replaceChildren();
+    const visible = tasks.filter((task) => filter.value === 'all' ||
+      (filter.value === 'completed' ? task.completed : !task.completed));
+    section.querySelector('#empty-tasks').hidden = visible.length > 0;
+    for (const task of visible) {
+      const row = document.createElement('li');
+      row.dataset.testid = 'task-row';
+      const title = document.createElement('span');
+      title.textContent = task.title;
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = task.completed;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      checkbox.addEventListener('change', async () => {
+        app.querySelector('[role="alert"]')?.remove();
+        checkbox.disabled = true;
+        try {
+          const saved = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: checkbox.checked }),
+          });
+          Object.assign(task, saved);
+          drawTasks();
+        } catch (error) {
+          checkbox.checked = task.completed;
+          checkbox.disabled = false;
+          showError(error);
+        }
+      });
+      row.append(title, checkbox);
+      list.append(row);
+    }
+  }
+
+  filter.addEventListener('change', drawTasks);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (submit.disabled) return;
+    app.querySelector('[role="alert"]')?.remove();
+    if (!input.value.trim()) return showError(new Error('Task title is required'));
+    submit.disabled = true;
+    try {
+      const task = await request(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: input.value }),
+      });
+      tasks.push(task);
+      drawTasks();
+      input.value = '';
+      input.focus();
+    } catch (error) { showError(error); }
+    finally { submit.disabled = false; }
+  });
+  try {
+    tasks = await request(endpoint);
+    drawTasks();
+    submit.disabled = false;
+  } catch (error) { showError(error); }
+}
+
 async function render() {
   const projectPath = window.location.pathname.match(/^\/projects\/(\d+)$/);
   if (projectPath) {
@@ -40,6 +130,7 @@ async function render() {
       const project = await request(`/api/projects/${projectPath[1]}`);
       app.querySelector('h1').textContent = project.name;
       document.title = `${project.name} · Workboard`;
+      await renderTasks(project.id);
     } catch (error) {
       app.querySelector('h1').textContent = 'Project unavailable';
       showError(error);

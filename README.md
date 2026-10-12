@@ -14,4 +14,7 @@ PORT=8080 DB_PATH=./data/workboard.sqlite npm start
 
 Open `/` to create and open projects. `GET /health` returns `{"status":"ok"}`.
 
+Each project page lets you create tasks, toggle their completion, and filter by
+All, Open, or Completed. Projects and tasks persist in the configured SQLite file.
+
 Run the integration checks with `npm test`.
