@@ -70,6 +70,8 @@
     <select id="directory-task-filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select>
     <label for="directory-priority-filter">Priority filter</label>
     <select id="directory-priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
+    <label for="directory-order">Directory order</label>
+    <select id="directory-order"><option>Original</option><option>Priority</option><option>Due date</option><option>Title</option></select>
     <form id="directory-range-form" class="task-controls">
       <label for="directory-due-from">Due from<input id="directory-due-from" type="text" placeholder="YYYY-MM-DD"></label>
       <label for="directory-due-through">Due through<input id="directory-due-through" type="text" placeholder="YYYY-MM-DD"></label>
@@ -141,6 +143,7 @@
       const scope = document.querySelector('#directory-scope');
       const taskFilter = document.querySelector('#directory-task-filter');
       const priorityFilter = document.querySelector('#directory-priority-filter');
+      const orderSelect = document.querySelector('#directory-order');
       const fromInput = document.querySelector('#directory-due-from');
       const throughInput = document.querySelector('#directory-due-through');
       const queryInput = document.querySelector('#directory-search');
@@ -181,8 +184,38 @@
           const matches = !query || normalize(task.title).includes(normalize(query));
           return owner && completion && priority && due && matches;
         });
+      const compareCodePoints = (left, right) => {
+        const leftPoints = Array.from(left, (character) => character.codePointAt(0));
+        const rightPoints = Array.from(right, (character) => character.codePointAt(0));
+        const count = Math.min(leftPoints.length, rightPoints.length);
+        for (let index = 0; index < count; index += 1) {
+          if (leftPoints[index] !== rightPoints[index]) return leftPoints[index] - rightPoints[index];
+        }
+        return leftPoints.length - rightPoints.length;
+      };
+      const orderedTasks = (visible) => {
+        if (orderSelect.value === 'Original') return visible;
+        const indexed = visible.map((task, index) => ({ task, index }));
+        indexed.sort((left, right) => {
+          let comparison = 0;
+          if (orderSelect.value === 'Priority') {
+            const rank = { High: 0, Normal: 1, Low: 2 };
+            comparison = rank[left.task.priority || 'Normal'] - rank[right.task.priority || 'Normal'];
+          } else if (orderSelect.value === 'Due date') {
+            const leftDate = left.task.due_date || '';
+            const rightDate = right.task.due_date || '';
+            comparison = !leftDate ? (rightDate ? 1 : 0) : (!rightDate ? -1
+              : (leftDate < rightDate ? -1 : (leftDate > rightDate ? 1 : 0)));
+          } else if (orderSelect.value === 'Title') {
+            const foldAscii = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+            comparison = compareCodePoints(foldAscii(left.task.title), foldAscii(right.task.title));
+          }
+          return comparison || left.index - right.index;
+        });
+        return indexed.map(({ task }) => task);
+      };
       const render = () => {
-        const visible = matchingTasks();
+        const visible = orderedTasks(matchingTasks());
         emptyMessage.hidden = visible.length !== 0;
         const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted'
           ? visible.filter((task) => !task.deleted && !task.project_archived) : [];
@@ -208,7 +241,7 @@
         alert.textContent = 'Unable to load directory';
         alert.hidden = false;
       });
-      for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', render);
+      for (const control of [scope, taskFilter, priorityFilter, orderSelect]) control.addEventListener('change', render);
       document.querySelector('#directory-search-form').addEventListener('submit', (event) => {
         event.preventDefault(); query = queryInput.value.trim(); render();
       });
