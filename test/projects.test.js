@@ -117,6 +117,30 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     first.totalCount = 2;
     first.completedCount = 1;
     second.totalCount = 1;
+    async function renameTask(taskId, title, projectId = first.id) {
+      return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+    }
+    for (const title of ['', ' \t\n ', null]) {
+      const response = await renameTask(firstTask.id, title);
+      assert.equal(response.status, 400);
+      assert.equal((await response.json()).error, 'Task title is required');
+      assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
+    }
+    assert.equal((await renameTask(firstTask.id, 'Wrong project', second.id)).status, 404);
+    assert.equal((await renameTask(999999, 'Missing task')).status, 404);
+    const renamedTask = await renameTask(firstTask.id, '  Renamed <task> & work  ');
+    assert.equal(renamedTask.status, 200);
+    firstTask.title = 'Renamed <task> & work';
+    assert.deepEqual(await renamedTask.json(), firstTask);
+    const renamedOpenTask = await renameTask(secondTask.id, '  Renamed open task  ');
+    assert.equal(renamedOpenTask.status, 200);
+    secondTask.title = 'Renamed open task';
+    assert.deepEqual(await renamedOpenTask.json(), secondTask);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
+    assert.deepEqual(await (await fetch(`${base}/api/projects/${second.id}/tasks`)).json(), [otherTask]);
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     async function renameProject(name) {
       return fetch(`${base}/api/projects/${first.id}`, {
@@ -153,6 +177,9 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
     assert.equal((await createTask('Blocked task')).status, 409);
     assert.equal((await completeTask(firstTask.id, false)).status, 409);
+    const blockedTaskRename = await renameTask(firstTask.id, 'Blocked task rename');
+    assert.equal(blockedTaskRename.status, 409);
+    assert.equal((await blockedTaskRename.json()).error, 'Archived project');
     assert.deepEqual(await (await fetch(`${base}${tasksPath}`)).json(), [firstTask, secondTask]);
     await stop();
     await start();
@@ -168,6 +195,10 @@ test('projects and tasks validate, rename, remain isolated and persist through r
     assert.equal(restoredRename.status, 200);
     first.name = 'Restored project';
     assert.deepEqual(await restoredRename.json(), first);
+    const restoredTaskRename = await renameTask(firstTask.id, '  Restored task title  ');
+    assert.equal(restoredTaskRename.status, 200);
+    firstTask.title = 'Restored task title';
+    assert.deepEqual(await restoredTaskRename.json(), firstTask);
     assert.equal((await completeTask(firstTask.id, false)).status, 200);
     firstTask.completed = false;
     first.completedCount = 0;
