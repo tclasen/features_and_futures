@@ -140,3 +140,17 @@ export; stored text remains unchanged. Filters and searches do not limit the
 download or change on export. `GET /api/projects/<id>/export` returns the JSON as
 an attachment; a missing project returns HTTP 404. Database IDs and remembered
 return positions are internal and are excluded from this portable document.
+
+The home page provides Project JSON, Imported project name, and Import project.
+Paste a version 1 portable document and enter a nonblank name for the new copy.
+Import validates the complete document before a single transaction creates fresh
+project/task identities and initial remembered positions. It never merges with
+existing data. Required fields must have their specified types, dates must be
+canonical valid calendar dates, and titles remain exact nonblank strings. Notes
+normalize line breaks to LF while preserving all other text. Additional properties
+cannot set internal identities. Archived state, default priority, deletion and
+all task fields and order are retained. Errors retain both submitted inputs and
+leave all saved data unchanged. `POST /api/projects/import` accepts
+`{ "name": "Copy name", "json": "<portable JSON text>" }` and returns the new
+project with HTTP 201, or HTTP 400 with `Invalid project JSON` or
+`Project name is required`.

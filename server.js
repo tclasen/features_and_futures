@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { normalizeDueDate } from './due-date.js';
 import { projectExport } from './project-export.js';
+import { parseProjectImport } from './project-import.js';
 
 const databasePath = process.env.DB_PATH || './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
@@ -88,6 +89,11 @@ const updateProjectArchive = database.prepare('UPDATE projects SET archived = ? 
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_priority = ? WHERE id = ?');
 const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
+const insertImportedProject = database.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)');
+const insertImportedTask = database.prepare(`
+  INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted, position)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position, id');
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE project_id = ? AND id = ?');
 const insertTask = database.prepare(`
@@ -144,6 +150,18 @@ function moveTask(taskId, sourceId, destinationId) {
   });
 }
 
+function importProject(name, project) {
+  return inTransaction(() => {
+    const { lastInsertRowid: projectId } = insertImportedProject.run(name, Number(project.archived), project.defaultPriority);
+    project.tasks.forEach((task, index) => {
+      const result = insertImportedTask.run(projectId, task.title, Number(task.completed), task.priority,
+        task.dueDate, task.notes, Number(task.deleted), index + 1);
+      rememberCurrentPosition.run(result.lastInsertRowid);
+    });
+    return projectId;
+  });
+}
+
 function projectData(project) {
   return { ...project, archived: Boolean(project.archived) };
 }
@@ -165,12 +183,12 @@ function json(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-async function readJson(request) {
+async function readJson(request, maximumBytes = 16_384) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 16_384) throw new Error('Request body is too large');
+    if (size > maximumBytes) throw new Error('Request body is too large');
     chunks.push(chunk);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -184,6 +202,21 @@ const server = createServer(async (request, response) => {
     }
     if (pathname === '/api/projects' && request.method === 'GET') {
       return json(response, 200, listProjects.all().map(projectData));
+    }
+    if (pathname === '/api/projects/import' && request.method === 'POST') {
+      let body;
+      try {
+        // Portable exports can contain many tasks and must round-trip intact.
+        body = await readJson(request, Infinity);
+      } catch {
+        return json(response, 400, { error: 'Invalid project JSON' });
+      }
+      const name = typeof body?.name === 'string' ? body.name.trim() : '';
+      if (!name) return json(response, 400, { error: 'Project name is required' });
+      const project = parseProjectImport(body?.json);
+      if (!project) return json(response, 400, { error: 'Invalid project JSON' });
+      const projectId = importProject(name, project);
+      return json(response, 201, projectData(findProject.get(projectId)));
     }
     if (pathname === '/api/projects' && request.method === 'POST') {
       let body;

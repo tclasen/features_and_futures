@@ -1120,3 +1120,94 @@ test('deletion preserves fields and reserved positions, rejects edits, and persi
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('imports are atomic independent copies with persistent fields, deletion and remembered order', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-import-test-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const api = async (path, method = 'GET', body, status = 200) => {
+      const response = await fetch(`${server.url}${path}`, {
+        method, ...(body === undefined ? {} : {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        }),
+      });
+      assert.equal(response.status, status);
+      return response.json();
+    };
+    const original = await api('/api/projects', 'POST', { name: 'Original' }, 201);
+    const originalPath = `/api/projects/${original.id}`;
+    const task = await api(`${originalPath}/tasks`, 'POST', { title: 'Original task' }, 201);
+    await api(`${originalPath}/tasks/${task.id}`, 'PATCH', { completed: true });
+    const before = await api('/api/projects');
+    const originalExport = await api(`${originalPath}/export`);
+    const document = {
+      format: 'workboard-project', version: 1,
+      project: {
+        id: original.id, name: 'Portable', archived: true, defaultPriority: 'Low',
+        tasks: [
+          { id: task.id, position: 900, title: '  Deleted 😀  ', completed: true, priority: 'High', dueDate: '0001-01-01', notes: '  <script>literal</script>\r\n😀\rEnd  ', deleted: true },
+          { title: 'Live', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false },
+        ],
+      },
+    };
+    for (const json of ['{', JSON.stringify({ ...document, version: '1' }), JSON.stringify({
+      ...document, project: { ...document.project, tasks: [...document.project.tasks, {
+        ...document.project.tasks[1], dueDate: '1900-02-29',
+      }] },
+    })]) {
+      assert.deepEqual(await api('/api/projects/import', 'POST', { name: 'Copy', json }, 400), { error: 'Invalid project JSON' });
+      assert.deepEqual(await api('/api/projects'), before);
+      assert.deepEqual(await api(`${originalPath}/export`), originalExport);
+    }
+    assert.deepEqual(await api('/api/projects/import', 'POST', { name: ' \t ', json: JSON.stringify(document) }, 400), { error: 'Project name is required' });
+    assert.deepEqual(await api('/api/projects'), before);
+    const copy = await api('/api/projects/import', 'POST', { name: '  Copy  ', json: JSON.stringify(document) }, 201);
+    assert.notEqual(copy.id, original.id);
+    assert.equal(copy.name, 'Copy');
+    assert.equal(copy.archived, true);
+    assert.equal(copy.defaultPriority, 'Low');
+    assert.equal(copy.totalCount, 1);
+    assert.equal(copy.completedCount, 0);
+    const copyPath = `/api/projects/${copy.id}`;
+    const tasks = await api(`${copyPath}/tasks`);
+    assert.ok(tasks.every((item) => item.id !== task.id));
+    const expectedTasks = document.project.tasks.map(({ id, position, ...fields }) => ({ ...fields, notes: fields.notes.replace(/\r\n?/g, '\n') }));
+    assert.deepEqual(tasks.map(({ id, ...fields }) => fields), expectedTasks);
+    await api(`${copyPath}/tasks/${tasks[0].id}`, 'PATCH', { deleted: false }, 409);
+    await api(copyPath, 'PATCH', { archived: false });
+    await api(`${copyPath}/tasks/${tasks[0].id}`, 'PATCH', { title: 'Cannot edit deleted' }, 409);
+    await api(`${copyPath}/tasks/${tasks[0].id}`, 'PATCH', { destinationProjectId: original.id }, 409);
+    const third = await api(`${copyPath}/tasks`, 'POST', { title: 'Later' }, 201);
+    assert.equal(third.priority, 'Low');
+    await api(`${copyPath}/tasks/${tasks[0].id}`, 'PATCH', { deleted: false });
+    assert.deepEqual((await api(`${copyPath}/tasks`)).map((item) => item.id), [tasks[0].id, tasks[1].id, third.id]);
+    assert.equal((await api(copyPath)).completedCount, 1);
+    await api(`${copyPath}/tasks/${tasks[0].id}`, 'PATCH', { destinationProjectId: original.id });
+    await server.stop();
+    server = await startServer(databasePath);
+    await api(`${originalPath}/tasks/${tasks[0].id}`, 'PATCH', { destinationProjectId: copy.id });
+    const returned = await api(`${copyPath}/tasks`);
+    assert.deepEqual(returned.map((item) => item.id), [tasks[0].id, tasks[1].id, third.id]);
+    assert.deepEqual(returned[0], { ...tasks[0], deleted: false });
+    assert.deepEqual(await api(`${originalPath}/export`), originalExport);
+    const empty = await api('/api/projects/import', 'POST', {
+      name: 'Empty copy', json: JSON.stringify({ ...document, project: { ...document.project, tasks: [] } }),
+    }, 201);
+    assert.deepEqual((await api(`/api/projects/${empty.id}/export`)).project.tasks, []);
+    // Export-sized imports are not restricted to an ordinary small edit body.
+    const large = structuredClone(document);
+    large.project.archived = false;
+    large.project.tasks[0].notes = '😀\n'.repeat(10000);
+    const largeCopy = await api('/api/projects/import', 'POST', { name: 'Large', json: JSON.stringify(large) }, 201);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual((await api(`/api/projects/${largeCopy.id}/export`)).project.tasks, large.project.tasks.map(({ id, position, ...fields }) => fields));
+    assert.deepEqual(await api(`${copyPath}/tasks`), returned);
+    assert.deepEqual(await api('/health'), { status: 'ok' });
+  } finally {
+    await server?.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

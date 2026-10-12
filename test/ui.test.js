@@ -1259,3 +1259,35 @@ test('Deleted filter intersects other filters and deletion/restoration retain co
   assert.equal(restored.button('Restore task').disabled, false);
   assert.equal(restored.byId('task-notes-1').disabled, true);
 });
+
+test('home import has accessible inputs, retains rejected submissions, and opens successful copies', async () => {
+  let rejection = true;
+  const ui = await page('/', (path, options) => {
+    if (!options) return [];
+    assert.equal(path, '/api/projects/import');
+    assert.equal(options.method, 'POST');
+    assert.deepEqual(JSON.parse(options.body), { name: '  Imported 😀  ', json: 'submitted document' });
+    if (rejection) throw new Error('Invalid project JSON');
+    return { id: 42, name: 'Imported 😀' };
+  });
+  assert.equal(ui.byId('project-json').tag, 'textarea');
+  for (const [id, label] of [['project-json', 'Project JSON'], ['imported-project-name', 'Imported project name']]) {
+    assert.equal(find(ui.app, (node) => node.attributes.for === id)[0].textContent, label);
+  }
+  const form = find(ui.app, (node) => node.attributes.class === 'project-import')[0];
+  ui.byId('project-json').value = 'submitted document';
+  ui.byId('imported-project-name').value = ' \t ';
+  await form.fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Project name is required');
+  assert.equal(ui.calls.length, 1);
+  ui.byId('imported-project-name').value = '  Imported 😀  ';
+  await form.fire('submit');
+  assert.equal(ui.app.querySelector('[role="alert"]').textContent, 'Invalid project JSON');
+  assert.equal(ui.byId('project-json').value, 'submitted document');
+  assert.equal(ui.byId('imported-project-name').value, '  Imported 😀  ');
+  assert.equal(ui.window.location.href, '/');
+  assert.equal(ui.button('Import project').disabled, false);
+  rejection = false;
+  await form.fire('submit');
+  assert.equal(ui.window.location.href, '/projects/42');
+});

@@ -71,6 +71,34 @@ function projectRow(project, onArchiveChange) {
   return row;
 }
 
+function projectImportForm() {
+  const form = element('form', '', { class: 'project-import' });
+  const source = element('textarea', '', { id: 'project-json', rows: '8' });
+  const name = element('input', '', { id: 'imported-project-name', type: 'text' });
+  const submit = element('button', 'Import project', { type: 'submit' });
+  form.append(element('label', 'Project JSON', { for: 'project-json' }), source,
+    element('label', 'Imported project name', { for: 'imported-project-name' }), name, submit);
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (submit.disabled) return;
+    if (!name.value.trim()) return showError('Project name is required');
+    submit.disabled = true;
+    try {
+      const project = await request('/api/projects/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.value, json: source.value }),
+      });
+      window.location.href = `/projects/${project.id}`;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  return form;
+}
+
 async function showProjects() {
   app.replaceChildren(element('h1', 'Workboard'));
   let projects = [];
@@ -97,7 +125,7 @@ async function showProjects() {
     list.replaceChildren(...visible.map((project) => projectRow(project, renderProjects)));
   }
   filter.addEventListener('change', renderProjects);
-  app.append(form, filters, search, list);
+  app.append(form, filters, search, list, projectImportForm());
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (create.disabled) return;
