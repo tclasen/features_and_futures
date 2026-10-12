@@ -56,6 +56,23 @@ const server = createServer(async (req, res) => {
     if (!result.changes) return send(res, 404, { error: 'Project not found' });
     return send(res, 200, { id: projectId, archived: archived ? 1 : 0 });
   }
+  const projectRoute = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (req.method === 'PATCH' && projectRoute) {
+    let projectId;
+    try { projectId = decodeURIComponent(projectRoute[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let name;
+    try { name = JSON.parse(body).name; } catch { return send(res, 400, { error: 'Invalid request' }); }
+    name = typeof name === 'string' ? name.trim() : '';
+    if (!name) return send(res, 400, { error: 'Project name is required' });
+    const result = db.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0').run(name, projectId);
+    if (!result.changes) {
+      const existing = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId);
+      return send(res, existing ? 409 : 404, { error: existing ? 'Archived projects cannot be renamed' : 'Project not found' });
+    }
+    return send(res, 200, { id: projectId, name });
+  }
   if (req.method === 'POST' && url.pathname === '/api/projects') {
     let body = '';
     for await (const chunk of req) body += chunk;
