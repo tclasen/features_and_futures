@@ -46,6 +46,12 @@ undated tasks. Invalid ranges show an alert and retain the last applied range.
 All edits retain the applied range and filter selections, while date, priority,
 and completion edits immediately re-evaluate membership. Archived projects allow
 range filtering. Opening a project from the list starts with empty boundaries.
+Each task row provides Destination project and Move task controls. Destinations
+are other active projects in creation order. Moving appends the task to its new
+project while preserving its identity, completion, priority, and due date. Source
+filters stay selected and both summaries update. Archived projects cannot send or
+receive tasks; with no eligible destination the move controls are disabled.
+Task ownership and ordering persist across restarts, including repeated moves.
 Native HTML forms handle creation and navigation; small inline browser event
 handlers submit completion, priority, default priority, and filter changes.
 
@@ -74,3 +80,6 @@ filters, renaming, archive protection, restoration, and restart persistence.
 Due-range tests cover inclusive and one-sided boundaries, undated tasks, combined
 filters, rendered form state, invalid-range preservation, membership changes on
 edits, selection retention, archived filtering, restoration, and restart.
+Move tests cover ordering migration, eligible destination labels, disabled controls,
+invalid and archived moves, source filter retention, summaries, repeated moves,
+new-task ordering, preserved task data, and restart persistence.
