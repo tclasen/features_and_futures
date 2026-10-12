@@ -404,12 +404,18 @@ async function renderDirectory() {
   const through = element('input', undefined, { type: 'text', 'aria-label': 'Due through' });
   const rangeForm = element('form');
   rangeForm.append(from, through, element('button', 'Apply due range', { type: 'submit' }));
+  const completeVisible = element('button', 'Complete visible tasks', { type: 'button' });
+  const reopenVisible = element('button', 'Reopen visible tasks', { type: 'button' });
+  const empty = element('p', 'No matching tasks');
   const list = element('section', undefined, { 'aria-label': 'Directory tasks' });
-  app.append(scope, taskFilter, priorityFilter, searchForm, rangeForm, list);
+  app.append(scope, taskFilter, priorityFilter, searchForm, rangeForm, completeVisible, reopenVisible, empty, list);
   let query = '', low = '', high = '';
   const render = async () => {
+    empty.hidden = true;
     const response = await fetch('/api/directory');
+    if (!response.ok) throw new Error('Could not load directory');
     const rows = await response.json(); list.replaceChildren();
+    const visible = [];
     for (const task of rows) {
       if ((scope.value === 'Active' && task.archived) || (scope.value === 'Archived' && !task.archived)) continue;
       if (taskFilter.value === 'Deleted' ? !task.deleted : task.deleted) continue;
@@ -417,13 +423,27 @@ async function renderDirectory() {
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
       if (!searchMatches(task.title, query)) continue;
       if ((low || high) && (!task.dueDate || low && task.dueDate < low || high && task.dueDate > high)) continue;
+      visible.push(task);
       const row = element('div', undefined, { 'data-testid': 'directory-task-row' });
+      row.dataset.taskId = task.taskId;
+      row.dataset.completed = String(task.completed);
       row.append(element('span', task.title, { 'data-testid': 'directory-task-title' }), element('span', task.projectName, { 'data-testid': 'directory-project-name' }));
       row.append(element('span', task.completed ? 'Completed' : 'Open', { 'data-testid': 'directory-task-completion' }), element('span', task.priority, { 'data-testid': 'directory-task-priority' }), element('span', task.dueDate, { 'data-testid': 'directory-task-due-date' }), element('span', task.notes, { 'data-testid': 'directory-task-notes' }));
       const open = element('button', 'Open project', { type: 'button' });
       open.addEventListener('click', () => { window.location.href = `/projects/${task.projectId}`; }); row.append(open); list.append(row);
     }
+    empty.hidden = visible.length !== 0;
+    const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? visible.filter(task => !task.deleted) : [];
+    completeVisible.disabled = !eligible.some(task => !task.completed);
+    reopenVisible.disabled = !eligible.some(task => task.completed);
   };
+  const bulkUpdate = async completed => {
+    const response = await fetch('/api/directory/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ taskIds: [...list.querySelectorAll('[data-task-id]')].filter(row => (row.dataset.completed === 'true') !== completed).map(row => Number(row.dataset.taskId)), completed }) });
+    if (!response.ok) { showError('Could not update tasks'); return; }
+    await render();
+  };
+  completeVisible.addEventListener('click', () => bulkUpdate(true).catch(() => showError('Could not update tasks')));
+  reopenVisible.addEventListener('click', () => bulkUpdate(false).catch(() => showError('Could not update tasks')));
   for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', () => render().catch(() => showError('Could not load directory')));
   searchForm.addEventListener('submit', event => { event.preventDefault(); query = search.value.trim(); render(); });
   rangeForm.addEventListener('submit', event => {

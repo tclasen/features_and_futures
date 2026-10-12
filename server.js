@@ -186,6 +186,22 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     return sendJson(response, 200, { status: 'ok' });
   }
+  if (request.method === 'POST' && url.pathname === '/api/directory/bulk') {
+    const parsed = await readBody(request);
+    if (parsed.error) return sendJson(response, 400, { error: parsed.error });
+    const { taskIds, completed } = parsed.value || {};
+    if (!Array.isArray(taskIds) || !taskIds.every(id => Number.isInteger(id) && id > 0) || typeof completed !== 'boolean') {
+      return sendJson(response, 400, { error: 'Invalid bulk update' });
+    }
+    const update = db.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+      AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const id of new Set(taskIds)) update.run(Number(completed), id);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    return sendJson(response, 200, { updated: new Set(taskIds).size });
+  }
   if (request.method === 'GET' && url.pathname === '/api/directory') {
     const rows = db.prepare(`SELECT p.id AS projectId, p.name AS projectName, p.archived,
       t.id AS taskId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
