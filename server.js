@@ -26,6 +26,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 )`);
+if (!db.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal'");
+}
 
 const send = (res, status, body, type = 'application/json; charset=utf-8') => {
   res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
@@ -90,7 +93,7 @@ const server = createServer(async (req, res) => {
     try { projectId = decodeURIComponent(projectTasks[1]); } catch { return send(res, 400, { error: 'Invalid project id' }); }
     if (!db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return send(res, 404, { error: 'Project not found' });
     if (req.method === 'GET') {
-      return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId));
+      return send(res, 200, db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY created_at, rowid').all(projectId));
     }
     if (req.method === 'POST') {
       let body = '';
@@ -99,8 +102,8 @@ const server = createServer(async (req, res) => {
       try { title = JSON.parse(body).title; } catch { return send(res, 400, { error: 'Invalid request' }); }
       title = typeof title === 'string' ? title.trim() : '';
       if (!title) return send(res, 400, { error: 'Task title is required' });
-      const task = { id: randomUUID(), projectId, title, completed: 0 };
-      db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at) VALUES (?, ?, ?, 0, ?)').run(task.id, projectId, title, Date.now());
+      const task = { id: randomUUID(), projectId, title, completed: 0, priority: 'Normal' };
+      db.prepare('INSERT INTO tasks (id, project_id, title, completed, created_at, priority) VALUES (?, ?, ?, 0, ?, ?)').run(task.id, projectId, title, Date.now(), task.priority);
       return send(res, 201, task);
     }
   }
@@ -115,6 +118,12 @@ const server = createServer(async (req, res) => {
     const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
     if (!project) return send(res, 404, { error: 'Project not found' });
     if (project.archived) return send(res, 409, { error: 'Archived projects are read only' });
+    if (typeof payload.priority === 'string') {
+      if (!['Low', 'Normal', 'High'].includes(payload.priority)) return send(res, 400, { error: 'Invalid task priority' });
+      const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?').run(payload.priority, taskId, projectId);
+      if (!result.changes) return send(res, 404, { error: 'Task not found' });
+      return send(res, 200, { id: taskId, projectId, priority: payload.priority });
+    }
     if (typeof payload.title === 'string') {
       const title = payload.title.trim();
       if (!title) return send(res, 400, { error: 'Task title is required' });
