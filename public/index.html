@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workboard</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17212b; background: #f5f7fa; }
+    body { margin: 0; }
+    main { max-width: 760px; margin: 56px auto; padding: 0 24px; }
+    h1 { font-size: 2rem; margin: 0 0 28px; }
+    form, .project-row { background: white; border: 1px solid #dce2e8; border-radius: 10px; padding: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 8px; }
+    input { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #aeb9c4; border-radius: 6px; font: inherit; }
+    button { border: 0; border-radius: 6px; padding: 10px 16px; background: #245bc5; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    form button { margin-top: 12px; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #91b8ff; outline-offset: 2px; }
+    #alert { color: #a22323; margin: 12px 0 0; }
+    #projects { display: grid; gap: 10px; margin-top: 24px; }
+    .project-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .project-name { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="app"></main>
+  <script>
+    const app = document.querySelector('#app');
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function render() {
+      const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+      if (match) {
+        let project;
+        try {
+          const response = await fetch('/api/projects');
+          project = (await response.json()).find(item => item.id === decodeURIComponent(match[1]));
+        } catch {}
+        if (!project) { history.replaceState({}, '', '/'); return render(); }
+        app.innerHTML = `<button id="back" type="button">Projects</button><h1>${escapeHtml(project.name)}</h1>`;
+        document.querySelector('#back').addEventListener('click', () => { history.pushState({}, '', '/'); render(); });
+        return;
+      }
+      app.innerHTML = `<h1>Workboard</h1>
+        <form id="create-form" novalidate>
+          <label for="project-name">Project name</label>
+          <input id="project-name" name="name" type="text" autocomplete="off">
+          <button type="submit">Create project</button>
+          <p id="alert" role="alert" hidden></p>
+        </form>
+        <section id="projects" aria-label="Projects"></section>`;
+      const list = document.querySelector('#projects');
+      async function refresh() {
+        const response = await fetch('/api/projects');
+        const projects = await response.json();
+        list.innerHTML = projects.map(project => `<div class="project-row" data-testid="project-row"><span class="project-name">${escapeHtml(project.name)}</span><button type="button" data-id="${escapeHtml(project.id)}">Open project</button></div>`).join('');
+        list.querySelectorAll('button').forEach(button => button.addEventListener('click', () => {
+          history.pushState({}, '', `/projects/${encodeURIComponent(button.dataset.id)}`); render();
+        }));
+      }
+      document.querySelector('#create-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const input = document.querySelector('#project-name');
+        const alert = document.querySelector('#alert');
+        const name = input.value.trim();
+        if (!name) { alert.textContent = 'Project name is required'; alert.hidden = false; input.focus(); return; }
+        alert.hidden = true;
+        const response = await fetch('/api/projects', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+        if (response.ok) { input.value = ''; await refresh(); }
+      });
+      await refresh();
+    }
+    addEventListener('popstate', render);
+    render();
+  </script>
+</body>
+</html>
