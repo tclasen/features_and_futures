@@ -35,6 +35,9 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Norm
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) {
   if (!String(error.message).includes('duplicate column name')) throw error;
 }
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) {
+  if (!String(error.message).includes('duplicate column name')) throw error;
+}
 try {
   db.exec('ALTER TABLE tasks ADD COLUMN position INTEGER');
   db.exec('UPDATE tasks SET position = id');
@@ -53,7 +56,7 @@ const listProjects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_prio
   COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
   FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
   GROUP BY p.id ORDER BY p.id`);
-const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const addTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM tasks WHERE project_id = ?), 1))');
 const getTaskPosition = db.prepare('SELECT position FROM tasks WHERE id = ?');
 const eligibleDestinations = db.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
@@ -65,6 +68,7 @@ const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const updateTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const updateTaskNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 
 function isValidDate(value) {
@@ -199,6 +203,8 @@ const server = http.createServer(async (req, res) => {
         const dueDate = typeof data.dueDate === 'string' ? data.dueDate.trim() : '';
         if (dueDate && !isValidDate(dueDate)) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
         updateTaskDueDate.run(dueDate || null, taskId, projectId);
+      } else if (Object.hasOwn(data, 'notes') && typeof data.notes === 'string') {
+        updateTaskNotes.run(data.notes, taskId, projectId);
       } else return json(res, 400, { error: 'Invalid task update' });
       const updatedTask = getTask.get(taskId, projectId);
       return json(res, 200, { ...updatedTask, completed: Boolean(updatedTask.completed) });
