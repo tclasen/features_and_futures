@@ -73,6 +73,14 @@
       if (!response.ok) throw new Error(data.error || 'Request failed');
       return data;
     };
+    const requestTaskMove = async (projectId, taskId, destination_project_id) => {
+      const response = await fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ destination_project_id })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    };
     const requestProjectArchive = async (projectId, archived) => {
       const response = await fetch(`/api/projects/${projectId}`, {
         method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived })
@@ -479,7 +487,32 @@
               alert.hidden = false;
             }
           });
-          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate);
+          const destination = document.createElement('select');
+          destination.setAttribute('aria-label', 'Destination project');
+          const eligibleProjects = projects.filter((item) => !item.archived && item.id !== project.id);
+          for (const item of eligibleProjects) {
+            const option = document.createElement('option');
+            option.value = item.id;
+            option.textContent = item.name;
+            destination.append(option);
+          }
+          const move = document.createElement('button');
+          move.type = 'button';
+          move.textContent = 'Move task';
+          destination.disabled = project.archived || eligibleProjects.length === 0;
+          move.disabled = project.archived || eligibleProjects.length === 0;
+          move.addEventListener('click', async () => {
+            try {
+              await requestTaskMove(project.id, task.id, destination.value);
+              tasks = tasks.filter((item) => item.id !== task.id);
+              alert.hidden = true;
+              renderTasks();
+            } catch (error) {
+              alert.textContent = error.message;
+              alert.hidden = false;
+            }
+          });
+          row.append(checkbox, title, renameInput, renameButton, priority, dueDate, saveDueDate, destination, move);
           list.append(row);
         }
       };

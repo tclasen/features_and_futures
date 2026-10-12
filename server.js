@@ -34,6 +34,10 @@ if (!taskColumns.some((column) => column.name === 'priority')) {
 if (!taskColumns.some((column) => column.name === 'due_date')) {
   database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
 }
+if (!taskColumns.some((column) => column.name === 'sort_order')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  database.exec('UPDATE tasks SET sort_order = id');
+}
 database.exec('PRAGMA foreign_keys = ON');
 
 const page = await readFile(join(root, 'index.html'));
@@ -114,7 +118,7 @@ const server = createServer(async (request, response) => {
     const project = database.prepare('SELECT id, archived, default_task_priority FROM projects WHERE id = ?').get(projectId);
     if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'GET') {
-      const tasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY id').all(projectId);
+      const tasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY sort_order, id').all(projectId);
       return sendJson(response, 200, tasks.map((task) => ({ ...task, completed: Boolean(task.completed) })));
     }
     if (request.method === 'POST') {
@@ -127,7 +131,8 @@ const server = createServer(async (request, response) => {
       }
       const title = typeof body?.title === 'string' ? body.title.trim() : '';
       if (!title) return sendJson(response, 400, { error: 'Task title is required' });
-      const result = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)').run(projectId, title, project.default_task_priority);
+      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(projectId).value;
+      const result = database.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, ?)').run(projectId, title, project.default_task_priority, nextOrder);
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), title, completed: false, priority: project.default_task_priority });
     }
   }
@@ -143,6 +148,17 @@ const server = createServer(async (request, response) => {
       body = await readJson(request);
     } catch {
       return sendJson(response, 400, { error: 'Invalid request body' });
+    }
+    if (body?.destination_project_id !== undefined) {
+      const destinationId = Number(body.destination_project_id);
+      const destination = database.prepare('SELECT id, archived FROM projects WHERE id = ?').get(destinationId);
+      if (!destination || destination.archived || destinationId === projectId) {
+        return sendJson(response, 400, { error: 'Destination project must be a different active project' });
+      }
+      const nextOrder = database.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS value FROM tasks WHERE project_id = ?').get(destinationId).value;
+      const result = database.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?').run(destinationId, nextOrder, taskId, projectId);
+      if (!result.changes) return sendJson(response, 404, { error: 'Task not found' });
+      return sendJson(response, 200, { id: taskId, project_id: destinationId });
     }
     if (typeof body?.completed === 'boolean') {
       const result = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?').run(Number(body.completed), taskId, projectId);
