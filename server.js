@@ -105,7 +105,7 @@ const server = http.createServer(async (req, res) => {
         const raw = typeof data.dueDate === 'string' ? data.dueDate.trim() : '';
         let dueDate = raw || null;
         if (dueDate !== null) {
-          const match = dueDate.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+          const match = dueDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
           if (!match) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Due date must be a valid YYYY-MM-DD date' }));
           const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
           const date = new Date(0);
