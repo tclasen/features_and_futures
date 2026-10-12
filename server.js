@@ -186,6 +186,39 @@ const page = `<!doctype html>
         await showList();
       });
       app.append(form, alert);
+      const importForm = document.createElement('form');
+      const jsonLabel = document.createElement('label');
+      jsonLabel.textContent = 'Project JSON';
+      const jsonInput = document.createElement('textarea');
+      jsonInput.setAttribute('aria-label', 'Project JSON');
+      jsonLabel.append(jsonInput);
+      const importedNameLabel = document.createElement('label');
+      importedNameLabel.textContent = 'Imported project name';
+      const importedNameInput = document.createElement('input');
+      importedNameInput.type = 'text';
+      importedNameInput.setAttribute('aria-label', 'Imported project name');
+      importedNameLabel.append(importedNameInput);
+      const importButton = document.createElement('button');
+      importButton.type = 'submit';
+      importButton.textContent = 'Import project';
+      importForm.append(jsonLabel, importedNameLabel, importButton);
+      const importAlert = document.createElement('p');
+      importAlert.setAttribute('role', 'alert');
+      importAlert.hidden = true;
+      importForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const response = await fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ document: jsonInput.value, name: importedNameInput.value }) });
+        if (response.ok) {
+          const imported = await response.json();
+          location.href = '/projects/' + escId(imported.id);
+        } else {
+          const result = await response.json();
+          importAlert.textContent = result.error === 'Project name is required' ? result.error : 'Invalid project JSON';
+          importAlert.hidden = false;
+        }
+      });
+      app.append(importForm, importAlert);
       const searchForm = document.createElement('form');
       const searchLabel = document.createElement('label');
       searchLabel.textContent = 'Project search';
@@ -666,6 +699,45 @@ const server = createServer(async (request, response) => {
     if (!name) return sendJson(response, 400, { error: 'Project name is required' });
     const result = createProject.run(name);
     return sendJson(response, 201, findProject.get(result.lastInsertRowid));
+  }
+  if (request.method === 'POST' && url.pathname === '/api/import') {
+    const body = await readJson(request);
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!name) return sendJson(response, 400, { error: 'Project name is required' });
+    let document;
+    try { document = JSON.parse(body?.document); } catch { return sendJson(response, 400, { error: 'Invalid project JSON' }); }
+    const priorities = ['Low', 'Normal', 'High'];
+    const source = document?.project;
+    const valid = document?.format === 'workboard-project' && document?.version === 1 &&
+      Number.isInteger(document.version) && source && typeof source === 'object' && !Array.isArray(source) &&
+      typeof source.name === 'string' && source.name.trim().length > 0 && typeof source.archived === 'boolean' &&
+      priorities.includes(source.defaultPriority) && Array.isArray(source.tasks) && source.tasks.every((task) =>
+        task && typeof task === 'object' && !Array.isArray(task) && typeof task.title === 'string' && task.title.trim().length > 0 &&
+        typeof task.completed === 'boolean' && priorities.includes(task.priority) && typeof task.dueDate === 'string' &&
+        (task.dueDate === '' || isValidDueDate(task.dueDate)) && typeof task.notes === 'string' && typeof task.deleted === 'boolean');
+    if (!valid) return sendJson(response, 400, { error: 'Invalid project JSON' });
+
+    let importedId;
+    try {
+      db.exec('BEGIN');
+      const projectResult = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)')
+        .run(name, source.archived ? 1 : 0, source.defaultPriority);
+      importedId = Number(projectResult.lastInsertRowid);
+      const addTask = db.prepare(`INSERT INTO tasks
+        (project_id, title, completed, priority, due_date, notes, deleted, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      const addPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
+      source.tasks.forEach((task, index) => {
+        const taskResult = addTask.run(importedId, task.title, task.completed ? 1 : 0, task.priority,
+          task.dueDate || null, task.notes.replace(/\r\n?/g, '\n'), task.deleted ? 1 : 0, index);
+        addPosition.run(Number(taskResult.lastInsertRowid), importedId, index);
+      });
+      db.exec('COMMIT');
+    } catch {
+      db.exec('ROLLBACK');
+      return sendJson(response, 400, { error: 'Invalid project JSON' });
+    }
+    return sendJson(response, 201, findProject.get(importedId));
   }
   const projectMatch = url.pathname.match(/^\/api\/projects\/(\d+)$/);
   if (request.method === 'PATCH' && projectMatch) {
