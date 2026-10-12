@@ -214,6 +214,29 @@ async function handleRequest(request, response) {
   if (request.method === 'GET' && url.pathname === '/api/directory') {
     return sendJson(response, 200, listDirectoryTasks.all());
   }
+  if (request.method === 'POST' && url.pathname === '/api/directory/completion') {
+    try {
+      const payload = await readJson(request);
+      if (typeof payload.completed !== 'boolean' || !Array.isArray(payload.task_ids)
+        || payload.task_ids.some((id) => !Number.isSafeInteger(id) || id < 1)) {
+        return sendJson(response, 400, { error: 'Invalid directory completion request' });
+      }
+      const taskIds = [...new Set(payload.task_ids)];
+      database.exec('BEGIN');
+      try {
+        const update = database.prepare(`UPDATE tasks SET completed = ? WHERE id = ? AND deleted = 0
+          AND project_id IN (SELECT id FROM projects WHERE archived = 0)`);
+        for (const taskId of taskIds) update.run(payload.completed ? 1 : 0, taskId);
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+      return sendJson(response, 200, { updated: taskIds.length });
+    } catch {
+      return sendJson(response, 400, { error: 'Invalid directory completion request' });
+    }
+  }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (request.method === 'POST' && archiveMatch) {
     const projectId = Number(archiveMatch[1]);

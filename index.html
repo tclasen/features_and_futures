@@ -81,6 +81,11 @@
       <input id="directory-search" type="text" autocomplete="off">
       <button type="submit">Search directory</button>
     </form>
+    <div class="task-controls" aria-label="Bulk task completion">
+      <button id="complete-visible-tasks" type="button">Complete visible tasks</button>
+      <button id="reopen-visible-tasks" type="button">Reopen visible tasks</button>
+    </div>
+    <p id="directory-empty" hidden>No matching tasks</p>
     <section id="directory-results" class="project-list" aria-label="Directory tasks"></section>
   </main>
   <main id="project-detail" hidden>
@@ -141,6 +146,9 @@
       const queryInput = document.querySelector('#directory-search');
       const results = document.querySelector('#directory-results');
       const alert = document.querySelector('#directory-alert');
+      const emptyMessage = document.querySelector('#directory-empty');
+      const completeButton = document.querySelector('#complete-visible-tasks');
+      const reopenButton = document.querySelector('#reopen-visible-tasks');
       const normalize = (value) => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (c) => c.toLowerCase());
       const escapeText = (value) => {
         const element = document.createElement('span');
@@ -160,8 +168,7 @@
       let tasks = [];
       let query = '';
       let range = { from: '', through: '' };
-      const render = () => {
-        const visible = tasks.filter((task) => {
+      const matchingTasks = () => tasks.filter((task) => {
           const completion = taskFilter.value === 'Deleted' ? task.deleted
             : !task.deleted && (taskFilter.value === 'All'
               || (taskFilter.value === 'Open' && !task.completed)
@@ -174,6 +181,13 @@
           const matches = !query || normalize(task.title).includes(normalize(query));
           return owner && completion && priority && due && matches;
         });
+      const render = () => {
+        const visible = matchingTasks();
+        emptyMessage.hidden = visible.length !== 0;
+        const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted'
+          ? visible.filter((task) => !task.deleted && !task.project_archived) : [];
+        completeButton.disabled = !eligible.some((task) => !task.completed);
+        reopenButton.disabled = !eligible.some((task) => task.completed);
         results.innerHTML = visible.map((task) => `<article class="task-row" data-testid="directory-task-row">
           <span data-testid="directory-task-title">${escapeText(task.title)}</span>
           <span data-testid="directory-project-name">${escapeText(task.project_name)}</span>
@@ -184,7 +198,16 @@
           <button type="button" data-open-project="${task.project_id}">Open project</button>
         </article>`).join('');
       };
-      fetch('/api/directory').then((response) => response.json()).then((value) => { tasks = value; render(); });
+      results.setAttribute('aria-busy', 'true');
+      fetch('/api/directory').then((response) => response.json()).then((value) => {
+        tasks = value;
+        results.setAttribute('aria-busy', 'false');
+        render();
+      }).catch(() => {
+        results.setAttribute('aria-busy', 'false');
+        alert.textContent = 'Unable to load directory';
+        alert.hidden = false;
+      });
       for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', render);
       document.querySelector('#directory-search-form').addEventListener('submit', (event) => {
         event.preventDefault(); query = queryInput.value.trim(); render();
@@ -200,6 +223,30 @@
         }
         range = { from, through }; alert.hidden = true; render();
       });
+      const updateVisibleTasks = async (completed) => {
+        const eligible = matchingTasks().filter((task) => !task.deleted && !task.project_archived
+          && task.completed !== completed);
+        if (!eligible.length) return;
+        completeButton.disabled = true;
+        reopenButton.disabled = true;
+        try {
+          const response = await fetch('/api/directory/completion', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed, task_ids: eligible.map((task) => task.id) }),
+          });
+          if (!response.ok) throw new Error('Unable to update tasks');
+          const refreshed = await fetch('/api/directory');
+          if (!refreshed.ok) throw new Error('Unable to refresh directory');
+          tasks = await refreshed.json();
+          render();
+        } catch {
+          alert.textContent = 'Unable to update visible tasks';
+          alert.hidden = false;
+          render();
+        }
+      };
+      completeButton.addEventListener('click', () => updateVisibleTasks(true));
+      reopenButton.addEventListener('click', () => updateVisibleTasks(false));
       results.addEventListener('click', (event) => {
         const button = event.target.closest('[data-open-project]');
         if (button) window.location.href = `/projects/${button.dataset.openProject}`;
