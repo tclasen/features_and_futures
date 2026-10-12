@@ -103,7 +103,9 @@ the repository and clean up their server processes and files.
 Project search and Search projects match a substring of project names, intersecting
 the Active/Archived filter. Task search and Search tasks intersect completion,
 priority, and the applied due range. Searches ignore ASCII letter case and trim
-only query edges; internal whitespace remains significant. Blank queries match
+only query edges. For matching, runs of ASCII spaces and horizontal tabs in both
+queries and saved names/titles are treated as one space. Stored and displayed
+names/titles retain their original internal whitespace and case. Blank queries match
 everything allowed by the other filters. Queries apply on submission, remain
 applied during filtering and edits, and reset when opening their page. Archived
 projects still allow searching. Search never writes saved data or changes the

@@ -832,6 +832,82 @@ async function applySearch(ui, type, query) {
     && node.children.some((child) => child.attributes.id === `${type}-search`))[0].fire('submit');
 }
 
+test('normalized project search preserves original names, archive filters, and saved data', async () => {
+  const projects = [
+    { id: 1, name: 'Alpha \t  BETA', archived: false, completedCount: 1, totalCount: 2 },
+    { id: 2, name: 'ALPHA  beta', archived: false, completedCount: 0, totalCount: 0 },
+    { id: 3, name: 'Alpha\u00a0Beta', archived: false, completedCount: 0, totalCount: 0 },
+    { id: 4, name: 'Alpha\t\t Beta', archived: true, completedCount: 1, totalCount: 1 },
+  ];
+  const original = structuredClone(projects);
+  const respond = (_path, options) => {
+    assert.equal(options, undefined);
+    return structuredClone(projects);
+  };
+  const ui = await page('/', respond);
+  await applySearch(ui, 'project', '  aLPHA\t \tbeTA  ');
+  assert.deepEqual(ui.rows('project').map(taskTitle), projects.slice(0, 2).map((project) => project.name));
+  assert.deepEqual(find(ui.app, (node) => node.attributes['data-testid'] === 'project-summary')
+    .map((node) => node.textContent), ['1/2 completed', '0/0 completed']);
+  ui.byId('project-filter').value = 'Archived';
+  await ui.byId('project-filter').fire('change');
+  assert.deepEqual(ui.rows('project').map(taskTitle), [projects[3].name]);
+  await applySearch(ui, 'project', '');
+  assert.deepEqual(ui.rows('project').map(taskTitle), [projects[3].name]);
+  const reopened = await page('/', respond);
+  assert.equal(reopened.byId('project-search').value, '');
+  assert.deepEqual(reopened.rows('project').map(taskTitle), projects.slice(0, 3).map((project) => project.name));
+  assert.deepEqual(projects, original);
+  assert.equal(ui.calls.length, 1);
+});
+
+test('normalized task search intersects all filters and preserves titles in active and archived projects', async () => {
+  const tasks = [
+    { id: 1, title: 'Alpha \t  BETA', completed: true, priority: 'High', dueDate: '2024-02-29' },
+    { id: 2, title: 'ALPHA\tBeta', completed: true, priority: 'High', dueDate: '2024-03-01' },
+    { id: 3, title: 'Alpha Beta', completed: false, priority: 'High', dueDate: '2024-02-29' },
+    { id: 4, title: 'Alpha  Beta', completed: true, priority: 'Low', dueDate: '2024-02-29' },
+    { id: 5, title: 'Alpha\t Beta', completed: true, priority: 'High', dueDate: '' },
+    { id: 6, title: 'Alpha\u00a0Beta', completed: true, priority: 'High', dueDate: '2024-02-29' },
+  ];
+  const original = structuredClone(tasks);
+  for (const archived of [false, true]) {
+    const project = { id: 1, name: 'Search', archived, defaultPriority: 'Normal' };
+    const respond = (path, options) => {
+      assert.equal(options, undefined);
+      return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    };
+    const ui = await page('/projects/1', respond);
+    ui.byId('task-filter').value = 'Completed';
+    await ui.byId('task-filter').fire('change');
+    ui.byId('priority-filter').value = 'High';
+    await ui.byId('priority-filter').fire('change');
+    await applyDueRange(ui, '2024-02-29', '2024-03-01');
+    await applySearch(ui, 'task', ' aLPHA\t \tbeTA ');
+    assert.deepEqual(ui.rows('task').map(taskTitle), tasks.slice(0, 2).map((task) => task.title));
+    assert.equal(find(ui.rows('task')[0], (node) => node.attributes.type === 'checkbox')[0]
+      .attributes['aria-label'], `Complete ${tasks[0].title}`);
+    if (archived) {
+      for (const control of find(ui.rows('task')[0], (node) => ['input', 'button', 'select'].includes(node.tag))) {
+        assert.equal(control.disabled, true);
+      }
+    }
+    ui.byId('task-filter').value = 'All';
+    await ui.byId('task-filter').fire('change');
+    assert.deepEqual(ui.rows('task').map(taskTitle), tasks.slice(0, 3).map((task) => task.title));
+    await applySearch(ui, 'task', '');
+    assert.deepEqual(ui.rows('task').map(taskTitle), [tasks[0].title, tasks[1].title, tasks[2].title, tasks[5].title]);
+    assert.equal(ui.byId('priority-filter').value, 'High');
+    assert.equal(ui.byId('due-from').value, '2024-02-29');
+    assert.equal(ui.byId('due-through').value, '2024-03-01');
+    const reopened = await page('/projects/1', respond);
+    assert.equal(reopened.byId('task-search').value, '');
+    assert.deepEqual(reopened.rows('task').map(taskTitle), tasks.map((task) => task.title));
+    assert.equal(ui.calls.length, 3);
+  }
+  assert.deepEqual(tasks, original);
+});
+
 test('project search intersects archive state, preserves order and summaries, and resets on return', async () => {
   const projects = [
     { id: 1, name: 'Alpha One', archived: false, completedCount: 1, totalCount: 3 },
@@ -874,7 +950,7 @@ test('project search intersects archive state, preserves order and summaries, an
   assert.equal(ui.rows('project').length, 3);
   await applySearch(ui, 'project', 'alpha ');
   assert.equal(ui.rows('project').length, 3);
-  await applySearch(ui, 'project', 'alpha  ' + 'three');
+  await applySearch(ui, 'project', 'alpha\t \tthree');
   assert.deepEqual(ui.rows('project').map(taskTitle), ['Alpha  Three']);
   await applySearch(ui, 'project', ' \t ');
   assert.equal(ui.rows('project').length, 5);

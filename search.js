@@ -1,8 +1,9 @@
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+function normalizeSearch(value) {
+  return value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
-// Only ASCII letters are case-insensitive; internal query whitespace is literal.
+// Normalize only for matching; saved names and titles retain their original text.
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(foldAscii(query.trim()));
+  return normalizeSearch(value).includes(normalizeSearch(query.trim()));
 }
