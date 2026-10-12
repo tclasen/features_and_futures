@@ -73,3 +73,5 @@ L060 resource ledger reconciliation: registered 2 additional names (1 present an
 L069 archive-first task021 recovery verified: five identical b004 diagnostics, all six original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt007 start. Effective task021 repair remains pending; no comparison change or implementation hint.
 
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 task021 recovery outcome: verified own020 restoration did not establish a behavioral fix; original007 fails011date and073Unicode ordering. Native/publication007 histories independently restored and008starts from rejected007commit. Active008 remains unassessed; no PM implementation or comparison change. Evidence: preflight/task021-recovery-outcome001.
