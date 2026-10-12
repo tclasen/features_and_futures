@@ -45,6 +45,18 @@ if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.na
     COMMIT;
   `);
 }
+database.exec(`
+  CREATE TABLE IF NOT EXISTS task_project_positions (
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    position INTEGER NOT NULL,
+    PRIMARY KEY (task_id, project_id)
+  );
+  CREATE INDEX IF NOT EXISTS task_project_positions_by_project
+    ON task_project_positions (project_id, position);
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+    SELECT id, project_id, position FROM tasks;
+`);
 const taskPriorities = ['Low', 'Normal', 'High'];
 const listProjects = database.prepare(`
   SELECT projects.id, projects.name, projects.archived,
@@ -60,19 +72,57 @@ const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = 
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
 const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
-const createTask = database.prepare(`
+const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
-  SELECT ?, ?, ?, COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?
+  SELECT ?, ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?
 `);
-const moveTask = database.prepare(`
-  UPDATE tasks SET project_id = ?,
-    position = (SELECT COALESCE(MAX(position), 0) + 1 FROM tasks WHERE project_id = ?)
+const rememberTaskPosition = database.prepare(`
+  INSERT INTO task_project_positions (task_id, project_id, position)
+  SELECT id, project_id, position FROM tasks WHERE id = ?
+`);
+const rememberDestinationPosition = database.prepare(`
+  INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
+  SELECT ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?
+`);
+const setTaskProject = database.prepare(`
+  UPDATE tasks SET project_id = ?, position = (
+    SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?
+  )
   WHERE id = ? AND project_id = ?
 `);
+const getOwnedTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+
+function transaction(action) {
+  database.exec('BEGIN');
+  try {
+    const result = action();
+    database.exec('COMMIT');
+    return result;
+  } catch (error) {
+    database.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function createTask(projectId, title, priority) {
+  transaction(() => {
+    const task = insertTask.run(projectId, title, priority, projectId);
+    rememberTaskPosition.run(task.lastInsertRowid);
+  });
+}
+
+function moveTask(taskId, sourceId, destinationId) {
+  return transaction(() => {
+    if (!getOwnedTask.get(taskId, sourceId)) return false;
+    rememberDestinationPosition.run(taskId, destinationId, destinationId);
+    setTaskProject.run(destinationId, taskId, destinationId, taskId, sourceId);
+    return true;
+  });
+}
 
 function isValidDueDate(value) {
   if (value === '') return true;
@@ -396,7 +446,7 @@ const server = http.createServer(async (request, response) => {
             html(response, 400, projectPage(project, filter, 'Task title is required', priorityFilter, dueRange));
             return;
           }
-          createTask.run(project.id, title, currentProject.default_task_priority, project.id);
+          createTask(project.id, title, currentProject.default_task_priority);
         } else if (url.pathname.endsWith('/move')) {
           const destinationId = Number(body.get('destinationProject'));
           const destination = Number.isSafeInteger(destinationId) ? getProject.get(destinationId) : undefined;
@@ -405,7 +455,7 @@ const server = http.createServer(async (request, response) => {
             return;
           }
           const id = Number(taskId);
-          if (!Number.isSafeInteger(id) || !moveTask.run(destination.id, destination.id, id, project.id).changes) {
+          if (!Number.isSafeInteger(id) || !moveTask(id, project.id, destination.id)) {
             html(response, 404, page('Task not found', '<h1>Task not found</h1>'));
             return;
           }

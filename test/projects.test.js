@@ -1023,7 +1023,7 @@ test('inclusive due ranges intersect filters and survive edits, invalid applicat
   }
 });
 
-test('moves append tasks, preserve saved fields and source filters, and reject archived projects', async () => {
+test('moves append new arrivals, restore returning tasks, preserve fields and filters, and reject archives', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
   const databasePath = join(directory, 'workboard.sqlite');
   let server;
@@ -1111,11 +1111,11 @@ test('moves append tasks, preserve saved fields and source filters, and reject a
     await post('/projects/2/restore');
     assert.equal(await view('/projects/2'), destination);
     await post('/projects/2/tasks/1/move', { destinationProject: '1' });
-    assert.deepEqual(titles(await view()), ['Remaining', 'Moving']);
+    assert.deepEqual(titles(await view()), ['Moving', 'Remaining']);
     // Blank dates and open completion states also move without adopting defaults.
     await post('/projects/2/tasks/3/move', { destinationProject: '1' });
     const returned = await view();
-    assert.deepEqual(titles(returned), ['Remaining', 'Moving', 'Destination first']);
+    assert.deepEqual(titles(returned), ['Moving', 'Remaining', 'Destination first']);
     assert.match(returned, /aria-label="Complete Destination first" onchange=/);
     assert.match(returned, /id="task-priority-3"[\s\S]*?<option selected>High<\/option>/);
     assert.match(returned, /id="task-due-date-3"[^>]*value=""/);
@@ -1124,6 +1124,100 @@ test('moves append tasks, preserve saved fields and source filters, and reject a
     server = await startServer(databasePath);
     assert.equal(await view(), returned);
     assert.deepEqual(titles(await view('/projects/2')), ['Destination second', 'After move']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('remembered positions migrate and restore order across projects, edits, archives and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-return-order-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    // Task 011 positions, including a gap and an order different from task IDs.
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0,
+        priority TEXT NOT NULL DEFAULT 'Normal', due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+      INSERT INTO projects (name) VALUES ('Original'), ('Second'), ('Third');
+      INSERT INTO tasks (project_id, title, position) VALUES
+        (1, 'Last', 9), (1, 'First', 2), (1, 'Middle', 5), (2, 'Second resident', 1);
+    `);
+    database.close();
+    server = await startServer(databasePath);
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async (id = 1, query = '') => (await fetch(`${server.address}/projects/${id}${query}`)).text();
+    const titles = html => [...html.matchAll(/class="task-title">([^<]*)<\/span>/g)].map(match => match[1]);
+    const move = async (id, source, destination, query = '') => {
+      const response = await post(`/projects/${source}/tasks/${id}/move${query}`, { destinationProject: destination });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get('location'), `/projects/${source}${query || '?filter=All'}`);
+    };
+    const restart = async () => {
+      await server.stop();
+      server = undefined;
+      server = await startServer(databasePath);
+    };
+    assert.deepEqual(titles(await view()), ['First', 'Middle', 'Last']);
+    // All original positions remain reserved while their tasks are away.
+    await move(1, 1, 2);
+    await move(3, 1, 2);
+    await move(2, 1, 2);
+    await post('/projects/1/tasks', { title: 'Created while away' }); // ID 5
+    await post('/projects/2/tasks', { title: 'New arrival' }); // ID 6
+    await move(6, 2, 1);
+    assert.deepEqual(titles(await view()), ['Created while away', 'New arrival']);
+    assert.deepEqual(titles(await view(2)), ['Second resident', 'Last', 'Middle', 'First']);
+    await post('/projects/1/rename', { name: 'Renamed original' });
+    await post('/projects/1/default-task-priority', { priority: 'High' });
+    await post('/projects/2/tasks/2/rename', { title: 'Current first' });
+    await post('/projects/2/tasks/2', { completed: '1' });
+    await post('/projects/2/tasks/2/priority', { priority: 'Low' });
+    await post('/projects/2/tasks/2/due-date', { dueDate: '2024-02-29' });
+    await restart();
+    // Return out of original order, passing through a third project.
+    await move(3, 2, 3);
+    await move(2, 2, 3);
+    await post('/projects/1/archive');
+    assert.equal((await post('/projects/3/tasks/2/move', { destinationProject: '1' })).status, 400);
+    assert.doesNotMatch(await view(3), /<option value="1">/);
+    await restart();
+    await post('/projects/1/restore');
+    await move(1, 2, 1);
+    await move(3, 3, 1);
+    await move(2, 3, 1);
+    const expected = ['Current first', 'Middle', 'Last', 'Created while away', 'New arrival'];
+    const restored = await view();
+    assert.deepEqual(titles(restored), expected);
+    assert.match(restored, /aria-label="Complete Current first" checked/);
+    assert.match(restored, /id="task-priority-2"[\s\S]*?<option selected>Low<\/option>/);
+    assert.match(restored, /id="task-due-date-2"[^>]*value="2024-02-29"/);
+    const query = '?filter=Completed&priorityFilter=Low&dueFrom=2024-02-29&dueThrough=2024-02-29';
+    assert.deepEqual(titles(await view(1, query)), ['Current first']);
+    await move(2, 1, 2, query);
+    assert.deepEqual(titles(await view(1, query)), []);
+    assert.deepEqual(titles(await view(2)), ['Second resident', 'Current first']);
+    const summaries = (await (await fetch(server.address + '/')).text())
+      .matchAll(/data-testid="project-summary">([^<]*)/g);
+    assert.deepEqual([...summaries].map(match => match[1]), ['0/4 completed', '1/2 completed', '0/0 completed']);
+    // Returning to the third project reuses its own distinct ordering.
+    await move(2, 2, 3);
+    await move(3, 1, 3);
+    assert.deepEqual(titles(await view(3)), ['Middle', 'Current first']);
+    await move(2, 3, 1);
+    await move(3, 3, 1);
+    await restart();
+    assert.deepEqual(titles(await view()), expected);
+    assert.deepEqual(titles(await view(1, query)), ['Current first']);
+    // New tasks still append after reserved positions following a restart.
+    await post('/projects/1/tasks', { title: 'Newest' });
+    assert.deepEqual(titles(await view()), [...expected, 'Newest']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

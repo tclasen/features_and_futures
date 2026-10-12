@@ -42,9 +42,12 @@ archived projects. Invalid ranges retain the previous applied range. Opening a
 project from the list starts with empty boundaries. Summaries always count all
 tasks regardless of filters.
 Each task has a Destination project selection and Move task button. Destinations
-are other active projects in project creation order. Moving appends the task to
-the destination, preserves its title, completion, priority and due date, and
-keeps the source page open with its filters unchanged. Both summaries update to
+are other active projects in project creation order. Moving to a new project
+appends after all positions established there. Returning to a previous project
+restores the task's remembered position relative to its other tasks, even when
+tasks return in a different order. Moving preserves current title, completion,
+priority and due date, and keeps the source page open with its filters unchanged.
+Both summaries update to
 reflect current ownership. Move controls are disabled for archived sources or
 when no active destination exists. Saved ownership and ordering survive restarts.
 Existing databases are migrated automatically.
