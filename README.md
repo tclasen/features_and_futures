@@ -104,6 +104,15 @@ pages still allow search. Opening from the project list resets task search, and
 returning with Projects resets project search. Queries are carried in forms and URLs,
 not stored in SQLite.
 
+Every project page offers Download project, including archived and empty projects.
+`GET /projects/<id>/download` downloads UTF-8 `workboard-project.json` with
+`format: "workboard-project"`, `version: 1`, and the project's current name,
+archive state, default priority and all live/deleted tasks in stored relative order.
+Task records contain title, completion, priority, due date, notes and deletion state;
+IDs and remembered positions are not part of the portable document. Export ignores
+all view filters and searches, makes no data changes, and converts notes line endings
+to LF only in the downloaded representation.
+
 Run automated HTTP and persistence tests:
 
 ```sh

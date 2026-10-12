@@ -221,6 +221,7 @@ export function createApplication(dbPath) {
     const editFields = filterFields + rangeFields + searchField;
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
       <form method="get" action="/"><button type="submit">Projects</button></form>
+      <form method="get" action="/projects/${project.id}/download"><button type="submit">Download project</button></form>
       ${project.archived ? '<p>Archived project</p>' : ''}
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
       <form class="create" method="post" action="/projects/${project.id}/rename">
@@ -401,6 +402,36 @@ export function createApplication(dbPath) {
         const filter = action === 'restore' ? 'Archived' : 'Active';
         response.writeHead(303, { Location: projectListLocation(filter, (body.get('search') ?? '').trim()) });
         response.end();
+      } else if (request.method === 'GET' && /^\/projects\/\d+\/download$/.test(pathname)) {
+        const id = Number(pathname.split('/')[2]);
+        const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
+        if (!project) {
+          sendHtml(404, page('Not found', '<h1>Project not found</h1>'));
+          return;
+        }
+        const document = {
+          format: 'workboard-project',
+          version: 1,
+          project: {
+            name: project.name,
+            archived: Boolean(project.archived),
+            defaultPriority: project.default_priority,
+            tasks: listTasks.all(id).map(task => ({
+              title: task.title,
+              completed: Boolean(task.completed),
+              priority: task.priority,
+              dueDate: task.due_date,
+              // Portable textarea line breaks use LF without rewriting saved notes.
+              notes: task.notes.replace(/\r\n?/g, '\n'),
+              deleted: Boolean(task.deleted),
+            })),
+          },
+        };
+        response.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="workboard-project.json"',
+        });
+        response.end(JSON.stringify(document));
       } else if (request.method === 'GET' && /^\/projects\/\d+$/.test(pathname)) {
         const id = Number(pathname.split('/')[2]);
         const project = Number.isSafeInteger(id) ? findProject.get(id) : undefined;
