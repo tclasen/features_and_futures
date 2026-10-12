@@ -1232,7 +1232,7 @@ test('project search intersects archive state, escapes queries, and starts empty
     assert.match(result, />Search projects<\/button>/);
     const filterForm = result.match(/<form class="filter"[^>]*>(.*?)<\/form>/s)[1];
     assert.match(filterForm, /name="search" value="aLpHa"/);
-    assert.equal(rows(await read('/?search=alpha%20one')).length, 0);
+    assert.equal(rows(await read('/?search=alpha%20one')).length, 1);
     assert.equal(rows(await read('/?search=alpha%20%20one')).length, 1);
     assert.equal(rows(await read('/?search=%25')).length, 0);
     assert.equal(rows(await read('/?search=%20%20')).length, 3);
@@ -1247,6 +1247,65 @@ test('project search intersects archive state, escapes queries, and starts empty
     assert.equal(rows(await read('/?search=alpha')).length, 0);
     assert.match(await read('/projects/1'), /<form action="\/" method="get"><button type="submit">Projects/);
     assert.match(await read(), /id="project-search"[^>]*value=""/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('space and tab search normalization preserves displayed data through archive and restart', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-search-whitespace-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const read = async (path) => (await fetch(server.baseUrl + path)).text();
+    const projectName = 'ALpha  \t\t One';
+    const taskTitle = 'ReView\t  \t Report';
+    await createProject(server.baseUrl, projectName);
+    await createProject(server.baseUrl, 'Alpha One more');
+    await createProject(server.baseUrl, 'AlphaOne');
+    for (const title of [taskTitle, 'Review Report later', 'ReviewReport']) {
+      await postForm(server.baseUrl, '/projects/1/tasks', { title });
+    }
+    await postForm(server.baseUrl, '/projects/1/tasks/1/completion', { completed: '1' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/priority', { priority: 'High' });
+    await postForm(server.baseUrl, '/projects/1/tasks/1/due-date', { dueDate: '2026-10-12' });
+    const projectPath = `/?${new URLSearchParams({ search: ' aLPHa\t One ' })}`;
+    const filters = {
+      filter: 'Completed', priorityFilter: 'High', dueFrom: '2026-10-12',
+      dueThrough: '2026-10-12', search: 'rEVIEW \t report',
+    };
+    const taskPath = `/projects/1?${new URLSearchParams(filters)}`;
+    assert.equal(rows(await read(projectPath)).length, 2);
+    assert.ok(rows(await read(projectPath))[0].includes(projectName));
+    assert.deepEqual(taskTitles(await read('/projects/1?search=review%20report')), [taskTitle, 'Review Report later']);
+    const savedTasks = taskRows(await read(taskPath));
+    assert.equal(savedTasks.length, 1);
+    assert.ok(savedTasks[0].includes(`Complete ${taskTitle}`));
+    assert.deepEqual(taskTitles(await read('/projects/1')), [taskTitle, 'Review Report later', 'ReviewReport']);
+    assert.match(rows(await read(projectPath))[0], /1\/3 completed/);
+    const rename = await postForm(server.baseUrl, '/projects/1/tasks/1/rename', {
+      ...filters, title: 'ReView  \t Report revised',
+    });
+    assert.equal(rename.status, 303);
+    assert.equal(rename.headers.get('location'), taskPath);
+    assert.deepEqual(taskTitles(await read(taskPath)), ['ReView  \t Report revised']);
+    await postForm(server.baseUrl, '/projects/1/archive', {});
+    assert.equal(rows(await read(projectPath)).length, 1);
+    const archivedPath = `${projectPath}&filter=Archived`;
+    const archivedProjects = rows(await read(archivedPath));
+    assert.equal(archivedProjects.length, 1);
+    assert.ok(archivedProjects[0].includes(projectName));
+    const archivedTasks = taskRows(await read(taskPath));
+    assert.match(archivedTasks[0], /disabled>Rename task/);
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(rows(await read(archivedPath)), archivedProjects);
+    assert.deepEqual(taskRows(await read(taskPath)), archivedTasks);
+    await postForm(server.baseUrl, '/projects/1/restore', {});
+    assert.ok(rows(await read('/'))[0].includes(projectName));
+    assert.deepEqual(taskTitles(await read('/projects/1')), ['ReView  \t Report revised', 'Review Report later', 'ReviewReport']);
   } finally {
     if (server) await server.stop();
     await rm(directory, { recursive: true, force: true });

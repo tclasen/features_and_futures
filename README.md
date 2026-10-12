@@ -95,9 +95,11 @@ Task creation and movement update current ownership and position history atomica
 Archived projects disable moving and cannot be sources or destinations. Invalid
 or stale destinations are rejected without changing task data.
 
-Project search and Task search apply literal substring queries, ignoring ASCII
-letter case and trimming surrounding query whitespace. Internal whitespace and
-non-ASCII case remain significant. Blank queries match everything. Project
+Project search and Task search apply substring queries, ignoring ASCII
+letter case and trimming surrounding query whitespace. For matching only, runs
+of ASCII spaces and horizontal tabs in queries and saved names/titles become one
+space. Other internal whitespace and non-ASCII case remain significant. Stored
+names/titles and their displayed text are unchanged. Blank queries match everything. Project
 search intersects Active/Archived; task search intersects completion, priority,
 and the applied due range. Searches preserve ordering and all-task summaries.
 Applied queries travel in URLs and forms, so filter changes and task edits retain

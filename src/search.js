@@ -2,11 +2,12 @@ export function normalizeSearch(value) {
   return (value ?? '').trim();
 }
 
-function foldAscii(value) {
-  return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+function normalizeForMatching(value) {
+  return value.replace(/[ \t]+/g, ' ')
+    .replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
-// Literal substring matching preserves internal whitespace and non-ASCII case.
+// Normalize only for comparison; stored text and displayed queries stay intact.
 export function matchesSearch(value, query) {
-  return foldAscii(value).includes(foldAscii(query));
+  return normalizeForMatching(value).includes(normalizeForMatching(query));
 }
