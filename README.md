@@ -21,4 +21,8 @@ tasks with creation and completion disabled. Projects, archive state, and tasks
 persist in the configured SQLite database, including when upgrading an existing
 database. `GET /health` returns `{"status":"ok"}`.
 
+Active project pages also let you rename a project. Names are trimmed and must
+not be blank. Renaming preserves the project URL, list position, and tasks;
+archived projects must be restored before they can be renamed.
+
 Run the integration checks with `npm test`.

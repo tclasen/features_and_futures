@@ -31,6 +31,7 @@ const listProjects = db.prepare(`
 const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id = ?');
 const insertProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const archiveProject = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
+const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const completeTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -128,13 +129,22 @@ function taskFilter(value) {
   return ['All', 'Open', 'Completed'].includes(value) ? value : 'All';
 }
 
-function projectPage(project, filter = 'All', error = '') {
+function projectPage(project, filter = 'All', error = '', renameError = '') {
   const tasks = listTasks.all(project.id).filter(task =>
     filter === 'All' || Boolean(task.completed) === (filter === 'Completed'));
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
     <form class="back" method="get" action="/"><button type="submit">Projects</button></form>
+    <form class="create" method="post" action="/projects/${project.id}/rename">
+      <input type="hidden" name="filter" value="${filter}">
+      ${renameError ? `<p role="alert">${escapeHtml(renameError)}</p>` : ''}
+      <label for="new-project-name">New project name</label>
+      <div class="fields">
+        <input id="new-project-name" name="name" type="text" autocomplete="off"${renameError ? ' aria-invalid="true"' : ''}${project.archived ? ' disabled' : ''}>
+        <button type="submit"${project.archived ? ' disabled' : ''}>Rename project</button>
+      </div>
+    </form>
     <form class="create" method="post" action="/projects/${project.id}/tasks">
       <input type="hidden" name="filter" value="${filter}">
       ${error ? `<p role="alert">${escapeHtml(error)}</p>` : ''}
@@ -200,6 +210,31 @@ const server = createServer(async (request, response) => {
       response.writeHead(303, { Location: '/' });
       response.end();
       return;
+    }
+    const renameMatch = /^\/projects\/([1-9]\d*)\/rename$/.exec(url.pathname);
+    if (request.method === 'POST' && renameMatch && Number.isSafeInteger(Number(renameMatch[1]))) {
+      const project = findProject.get(Number(renameMatch[1]));
+      if (project) {
+        const form = await readForm(request);
+        if (!form) {
+          sendHtml(response, 413, page('Request too large', '<h1>Request too large</h1>'));
+          return;
+        }
+        const filter = taskFilter(form.get('filter'));
+        if (project.archived) {
+          sendHtml(response, 403, projectPage(project, filter, '', 'Archived project'));
+          return;
+        }
+        const name = (form.get('name') || '').trim();
+        if (!name) {
+          sendHtml(response, 422, projectPage(project, filter, '', 'Project name is required'));
+          return;
+        }
+        renameProject.run(name, project.id);
+        response.writeHead(303, { Location: `/projects/${project.id}?filter=${filter}` });
+        response.end();
+        return;
+      }
     }
     const archiveMatch = /^\/projects\/([1-9]\d*)\/(archive|restore)$/.exec(url.pathname);
     if (request.method === 'POST' && archiveMatch && Number.isSafeInteger(Number(archiveMatch[1]))) {
