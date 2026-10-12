@@ -17,6 +17,12 @@ Active project pages support renaming with trimmed, nonblank names while retaini
 project identity, order, and tasks. Archived project pages allow viewing and
 filtering but prevent task changes and renaming.
 Existing databases are migrated automatically without losing projects or tasks.
+The home page's Task directory opens a read-only cross-project view. Project scope,
+completion/deletion, priority, inclusive due range, and normalized title search
+intersect without modifying stored data. Results show literal task fields and
+owner names in project creation order and stored task order. Open project returns
+to the owning project's default view. Each directory opening starts with Active
+scope, All task/priority filters, and empty range/search.
 Each task has a multiline Task notes field and Save notes button. Notes preserve
 whitespace, Unicode and literal markup as plain text, persist across restarts,
 and travel with moved tasks. They do not participate in search or change filters

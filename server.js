@@ -75,6 +75,10 @@ const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const validProjectFilter = value => value === 'Archived' ? 'Archived' : 'Active';
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const listTasks = db.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE project_id = ? ORDER BY position ASC, id ASC');
+const listDirectoryTasks = db.prepare(`
+  SELECT t.*, p.name AS project_name FROM projects p JOIN tasks t ON t.project_id = p.id
+  WHERE p.archived = ? ORDER BY p.id ASC, t.position ASC, t.id ASC
+`);
 const insertTask = db.prepare('INSERT INTO tasks (project_id, title, priority, position) VALUES (?, ?, ?, ?)');
 const nextPosition = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS position FROM task_positions WHERE project_id = ?');
 const rememberPosition = db.prepare('INSERT INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)');
@@ -209,6 +213,7 @@ function projectsPage(error = '', filter = 'Active', query = '', importJson = ''
   const projects = listProjects.all(filter === 'Archived' ? 1 : 0).filter(project => matchesSearch(project.name, query));
   return page('Projects', `
     <h1>Workboard</h1>
+    <form method="get" action="/directory"><button type="submit">Task directory</button></form>
     ${error ? `<div role="alert">${escapeHtml(error)}</div>` : ''}
     <form class="create" method="post" action="/projects">
       ${searchField(query)}
@@ -254,18 +259,73 @@ function projectsPage(error = '', filter = 'Active', query = '', importJson = ''
   `);
 }
 
-function renderProjectPage(project, filter = 'All', error = '', priorityFilter = 'All', range = emptyRange, draft = range, query = '') {
-  const rangeFields = `${searchField(query)}<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}"><input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
-  const eligibleProjects = destinations.all(project.id);
-  const moveDisabled = project.archived || !eligibleProjects.length;
-  const tasks = listTasks.all(project.id).filter(task =>
-    matchesSearch(task.title, query) &&
+function matchesTask(task, filter, priorityFilter, range, query) {
+  return matchesSearch(task.title, query) &&
     (filter === 'Deleted' ? Boolean(task.deleted) : !task.deleted &&
       (filter === 'All' || Boolean(task.completed) === (filter === 'Completed'))) &&
     (priorityFilter === 'All' || task.priority === priorityFilter) &&
     ((!range.from && !range.through) || (task.due_date &&
       (!range.from || task.due_date >= range.from) &&
-      (!range.through || task.due_date <= range.through))));
+      (!range.through || task.due_date <= range.through)));
+}
+
+function directoryPage(scope, filter, priorityFilter, range, query, error = '', draft = range) {
+  const tasks = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
+    .filter(task => matchesTask(task, filter, priorityFilter, range, query));
+  const filterFields = `<input type="hidden" name="scope" value="${scope}">
+    <input type="hidden" name="filter" value="${filter}">
+    <input type="hidden" name="priorityFilter" value="${priorityFilter}">`;
+  const rangeFields = `<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}">
+    <input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
+  const options = (values, selected) => values.map(value =>
+    `<option${value === selected ? ' selected' : ''}>${value}</option>`).join('');
+  return page('Task directory', `
+    <h1>Task directory</h1>
+    <form method="get" action="/"><button type="submit">Projects</button></form>
+    ${error ? `<div role="alert">${escapeHtml(error)}</div>` : ''}
+    <form method="get" action="/directory">
+      ${searchField(query)}${rangeFields}
+      <label for="project-scope">Project scope</label>
+      <select id="project-scope" name="scope" onchange="this.form.submit()">${options(['Active', 'Archived'], scope)}</select>
+      <label for="directory-task-filter">Task filter</label>
+      <select id="directory-task-filter" name="filter" onchange="this.form.submit()">${options(taskFilters, filter)}</select>
+      <label for="directory-priority-filter">Priority filter</label>
+      <select id="directory-priority-filter" name="priorityFilter" onchange="this.form.submit()">${options(['All', ...priorities], priorityFilter)}</select>
+    </form>
+    <form method="get" action="/directory">
+      ${filterFields}${rangeFields}
+      <label for="directory-search">Directory search</label>
+      <input id="directory-search" type="text" name="search" value="${escapeHtml(query)}">
+      <button type="submit">Search directory</button>
+    </form>
+    <form method="get" action="/directory/due-range">
+      ${filterFields}${searchField(query)}
+      <input type="hidden" name="appliedFrom" value="${escapeHtml(range.from)}">
+      <input type="hidden" name="appliedThrough" value="${escapeHtml(range.through)}">
+      <label for="directory-due-from">Due from</label>
+      <input id="directory-due-from" type="text" name="dueFrom" value="${escapeHtml(draft.from)}">
+      <label for="directory-due-through">Due through</label>
+      <input id="directory-due-through" type="text" name="dueThrough" value="${escapeHtml(draft.through)}">
+      <button type="submit">Apply due range</button>
+    </form>
+    ${tasks.length ? tasks.map(task => `
+      <div class="row" data-testid="directory-task-row">
+        <span data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</span>
+        <span data-testid="directory-project-name" style="white-space: pre-wrap">${escapeHtml(task.project_name)}</span>
+        <span data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</span>
+        <span data-testid="directory-task-priority">${escapeHtml(task.priority)}</span>
+        <span data-testid="directory-task-due-date">${escapeHtml(task.due_date)}</span>
+        <span data-testid="directory-task-notes" style="white-space: pre-wrap">${escapeHtml(task.notes)}</span>
+        <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
+      </div>`).join('') : '<p>No matching tasks.</p>'}
+  `);
+}
+
+function renderProjectPage(project, filter = 'All', error = '', priorityFilter = 'All', range = emptyRange, draft = range, query = '') {
+  const rangeFields = `${searchField(query)}<input type="hidden" name="dueFrom" value="${escapeHtml(range.from)}"><input type="hidden" name="dueThrough" value="${escapeHtml(range.through)}">`;
+  const eligibleProjects = destinations.all(project.id);
+  const moveDisabled = project.archived || !eligibleProjects.length;
+  const tasks = listTasks.all(project.id).filter(task => matchesTask(task, filter, priorityFilter, range, query));
   return page(project.name, `
     <h1>${escapeHtml(project.name)}</h1>
     ${project.archived ? '<p>Archived project</p>' : ''}
@@ -460,6 +520,15 @@ const server = http.createServer(async (req, res) => {
     } else if (req.method === 'GET' && path === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));
+    } else if (req.method === 'GET' && (path === '/directory' || path === '/directory/due-range')) {
+      const params = url.searchParams;
+      const scope = validProjectFilter(params.get('scope'));
+      const filter = validFilter(params.get('filter'));
+      const priorityFilter = validPriorityFilter(params.get('priorityFilter'));
+      const draft = { from: (params.get('dueFrom') || '').trim(), through: (params.get('dueThrough') || '').trim() };
+      const error = path === '/directory/due-range' ? rangeError(draft) : '';
+      const range = error ? readRange(params, 'applied') : appliedRange;
+      html(res, error ? 422 : 200, directoryPage(scope, filter, priorityFilter, range, appliedQuery, error, error ? draft : range));
     } else if (req.method === 'GET' && path === '/') {
       html(res, 200, projectsPage('', validProjectFilter(url.searchParams.get('filter')), appliedQuery));
     } else if (req.method === 'POST' && path === '/projects/import') {
