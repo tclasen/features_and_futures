@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { isValidDueDate } from '../public/dates.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
@@ -50,6 +51,7 @@ class Element {
 }
 
 const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+const script = source.replace("import { isValidDueDate } from './dates.js';", '');
 async function projectPage(archived = false) {
   const app = new Element('main');
   const tasks = [];
@@ -63,6 +65,7 @@ async function projectPage(archived = false) {
   let nextError;
   const project = { id: 1, name: 'Project', archived, defaultPriority: 'Normal', totalCount: 7, completedCount: 3 };
   const context = {
+    isValidDueDate,
     document: { querySelector: () => app, createElement: tag => new Element(tag) },
     location: { pathname: '/projects/1' },
     fetch: async (path, options) => {
@@ -73,7 +76,11 @@ async function projectPage(archived = false) {
         return { ok: false, json: async () => ({ error }) };
       }
       let data;
-      if (options?.method === 'PATCH') {
+      if (options?.method === 'POST') {
+        data = { id: tasks.length + 1, title: JSON.parse(options.body).title,
+          completed: false, priority: project.defaultPriority, dueDate: '' };
+        tasks.push(data);
+      } else if (options?.method === 'PATCH') {
         const target = path.includes('/tasks/') ? tasks.find(task => task.id === Number(path.split('/').at(-1))) : project;
         Object.assign(target, JSON.parse(options.body));
         data = target;
@@ -82,7 +89,7 @@ async function projectPage(archived = false) {
       return { ok: true, json: async () => structuredClone(data) };
     },
   };
-  runInNewContext(source, context);
+  runInNewContext(script, context);
   await new Promise(resolve => setImmediate(resolve));
   const completion = app.querySelector('#task-filter');
   const priority = app.querySelector('#priority-filter');
@@ -227,4 +234,125 @@ test('due date controls save, clear and report errors while preserving rows and 
   await page.select(page.priority, 'All');
   assert.equal(page.app.querySelector('#task-due-date-5').value, '9999-12-31');
   assert.equal(page.app.querySelector('#task-due-date-7').value, '0001-01-01');
+});
+
+async function applyRange(page, from, through) {
+  page.app.querySelector('#due-from').value = from;
+  page.app.querySelector('#due-through').value = through;
+  await page.app.querySelector('#due-range').trigger('submit');
+}
+
+async function saveDate(page, taskId, value) {
+  const input = page.app.querySelector(`#task-due-date-${taskId}`);
+  const row = page.rows().find(row => row.querySelector(`#task-due-date-${taskId}`));
+  input.value = value;
+  await row.querySelectorAll('form')[1].trigger('submit');
+}
+
+test('inclusive date ranges intersect both filters, preserve order and exclude undated tasks', async () => {
+  const page = await projectPage();
+  assert.equal(page.app.querySelector('#due-from').value, '');
+  assert.equal(page.app.querySelector('#due-through').value, '');
+  for (const [id, date] of [[1, '2024-02-28'], [2, '2024-02-29'], [3, '2024-03-01'],
+    [4, '2024-02-29'], [5, '9999-12-31']]) await saveDate(page, id, date);
+  const original = structuredClone(page.tasks);
+  const requestCount = page.requests.length;
+  for (const [from, through] of [['', ''], ['', '2024-02-29'], ['2024-02-29', ''],
+    ['2024-02-29', '2024-02-29'], ['0001-01-01', '9999-12-31']]) {
+    await applyRange(page, ` ${from} `, ` ${through} `);
+    for (const completion of ['All', 'Open', 'Completed']) {
+      await page.select(page.completion, completion);
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        await page.select(page.priority, priority);
+        assert.deepEqual(page.titles(), original.filter(task =>
+          (completion === 'All' || task.completed === (completion === 'Completed')) &&
+          (priority === 'All' || task.priority === priority) &&
+          ((!from && !through) || (task.dueDate && (!from || task.dueDate >= from) &&
+            (!through || task.dueDate <= through)))).map(task => task.title));
+        assert.equal(page.completion.value, completion);
+        assert.equal(page.priority.value, priority);
+      }
+    }
+  }
+  assert.deepEqual(page.tasks, original);
+  assert.equal(page.requests.length, requestCount);
+});
+
+test('invalid range applications preserve previous membership and applied boundaries', async () => {
+  const page = await projectPage();
+  await saveDate(page, 5, '2000-02-29');
+  await applyRange(page, '2000-02-29', '2000-02-29');
+  const original = structuredClone(page.tasks);
+  for (const invalid of ['0000-01-01', '1900-02-29', '2024-04-31', '2024-1-01',
+    '10000-01-01', '2024-01-01T00:00:00Z', '2024-13-01', '2024-01-00']) {
+    for (const bounds of [[invalid, ''], ['', invalid]]) {
+      await applyRange(page, ...bounds);
+      assert.deepEqual(page.titles(), ['High open']);
+      assert.equal(page.app.querySelector('[role="alert"]').hidden, false);
+      assert.equal(page.app.querySelector('[role="alert"]').textContent,
+        'Due range must use valid YYYY-MM-DD dates');
+    }
+  }
+  await applyRange(page, '2024-03-01', '2024-02-29');
+  assert.equal(page.app.querySelector('[role="alert"]').textContent,
+    'Due from must not be after Due through');
+  await page.select(page.priority, 'High');
+  assert.deepEqual(page.titles(), ['High open']);
+  assert.deepEqual(page.tasks, original);
+});
+
+test('edits and creation retain applied range and selections while reevaluating membership', async () => {
+  const page = await projectPage();
+  await saveDate(page, 5, '2024-02-29');
+  await saveDate(page, 7, '2024-02-29');
+  await page.select(page.completion, 'Open');
+  await page.select(page.priority, 'High');
+  await applyRange(page, '2024-02-29', '2024-02-29');
+  const rename = page.rows()[0].querySelector('form');
+  rename.querySelector('input').value = 'Renamed';
+  await rename.trigger('submit');
+  const renameProject = page.app.querySelector('#rename-project');
+  renameProject.querySelector('input').value = 'Renamed project';
+  await renameProject.trigger('submit');
+  await page.select(page.app.querySelector('#default-task-priority'), 'High');
+  const create = page.app.querySelector('#create-task');
+  create.querySelector('input').value = 'New undated task';
+  await create.trigger('submit');
+  assert.deepEqual(page.titles(), ['Renamed', 'Second high open']);
+  await saveDate(page, 5, '2024-03-01');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  await page.select(page.rows()[0].querySelector('select'), 'Low');
+  assert.deepEqual(page.titles(), []);
+  await page.select(page.priority, 'Low');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  const checkbox = page.rows()[0].querySelector('input');
+  checkbox.checked = true;
+  await checkbox.trigger('change');
+  assert.deepEqual(page.titles(), []);
+  assert.equal(page.completion.value, 'Open');
+  assert.equal(page.priority.value, 'Low');
+  await page.select(page.completion, 'Completed');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  await saveDate(page, 7, '   ');
+  assert.deepEqual(page.titles(), []);
+  await applyRange(page, '', '');
+  assert.deepEqual(page.titles(), ['Low done', 'Second high open']);
+  const reopened = await projectPage();
+  assert.equal(reopened.app.querySelector('#due-from').value, '');
+  assert.equal(reopened.app.querySelector('#due-through').value, '');
+});
+
+test('archived projects allow date ranges while task edits stay disabled', async () => {
+  const page = await projectPage(true);
+  for (const tag of ['input', 'button']) {
+    assert.ok(page.app.querySelector('#due-range').querySelectorAll(tag).every(control => !control.disabled));
+  }
+  await applyRange(page, '0001-01-01', '0001-01-01');
+  assert.deepEqual(page.titles(), ['Second high open']);
+  for (const tag of ['input', 'select', 'button']) {
+    assert.ok(page.rows()[0].querySelectorAll(tag).every(control => control.disabled));
+  }
+  await applyRange(page, '', '');
+  assert.equal(page.rows().length, 7);
+  assert.equal(page.requests.length, 2);
 });

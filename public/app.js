@@ -1,3 +1,5 @@
+import { isValidDueDate } from './dates.js';
+
 const app = document.querySelector('#app');
 
 async function request(path, options) {
@@ -71,6 +73,13 @@ async function renderProject(projectId) {
         <option>All</option><option>Low</option><option>Normal</option><option>High</option>
       </select>
     </div>
+    <form id="due-range" class="task-filter">
+      <label for="due-from">Due from</label>
+      <input id="due-from" type="text" autocomplete="off">
+      <label for="due-through">Due through</label>
+      <input id="due-through" type="text" autocomplete="off">
+      <button type="submit">Apply due range</button>
+    </form>
     <section aria-label="Tasks" id="task-list"></section>`;
   app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
   const form = app.querySelector('#create-task');
@@ -83,6 +92,11 @@ async function renderProject(projectId) {
   const filter = app.querySelector('#task-filter');
   const priorityFilter = app.querySelector('#priority-filter');
   const defaultPriority = app.querySelector('#default-task-priority');
+  const dueRangeForm = app.querySelector('#due-range');
+  const dueFrom = app.querySelector('#due-from');
+  const dueThrough = app.querySelector('#due-through');
+  let appliedFrom = '';
+  let appliedThrough = '';
   const list = app.querySelector('#task-list');
   const tasksPath = `/api/projects/${projectId}/tasks`;
   let tasks = [];
@@ -92,7 +106,10 @@ async function renderProject(projectId) {
   function displayTasks() {
     const matching = tasks.filter(task =>
       (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)) &&
-      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value) &&
+      ((!appliedFrom && !appliedThrough) || (task.dueDate &&
+        (!appliedFrom || task.dueDate >= appliedFrom) &&
+        (!appliedThrough || task.dueDate <= appliedThrough))));
     list.replaceChildren(...matching.map(task => {
       const row = document.createElement('div');
       row.className = 'task-row';
@@ -234,6 +251,7 @@ async function renderProject(projectId) {
           });
           Object.assign(task, saved);
           dueDateInput.value = task.dueDate;
+          if (appliedFrom || appliedThrough) displayTasks();
         } catch (error) {
           showError(alert, error.message);
         } finally {
@@ -261,6 +279,25 @@ async function renderProject(projectId) {
   } finally {
     app.setAttribute('aria-busy', 'false');
   }
+  dueRangeForm.addEventListener('submit', event => {
+    event.preventDefault();
+    const from = dueFrom.value.trim();
+    const through = dueThrough.value.trim();
+    if (!isValidDueDate(from) || !isValidDueDate(through)) {
+      showError(alert, 'Due range must use valid YYYY-MM-DD dates');
+      return;
+    }
+    if (from && through && from > through) {
+      showError(alert, 'Due from must not be after Due through');
+      return;
+    }
+    appliedFrom = from;
+    appliedThrough = through;
+    dueFrom.value = from;
+    dueThrough.value = through;
+    alert.hidden = true;
+    displayTasks();
+  });
   filter.addEventListener('change', displayTasks);
   priorityFilter.addEventListener('change', displayTasks);
   defaultPriority.disabled = archived;

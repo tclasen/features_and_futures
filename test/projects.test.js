@@ -75,7 +75,7 @@ test('projects and tasks validate, rename, save priorities, remain isolated and 
     assert.notEqual(first.id, second.id);
     assert.deepEqual(await (await fetch(`${base}/api/projects`)).json(), [first, second]);
     assert.deepEqual(await (await fetch(`${base}/api/projects/${first.id}`)).json(), first);
-    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/style.css']) {
+    for (const path of ['/', `/projects/${first.id}`, '/app.js', '/dates.js', '/style.css']) {
       const response = await fetch(`${base}${path}`);
       assert.equal(response.status, 200);
       assert.ok((await response.text()).length > 0);

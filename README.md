@@ -23,6 +23,13 @@ Task filter and Priority filter work together, initially selecting All. Changes
 to completion or priority immediately update the matching rows while preserving
 both filter selections. Project summaries always count every task.
 
+Tasks can also save or clear a calendar due date. Due from and Due through
+apply an inclusive date range together with Task filter and Priority filter.
+Either boundary may be blank; a range with any boundary excludes undated tasks.
+Invalid ranges leave the previous applied range intact. Editing a task updates
+matching rows, and opening a project starts with an empty range. Archived
+projects allow all filters while keeping saved task data read-only.
+
 Run the integration checks:
 
 ```sh

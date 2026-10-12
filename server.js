@@ -1,3 +1,4 @@
+import { isValidDueDate } from './public/dates.js';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -49,6 +50,7 @@ const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE project_id
 const taskData = task => ({ ...task, completed: Boolean(task.completed) });
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', readFileSync(new URL('./public/index.html', import.meta.url))]],
+  ['/dates.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/dates.js', import.meta.url))]],
   ['/app.js', ['text/javascript; charset=utf-8', readFileSync(new URL('./public/app.js', import.meta.url))]],
   ['/style.css', ['text/css; charset=utf-8', readFileSync(new URL('./public/style.css', import.meta.url))]],
 ]);
@@ -56,16 +58,6 @@ const assets = new Map([
 function json(response, status, value) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(value));
-}
-
-function isValidDueDate(value) {
-  if (value === '') return true;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  if (year < 1 || month < 1 || month > 12) return false;
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day >= 1 && day <= daysInMonth[month - 1];
 }
 
 async function readBody(request) {
