@@ -11,7 +11,8 @@ const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))
 );
 CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,6 +21,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+const projectColumns = db.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some(column => column.name === 'archived')) {
+  db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
 const indexHtml = await readFile(join(import.meta.dirname, 'public', 'index.html'));
 const clientJs = await readFile(join(import.meta.dirname, 'public', 'app.js'));
 
@@ -47,7 +52,10 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && !taskId) {
       return sendJson(response, 200, db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) })));
     }
+    const project = db.prepare('SELECT archived FROM projects WHERE id = ?').get(projectId);
+    if (!project) return sendJson(response, 404, { error: 'Project not found' });
     if (request.method === 'POST' && !taskId) {
+      if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
       const body = await readBody(request);
       if (body.error) return sendJson(response, 400, { error: body.error });
       const title = typeof body.value?.title === 'string' ? body.value.title.trim() : '';
@@ -57,6 +65,7 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 201, { id: Number(result.lastInsertRowid), projectId, title, completed: false });
     }
     if (request.method === 'PATCH' && taskId) {
+      if (project.archived) return sendJson(response, 409, { error: 'Archived project is read-only' });
       const body = await readBody(request);
       if (body.error) return sendJson(response, 400, { error: body.error });
       if (typeof body.value?.completed !== 'boolean') return sendJson(response, 400, { error: 'Completion must be boolean' });
@@ -69,9 +78,21 @@ const server = createServer(async (request, response) => {
   if (request.method === 'GET' && url.pathname === '/health') {
     return sendJson(response, 200, { status: 'ok' });
   }
+  const projectRoute = url.pathname.match(/^\/api\/projects\/(\d+)$/);
+  if (projectRoute && request.method === 'PATCH') {
+    const body = await readBody(request);
+    if (body.error) return sendJson(response, 400, { error: body.error });
+    if (typeof body.value?.archived !== 'boolean') return sendJson(response, 400, { error: 'Archived must be boolean' });
+    const result = db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.value.archived), Number(projectRoute[1]));
+    if (!result.changes) return sendJson(response, 404, { error: 'Project not found' });
+    return sendJson(response, 200, { id: Number(projectRoute[1]), archived: body.value.archived });
+  }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
-    const projects = db.prepare('SELECT id, name FROM projects ORDER BY id').all();
-    return sendJson(response, 200, projects);
+    const projects = db.prepare(`SELECT p.id, p.name, p.archived,
+      COUNT(t.id) AS totalCount, COALESCE(SUM(t.completed), 0) AS completedCount
+      FROM projects p LEFT JOIN tasks t ON t.project_id = p.id
+      GROUP BY p.id ORDER BY p.id`).all();
+    return sendJson(response, 200, projects.map(project => ({ ...project, archived: Boolean(project.archived), totalCount: Number(project.totalCount), completedCount: Number(project.completedCount) })));
   }
   if (url.pathname === '/api/projects' && request.method === 'POST') {
     const parsed = await readBody(request);
