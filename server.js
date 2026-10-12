@@ -233,10 +233,15 @@ const server = http.createServer(async (req, res) => {
           if (year < 1 || month < 1 || month > 12 || day < 1 || day > days[month - 1]) return json(res, 400, { error: 'Due date must be a valid YYYY-MM-DD date' });
           canonical = trimmed;
         }
-        // SQLite may report zero changed rows for a no-op update. Check ownership
-        // separately so saving the already-current date remains a successful edit.
-        if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
+        // Check ownership independently: SQLite reports zero changes for a no-op
+        // update, but saving the same date is still a successful operation.
+        const ownedTask = getTask.get(taskId);
+        if (!ownedTask || Number(ownedTask.projectId) !== projectId) return json(res, 404, { error: 'Task not found' });
         updateDueDate.run(canonical, taskId, projectId);
+        // Read back from SQLite before acknowledging, so the response and the
+        // subsequent list/restart view both reflect the committed date.
+        const persisted = getTask.get(taskId);
+        if ((persisted.dueDate || null) !== canonical) throw new Error('Due date was not persisted');
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
