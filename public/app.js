@@ -59,6 +59,12 @@ async function renderProject(projectId) {
         <option>All</option><option>Open</option><option>Completed</option>
       </select>
     </div>
+    <div class="task-filter">
+      <label for="priority-filter">Priority filter</label>
+      <select id="priority-filter">
+        <option>All</option><option>Low</option><option>Normal</option><option>High</option>
+      </select>
+    </div>
     <section aria-label="Tasks" id="task-list"></section>`;
   app.querySelector('#projects').addEventListener('click', () => location.assign('/'));
   const form = app.querySelector('#create-task');
@@ -69,14 +75,16 @@ async function renderProject(projectId) {
   const button = form.querySelector('button');
   const alert = app.querySelector('[role="alert"]');
   const filter = app.querySelector('#task-filter');
+  const priorityFilter = app.querySelector('#priority-filter');
   const list = app.querySelector('#task-list');
   const tasksPath = `/api/projects/${projectId}/tasks`;
   let tasks = [];
   let archived = false;
 
   function displayTasks() {
-    const matching = tasks.filter(task => filter.value === 'All' ||
-      (filter.value === 'Completed' ? task.completed : !task.completed));
+    const matching = tasks.filter(task =>
+      (filter.value === 'All' || (filter.value === 'Completed' ? task.completed : !task.completed)) &&
+      (priorityFilter.value === 'All' || task.priority === priorityFilter.value));
     list.replaceChildren(...matching.map(task => {
       const row = document.createElement('div');
       row.className = 'task-row';
@@ -177,7 +185,7 @@ async function renderProject(projectId) {
             body: JSON.stringify({ priority: priority.value }),
           });
           Object.assign(task, saved);
-          priority.value = task.priority;
+          displayTasks();
         } catch (error) {
           priority.value = task.priority;
           showError(alert, error.message);
@@ -206,6 +214,7 @@ async function renderProject(projectId) {
     app.setAttribute('aria-busy', 'false');
   }
   filter.addEventListener('change', displayTasks);
+  priorityFilter.addEventListener('change', displayTasks);
   renameInput.disabled = archived;
   renameButton.disabled = archived;
   renameForm.addEventListener('submit', async event => {

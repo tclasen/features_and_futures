@@ -19,6 +19,9 @@ Each task has a saved Low, Normal, or High priority, initially Normal. Changing
 priority preserves its title, completion state and position. Archived project
 pages allow task filtering but disable task creation, completion, renaming and
 priority changes. Restoring a project enables editing with saved values intact.
+Task filter and Priority filter work together, initially selecting All. Changes
+to completion or priority immediately update the matching rows while preserving
+both filter selections. Project summaries always count every task.
 
 Run the integration checks:
 
