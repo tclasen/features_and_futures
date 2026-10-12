@@ -130,6 +130,8 @@ async function renderProject(id) {
   const back = element('button', 'Projects', { type: 'button' });
   back.addEventListener('click', () => { window.location.href = '/'; });
   app.append(back);
+  const download = element('a', 'Download project', { href: `/api/projects/${encodeURIComponent(id)}/export`, download: 'workboard-project.json' });
+  app.append(download);
 
   const form = element('form');
   const input = element('input', undefined, { type: 'text', 'aria-label': 'Task title', name: 'title' });
