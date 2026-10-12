@@ -83,6 +83,12 @@ const setTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE id =
 const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position`);
+const listDirectoryTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority,
+    t.due_date, t.notes, t.deleted, p.id AS project_id, p.name AS project_name,
+    p.archived AS project_archived
+  FROM projects p JOIN task_project_positions pos ON pos.project_id = p.id
+  JOIN tasks t ON t.id = pos.task_id AND t.project_id = p.id
+  ORDER BY p.id, pos.position`);
 const findTask = database.prepare('SELECT id, title, completed, priority, due_date, notes, deleted FROM tasks WHERE id = ? AND project_id = ?');
 const updateTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
@@ -204,6 +210,9 @@ async function handleRequest(request, response) {
   }
   if (request.method === 'GET' && url.pathname === '/api/projects') {
     return sendJson(response, 200, listProjects.all(url.searchParams.get('filter') === 'Archived' ? 1 : 0));
+  }
+  if (request.method === 'GET' && url.pathname === '/api/directory') {
+    return sendJson(response, 200, listDirectoryTasks.all());
   }
   const archiveMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/(archive|restore)$/);
   if (request.method === 'POST' && archiveMatch) {
@@ -429,6 +438,10 @@ async function handleRequest(request, response) {
   if (request.method === 'GET' && url.pathname === '/') {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return response.end(page());
+  }
+  if (request.method === 'GET' && url.pathname === '/directory') {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return response.end(page().replace('<!-- DIRECTORY_MODE -->', '<script>window.directoryMode = true;</script>'));
   }
   const projectMatch = url.pathname.match(/^\/projects\/(\d+)$/);
   if (request.method === 'GET' && projectMatch) {

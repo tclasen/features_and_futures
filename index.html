@@ -32,6 +32,7 @@
     .task-row select { padding: 8px; border: 1px solid #aab5c4; border-radius: 6px; font: inherit; }
     .task-title { overflow-wrap: anywhere; }
     .task-row.completed .task-title { color: #657083; text-decoration: line-through; }
+    [data-testid="directory-task-notes"] { white-space: pre-wrap; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -58,6 +59,29 @@
       <button type="submit">Search projects</button>
     </form>
     <section id="project-list" class="project-list" aria-label="Projects"></section>
+    <p><a href="/directory">Task directory</a></p>
+  </main>
+  <main id="directory-page" hidden>
+    <button id="directory-back" type="button">Projects</button>
+    <h1>Task directory</h1>
+    <label for="directory-scope">Project scope</label>
+    <select id="directory-scope"><option>Active</option><option>Archived</option></select>
+    <label for="directory-task-filter">Task filter</label>
+    <select id="directory-task-filter"><option>All</option><option>Open</option><option>Completed</option><option>Deleted</option></select>
+    <label for="directory-priority-filter">Priority filter</label>
+    <select id="directory-priority-filter"><option>All</option><option>Low</option><option>Normal</option><option>High</option></select>
+    <form id="directory-range-form" class="task-controls">
+      <label for="directory-due-from">Due from<input id="directory-due-from" type="text" placeholder="YYYY-MM-DD"></label>
+      <label for="directory-due-through">Due through<input id="directory-due-through" type="text" placeholder="YYYY-MM-DD"></label>
+      <button type="submit">Apply due range</button>
+    </form>
+    <p id="directory-alert" class="alert" role="alert" hidden></p>
+    <form id="directory-search-form" class="task-controls">
+      <label for="directory-search">Directory search</label>
+      <input id="directory-search" type="text" autocomplete="off">
+      <button type="submit">Search directory</button>
+    </form>
+    <section id="directory-results" class="project-list" aria-label="Directory tasks"></section>
   </main>
   <main id="project-detail" hidden>
     <button id="back-button" type="button">Projects</button>
@@ -102,10 +126,86 @@
     <section id="task-list" class="project-list" aria-label="Tasks"></section>
   </main>
   <!-- PROJECT_DATA -->
+  <!-- DIRECTORY_MODE -->
   <script>
     const app = document.querySelector('#app');
     const detail = document.querySelector('#project-detail');
-    if (window.initialProject) {
+    if (window.directoryMode) {
+      app.hidden = true;
+      document.querySelector('#directory-page').hidden = false;
+      const scope = document.querySelector('#directory-scope');
+      const taskFilter = document.querySelector('#directory-task-filter');
+      const priorityFilter = document.querySelector('#directory-priority-filter');
+      const fromInput = document.querySelector('#directory-due-from');
+      const throughInput = document.querySelector('#directory-due-through');
+      const queryInput = document.querySelector('#directory-search');
+      const results = document.querySelector('#directory-results');
+      const alert = document.querySelector('#directory-alert');
+      const normalize = (value) => value.replace(/[ \t]+/g, ' ').replace(/[A-Z]/g, (c) => c.toLowerCase());
+      const escapeText = (value) => {
+        const element = document.createElement('span');
+        element.textContent = value;
+        return element.innerHTML;
+      };
+      const dateValid = (value) => {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return false;
+        const [, y, m, d] = match.map(Number);
+        if (y < 1 || m < 1 || m > 12 || d < 1) return false;
+        const date = new Date(0);
+        date.setUTCHours(0, 0, 0, 0);
+        date.setUTCFullYear(y, m - 1, d);
+        return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+      };
+      let tasks = [];
+      let query = '';
+      let range = { from: '', through: '' };
+      const render = () => {
+        const visible = tasks.filter((task) => {
+          const completion = taskFilter.value === 'Deleted' ? task.deleted
+            : !task.deleted && (taskFilter.value === 'All'
+              || (taskFilter.value === 'Open' && !task.completed)
+              || (taskFilter.value === 'Completed' && task.completed));
+          const owner = (scope.value === 'Archived') === Boolean(task.project_archived);
+          const priority = priorityFilter.value === 'All' || task.priority === priorityFilter.value;
+          const hasRange = range.from || range.through;
+          const due = !hasRange || (task.due_date && (!range.from || task.due_date >= range.from)
+            && (!range.through || task.due_date <= range.through));
+          const matches = !query || normalize(task.title).includes(normalize(query));
+          return owner && completion && priority && due && matches;
+        });
+        results.innerHTML = visible.map((task) => `<article class="task-row" data-testid="directory-task-row">
+          <span data-testid="directory-task-title">${escapeText(task.title)}</span>
+          <span data-testid="directory-project-name">${escapeText(task.project_name)}</span>
+          <span data-testid="directory-task-completion">${task.completed ? 'Completed' : 'Open'}</span>
+          <span data-testid="directory-task-priority">${escapeText(task.priority || 'Normal')}</span>
+          <span data-testid="directory-task-due-date">${escapeText(task.due_date || '')}</span>
+          <span data-testid="directory-task-notes">${escapeText((task.notes || '').replace(/\r\n?/g, '\n'))}</span>
+          <button type="button" data-open-project="${task.project_id}">Open project</button>
+        </article>`).join('');
+      };
+      fetch('/api/directory').then((response) => response.json()).then((value) => { tasks = value; render(); });
+      for (const control of [scope, taskFilter, priorityFilter]) control.addEventListener('change', render);
+      document.querySelector('#directory-search-form').addEventListener('submit', (event) => {
+        event.preventDefault(); query = queryInput.value.trim(); render();
+      });
+      document.querySelector('#directory-range-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const from = fromInput.value.trim(); const through = throughInput.value.trim();
+        if ((from && !dateValid(from)) || (through && !dateValid(through))) {
+          alert.textContent = 'Due range must use valid YYYY-MM-DD dates'; alert.hidden = false; return;
+        }
+        if (from && through && from > through) {
+          alert.textContent = 'Due from must not be after Due through'; alert.hidden = false; return;
+        }
+        range = { from, through }; alert.hidden = true; render();
+      });
+      results.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-open-project]');
+        if (button) window.location.href = `/projects/${button.dataset.openProject}`;
+      });
+      document.querySelector('#directory-back').addEventListener('click', () => { window.location.href = '/'; });
+    } else if (window.initialProject) {
       app.hidden = true;
       detail.hidden = false;
       const projectId = window.initialProject.id;
