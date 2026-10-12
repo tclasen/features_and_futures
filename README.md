@@ -62,5 +62,11 @@ matching rows; summaries still count all tasks. Search remains available in
 archived projects. Opening a project from the list or returning via Projects
 starts with an empty search.
 Existing databases are migrated automatically.
+Each task has a multiline Task notes textarea and Save notes button. Notes are
+saved as plain text without trimming, including whitespace, Unicode and literal
+markup. Empty text clears notes. Notes persist through restarts, renames, moves
+and return-position restoration without affecting search or filters. Archived
+projects display saved notes with editing disabled until restored. Existing
+tasks receive empty notes during migration without changing other saved data.
 Projects, names, tasks, and archive state persist across server restarts. `GET /health` returns
 `{"status":"ok"}`. Run the integration checks with `npm test`.

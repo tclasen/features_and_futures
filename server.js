@@ -22,6 +22,7 @@ database.exec(`
     completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
     priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
     due_date TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL
   );
 `);
@@ -36,6 +37,9 @@ if (!database.prepare('PRAGMA table_info(projects)').all().some(column => column
 }
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'due_date')) {
   database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+}
+if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 if (!database.prepare('PRAGMA table_info(tasks)').all().some(column => column.name === 'position')) {
   database.exec(`
@@ -71,7 +75,7 @@ const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WH
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
 const setDefaultTaskPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ? AND archived = 0');
 const listDestinations = database.prepare('SELECT id, name FROM projects WHERE archived = 0 AND id != ? ORDER BY id');
-const listTasks = database.prepare('SELECT id, title, completed, priority, due_date FROM tasks WHERE project_id = ? ORDER BY position, id');
+const listTasks = database.prepare('SELECT id, title, completed, priority, due_date, notes FROM tasks WHERE project_id = ? ORDER BY position, id');
 const insertTask = database.prepare(`
   INSERT INTO tasks (project_id, title, priority, position)
   SELECT ?, ?, ?, COALESCE(MAX(position), 0) + 1 FROM task_project_positions WHERE project_id = ?
@@ -95,6 +99,7 @@ const updateTask = database.prepare('UPDATE tasks SET completed = ? WHERE id = ?
 const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
 const setTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 const setTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
+const setTaskNotes = database.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 
 function transaction(action) {
   database.exec('BEGIN');
@@ -169,6 +174,7 @@ function page(title, content) {
     label { display: block; font-weight: 600; margin-bottom: 10px; }
     .controls { display: flex; gap: 12px; }
     input { min-width: 0; flex: 1; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; }
+    textarea { width: 100%; padding: 12px; border: 1px solid #94a3b8; border-radius: 6px; font: inherit; resize: vertical; }
     button { padding: 12px 18px; border: 1px solid #2456ae; border-radius: 6px; background: #2456ae; color: white; font: inherit; font-weight: 600; cursor: pointer; }
     button:hover { background: #1b438c; }
     button:disabled { background: #64748b; border-color: #64748b; cursor: default; }
@@ -277,6 +283,7 @@ function projectPage(project, filter = 'All', error = '', priorityFilter = 'All'
       (!dueRange.through || task.due_date <= dueRange.through))));
   const action = `/projects/${project.id}`;
   const query = escapeHtml(taskFilterQuery(filter, priorityFilter, dueRange, search));
+  // HTML strips a textarea's first newline; prefix one to preserve notes starting with a newline.
   return page(project.name, `
     <form action="/" method="get"><button type="submit">Projects</button></form>
     <h1>${escapeHtml(project.name)}</h1>
@@ -359,6 +366,11 @@ function projectPage(project, filter = 'All', error = '', priorityFilter = 'All'
             <button type="submit"${project.archived ? ' disabled' : ''}>Save due date</button>
           </div>
         </form>
+        <form class="task-rename" method="post" action="${action}/tasks/${task.id}/notes?${query}">
+          <label for="task-notes-${task.id}">Task notes</label>
+          <textarea id="task-notes-${task.id}" name="notes" rows="4"${project.archived ? ' disabled' : ''}>\n${escapeHtml(task.notes)}</textarea>
+          <button type="submit"${project.archived ? ' disabled' : ''}>Save notes</button>
+        </form>
         <form class="task-rename" method="post" action="${action}/tasks/${task.id}/move?${query}">
           <label for="destination-project-${task.id}">Destination project</label>
           <div class="controls">
@@ -419,7 +431,7 @@ const server = http.createServer(async (request, response) => {
       }
       redirect(response, search ? `/?${projectListQuery(projectFilter, search)}` : (url.pathname.endsWith('/restore') ? '/?filter=Archived' : '/'));
     } else if ((request.method === 'GET' && /^\/projects\/\d+$/.test(url.pathname)) ||
-      (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|default-task-priority|due-range|tasks(?:\/\d+(?:\/(?:rename|priority|due-date|move))?)?)$/.test(url.pathname))) {
+      (request.method === 'POST' && /^\/projects\/\d+\/(?:rename|default-task-priority|due-range|tasks(?:\/\d+(?:\/(?:rename|priority|due-date|notes|move))?)?)$/.test(url.pathname))) {
       const id = Number(url.pathname.split('/')[2]);
       const project = Number.isSafeInteger(id) ? getProject.get(id) : undefined;
       if (!project) {
@@ -515,6 +527,12 @@ const server = http.createServer(async (request, response) => {
           }
           const id = Number(taskId);
           if (!Number.isSafeInteger(id) || !setTaskDueDate.run(dueDate, id, project.id).changes) {
+            html(response, 404, page('Task not found', '<h1>Task not found</h1>'));
+            return;
+          }
+        } else if (url.pathname.endsWith('/notes')) {
+          const id = Number(taskId);
+          if (!Number.isSafeInteger(id) || !setTaskNotes.run(body.get('notes') ?? '', id, project.id).changes) {
             html(response, 404, page('Task not found', '<h1>Task not found</h1>'));
             return;
           }

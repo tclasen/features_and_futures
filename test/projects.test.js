@@ -44,6 +44,119 @@ async function startServer(databasePath) {
   };
 }
 
+test('notes migrate without data loss and persist as plain text through edits, moves and archives', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-notes-'));
+  const databasePath = join(directory, 'workboard.sqlite');
+  let server;
+  const readSaved = () => {
+    const database = new DatabaseSync(databasePath);
+    try {
+      return {
+        tasks: database.prepare('SELECT * FROM tasks ORDER BY id').all().map(task => ({ ...task })),
+        positions: database.prepare('SELECT * FROM task_project_positions ORDER BY task_id, project_id').all(),
+      };
+    } finally {
+      database.close();
+    }
+  };
+  try {
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0, default_task_priority TEXT NOT NULL DEFAULT 'Normal');
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id),
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal',
+        due_date TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL);
+      CREATE TABLE task_project_positions (task_id INTEGER NOT NULL REFERENCES tasks(id),
+        project_id INTEGER NOT NULL REFERENCES projects(id), position INTEGER NOT NULL,
+        PRIMARY KEY (task_id, project_id));
+      INSERT INTO projects (name) VALUES ('Source'), ('Destination');
+      INSERT INTO tasks (project_id, title, completed, priority, due_date, position) VALUES
+        (1, 'Alpha first', 1, 'High', '2024-02-29', 2),
+        (1, 'Alpha second', 1, 'High', '2024-02-29', 5),
+        (2, 'Resident', 0, 'Low', '', 1);
+      INSERT INTO task_project_positions SELECT id, project_id, position FROM tasks;
+    `);
+    database.close();
+    const original = readSaved();
+    server = await startServer(databasePath);
+    assert.deepEqual(readSaved(), {
+      tasks: original.tasks.map(task => ({ ...task, notes: '' })), positions: original.positions,
+    });
+    const post = (path, fields = {}) => fetch(server.address + path, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const view = async (path = '/projects/1') => (await fetch(server.address + path)).text();
+    const titles = html => [...html.matchAll(/class="task-title">([^<]*)<\/span>/g)].map(match => match[1]);
+    const notesText = (html, id = 1) => html.match(new RegExp(`<textarea id="task-notes-${id}"[^>]*>\\n([\\s\\S]*?)<\\/textarea>`))[1];
+    assert.equal(notesText(await view()), '');
+    await post('/projects/1/tasks', { title: 'New task' });
+    assert.equal(readSaved().tasks[3].notes, '');
+    const query = '?filter=Completed&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-02-29&search=alpha';
+    const path = '/projects/1' + query;
+    const notes = '\n  Leading spaces\nUnicode: 日本語 📝\n</textarea><script>alert("x")</script> & <b>literal</b>\n  ';
+    const escaped = notes.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+    const beforeSave = readSaved();
+    const response = await post('/projects/1/tasks/1/notes' + query, { notes });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), path);
+    assert.deepEqual(readSaved(), {
+      tasks: beforeSave.tasks.map(task => task.id === 1 ? { ...task, notes } : task),
+      positions: beforeSave.positions,
+    });
+    const savedPage = await view(path);
+    assert.equal(notesText(savedPage), escaped);
+    assert.match(savedPage, /<label for="task-notes-1">Task notes<\/label>/);
+    assert.match(savedPage, /<button type="submit">Save notes<\/button>/);
+    assert.ok(savedPage.includes(`/tasks/1/notes${query.replaceAll('&', '&amp;')}`));
+    assert.deepEqual(titles(savedPage), ['Alpha first', 'Alpha second']);
+    assert.deepEqual(titles(await view('/projects/1?search=Unicode')), []);
+    assert.deepEqual(titles(await view('/projects/1?search=Resident')), []);
+    assert.match(await view('/'), /data-testid="project-summary">2\/3 completed/);
+    assert.equal((await post('/projects/2/tasks/1/notes', { notes: 'Wrong owner' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/notes', { notes: 'Missing task' })).status, 404);
+    await post('/projects/1/tasks/1/rename' + query, { title: 'Renamed alpha' });
+    await post('/projects/1/rename' + query, { name: 'Renamed source' });
+    await post('/projects/1/tasks/1/move' + query, { destinationProject: '2' });
+    assert.deepEqual(titles(await view(path)), ['Alpha second']);
+    assert.equal(notesText(await view('/projects/2')), escaped);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(notesText(await view('/projects/2')), escaped);
+    await post('/projects/2/tasks/1/move', { destinationProject: '1' });
+    assert.deepEqual(titles(await view(path)), ['Renamed alpha', 'Alpha second']);
+    assert.equal(notesText(await view(path)), escaped);
+    await post('/projects/1/archive');
+    const archived = await view(path);
+    assert.equal(notesText(archived), escaped);
+    assert.match(archived, /<textarea id="task-notes-1"[^>]* disabled>/);
+    assert.match(archived, /<button type="submit" disabled>Save notes<\/button>/);
+    assert.equal((await post('/projects/1/tasks/1/notes' + query, { notes: 'Blocked' })).status, 403);
+    assert.equal(readSaved().tasks[0].notes, notes);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(await view(path), archived);
+    await post('/projects/1/restore');
+    assert.doesNotMatch(await view(path), /<textarea id="task-notes-1"[^>]* disabled>/);
+    // Whitespace-only notes remain intact; only an empty string clears them.
+    await post('/projects/1/tasks/1/notes' + query, { notes: ' \t\n ' });
+    assert.equal(readSaved().tasks[0].notes, ' \t\n ');
+    await post('/projects/1/tasks/1/notes' + query, { notes: '' });
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.equal(notesText(await view(path)), '');
+    assert.deepEqual(readSaved().tasks[0], { ...original.tasks[0], title: 'Renamed alpha', notes: '' });
+    assert.deepEqual(titles(await view(path)), ['Renamed alpha', 'Alpha second']);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('due dates migrate, validate calendar days, and preserve task data across restarts and archives', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-dates-'));
   const databasePath = join(directory, 'workboard.sqlite');
@@ -333,7 +446,7 @@ test('combined filters preserve selections through edits, archives, and restarts
     const selected = await view(selectedPath);
     // Every edit and range form carries both completion and priority filters.
     const actions = [...selected.matchAll(/method="post" action="([^"]*)"/g)].map(match => match[1]);
-    assert.equal(actions.length, 9);
+    assert.equal(actions.length, 10);
     for (const action of actions) assert.ok(action.endsWith('?filter=Open&amp;priorityFilter=High'));
     for (const path of ['/projects/1/tasks', '/projects/1/tasks/5/rename', '/projects/1/rename']) {
       const invalid = await post(`${path}?filter=Open&priorityFilter=High`, { title: '  ', name: '  ' });
