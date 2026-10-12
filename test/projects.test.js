@@ -67,6 +67,77 @@ function projectRows(html) {
   }));
 }
 
+test('task rename preserves ownership, order, completion and persists through archive and restart', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-task-rename-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const get = async (path = '/') => (await fetch(`${server.baseUrl}${path}`)).text();
+    await create(server.baseUrl, 'One');
+    await create(server.baseUrl, 'Two');
+    const [first, second] = projectRows(await get()).map((row) => row.path);
+    await post(server.baseUrl, `${first}/tasks`, { title: 'Original' });
+    await post(server.baseUrl, `${first}/tasks`, { title: 'Second' });
+    const rows = taskRows(await get(first));
+    await post(server.baseUrl, rows[0].path, { completed: '1' });
+    const renamePath = rows[0].path.replace('/completion', '/rename');
+    let html = await get(first);
+    assert.equal((html.match(/>New task title<\/label>/g) || []).length, 2);
+    assert.equal((html.match(/>Rename task<\/button>/g) || []).length, 2);
+    for (const title of ['', ' \t\n ']) {
+      const invalid = await post(server.baseUrl, renamePath, { title, filter: 'Completed' });
+      assert.equal(invalid.status, 400);
+      html = await invalid.text();
+      assert.match(html, /role="alert">Task title is required/);
+      assert.equal(taskRows(html)[0].title, 'Original');
+    }
+    assert.equal((await post(server.baseUrl, renamePath.replace(first, second), { title: 'Foreign' })).status, 404);
+    assert.equal((await post(server.baseUrl, `${first}/tasks/99999/rename`, { title: 'Missing' })).status, 404);
+    const renamed = await post(server.baseUrl, renamePath, { title: '  Renamed <task> "safe"  ', filter: 'Completed' });
+    assert.equal(renamed.status, 303);
+    assert.equal(renamed.headers.get('location'), `${first}?filter=Completed`);
+    const expected = [
+      { ...rows[0], title: 'Renamed &lt;task&gt; &quot;safe&quot;', completed: true },
+      rows[1],
+    ];
+    assert.deepEqual(taskRows(await get(first)), expected);
+    assert.match(await get(first), /aria-label="Complete Renamed &lt;task&gt; &quot;safe&quot;"/);
+    assert.deepEqual(taskRows(await get(`${first}?filter=Completed`)), [expected[0]]);
+    assert.deepEqual(taskRows(await get(`${first}?filter=Open`)), [expected[1]]);
+    assert.deepEqual(taskRows(await get(second)), []);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await get(first)), expected);
+    await post(server.baseUrl, `${first}/archive`, {});
+    html = await get(first);
+    assert.equal((html.match(/id="new-task-title-\d+" name="title" type="text" disabled/g) || []).length, 2);
+    assert.equal((html.match(/<button type="submit" disabled>Rename task<\/button>/g) || []).length, 2);
+    assert.equal((await post(server.baseUrl, renamePath, { title: 'Blocked' })).status, 409);
+    assert.deepEqual(taskRows(await get(first)), expected);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await get(first)), expected);
+    assert.deepEqual(projectSummaries(await get('/?filter=Archived')), ['1/2 completed']);
+    await post(server.baseUrl, `${first}/restore`, {});
+    assert.doesNotMatch(await get(first), / disabled/);
+    assert.equal((await post(server.baseUrl, renamePath, { title: 'Restored title' })).status, 303);
+    expected[0].title = 'Restored title';
+    assert.deepEqual(taskRows(await get(first)), expected);
+    assert.deepEqual(projectSummaries(await get()), ['1/2 completed', '0/0 completed']);
+    await server.stop();
+    server = undefined;
+    server = await startServer(databasePath);
+    assert.deepEqual(taskRows(await get(first)), expected);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('rename preserves project identity, tasks and summaries and respects archive state', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-rename-'));
   const databasePath = join(directory, 'board.sqlite');
