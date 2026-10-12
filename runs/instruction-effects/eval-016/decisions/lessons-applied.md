@@ -93,3 +93,9 @@ L069 task021 recovery outcome: verified own020 restoration did not establish a b
 L060 resource ledger reconciliation: registered 2 additional names (1 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L060 retirement coverage verified at 287 native application archives (nine beyond the prior278 subset), with independent SQLite restoration/integrity and recorded resource absence; current25 resources retained. The two PM-rescued task016 launch retirements remain separately verified. Evidence: preflight/retired-resources-20261012T213843831644Z/verified.json. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (0 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (0 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L069 archive-first task021 recovery verified: five identical b004 diagnostics, all eighteen original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt019 start. Effective task021 repair remains pending; no comparison change or implementation hint.
