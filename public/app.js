@@ -133,7 +133,14 @@ function renderDirectory() {
   });
   else if (order === 'Title') matching.sort((a, b) => {
     const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-    return (left < right ? -1 : left > right ? 1 : 0) || originalIndex.get(a.id) - originalIndex.get(b.id);
+    const leftPoints = Array.from(left, character => character.codePointAt(0));
+    const rightPoints = Array.from(right, character => character.codePointAt(0));
+    let comparison = 0;
+    for (let i = 0; i < Math.min(leftPoints.length, rightPoints.length); i++) {
+      if (leftPoints[i] !== rightPoints[i]) { comparison = leftPoints[i] < rightPoints[i] ? -1 : 1; break; }
+    }
+    if (!comparison) comparison = leftPoints.length < rightPoints.length ? -1 : leftPoints.length > rightPoints.length ? 1 : 0;
+    return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
