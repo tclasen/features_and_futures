@@ -152,7 +152,7 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     assert.equal((await postTask('/projects/999/rename', { name: 'Missing' })).status, 404);
     const renamed = await postTask('/projects/1/rename', { name: '  Renamed <project>  ', filter: 'Completed' });
     assert.equal(renamed.status, 303);
-    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal(renamed.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=All');
     const renamedPage = await tasksPage();
     assert.match(renamedPage, /<h1>Renamed &lt;project&gt;<\/h1>/);
     assert.match(renamedPage, /<label for="new-project-name">New project name<\/label>/);
@@ -190,7 +190,7 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
       title: '  Renamed <task>  ', filter: 'Completed'
     });
     assert.equal(taskRenamed.status, 303);
-    assert.equal(taskRenamed.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal(taskRenamed.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=All');
     const renamedTasks = await tasksPage();
     assert.match(renamedTasks, /aria-label="Complete Renamed &lt;task&gt;" checked/);
     assert.ok(renamedTasks.indexOf('Renamed &lt;task&gt;') < renamedTasks.indexOf('&lt;Second task&gt;'));
@@ -224,7 +224,7 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     const summaryBefore = await (await fetch(base)).text();
     const priorityChange = await postTask('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
     assert.equal(priorityChange.status, 303);
-    assert.equal(priorityChange.headers.get('location'), '/projects/1?filter=Completed');
+    assert.equal(priorityChange.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=All');
     assert.equal(priorityOptions(await tasksPage(), 1), '<option>Low</option><option>Normal</option><option selected>High</option>');
     assert.equal(priorityOptions(await tasksPage(), 2), normalOptions);
     assert.equal((await postTask('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
@@ -255,6 +255,53 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     await postTask('/projects/1/tasks/1/priority', { priority: 'Normal' });
     assert.equal(priorityOptions(await tasksPage(), 1), normalOptions);
     assert.equal(await (await fetch(base)).text(), summaryBefore);
+
+    // Completion and priority filters intersect and survive every edit response.
+    const combinedPage = async (filter, priority) =>
+      (await fetch(`${base}/projects/1?filter=${filter}&priorityFilter=${priority}`)).text();
+    for (const filter of ['All', 'Open', 'Completed']) {
+      for (const priority of ['All', 'Low', 'Normal', 'High']) {
+        const expected = Number(filter !== 'Open' && ['All', 'Normal'].includes(priority))
+          + Number(filter !== 'Completed' && ['All', 'Low'].includes(priority));
+        assert.equal(rowCount(await combinedPage(filter, priority)), expected);
+      }
+    }
+    const selected = { filter: 'Completed', priorityFilter: 'Normal' };
+    const assertSelected = html => {
+      assert.match(html, /<option selected>Completed<\/option>/);
+      assert.match(html, /id="priority-filter"[\s\S]*?<option selected>Normal<\/option>/);
+      assert.match(html, /name="priorityFilter" value="Normal"/);
+    };
+    assertSelected(await combinedPage('Completed', 'Normal'));
+    const invalidRename = await postTask('/projects/1/tasks/1/rename', { ...selected, title: ' ' });
+    assert.equal(invalidRename.status, 422);
+    assertSelected(await invalidRename.text());
+    const validRename = await postTask('/projects/1/tasks/1/rename', { ...selected, title: '  Combined task  ' });
+    assert.equal(validRename.headers.get('location'), '/projects/1?filter=Completed&priorityFilter=Normal');
+    let filtered = await combinedPage('Completed', 'Normal');
+    assertSelected(filtered);
+    assert.match(filtered, /aria-label="Complete Combined task" checked/);
+    const changedPriority = await postTask('/projects/1/tasks/1/priority', { ...selected, priority: 'High' });
+    assert.equal(changedPriority.headers.get('location'), validRename.headers.get('location'));
+    filtered = await combinedPage('Completed', 'Normal');
+    assertSelected(filtered);
+    assert.equal(rowCount(filtered), 0);
+    assert.equal(await (await fetch(base)).text(), summaryBefore);
+    await postTask('/projects/1/tasks/1', { filter: 'Completed', priorityFilter: 'High' });
+    assert.equal(rowCount(await combinedPage('Completed', 'High')), 0);
+    assert.equal(rowCount(await combinedPage('Open', 'High')), 1);
+    const saved = await combinedPage('Open', 'High');
+    await stop();
+    await start();
+    assert.equal(await combinedPage('Open', 'High'), saved);
+    await postTask('/projects/1/archive', {});
+    const archivedFiltered = await combinedPage('Open', 'High');
+    assert.equal(rowCount(archivedFiltered), 1);
+    assert.match(archivedFiltered, /id="task-priority-1"[^>]* disabled/);
+    assert.doesNotMatch(archivedFiltered, /id="(?:task-filter|priority-filter)"[^>]* disabled/);
+    await postTask('/projects/1/restore', {});
+    assert.equal(await combinedPage('Open', 'High'), saved);
+    assert.match(await tasksPage(), /id="priority-filter"[\s\S]*?<option selected>All<\/option>/);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
