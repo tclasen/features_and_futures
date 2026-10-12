@@ -7,6 +7,125 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { DatabaseSync } from 'node:sqlite';
 
+// Other projects' names and archive state now affect destination controls only.
+function withoutMoveControls(html) {
+  return html.replace(/<form[^>]*action="\/projects\/\d+\/tasks\/\d+\/move">[\s\S]*?<\/form>/g, '');
+}
+
+test('moves migrate ordering, preserve task data and filters, and enforce active destinations', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-moves-'));
+  let server;
+  try {
+    const dbPath = join(directory, 'workboard.sqlite');
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('Source');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Move me', 1), (1, 'Stay', 0);
+    `);
+    legacy.close();
+    server = await start(dbPath);
+    const post = (path, fields = {}) => fetch(`${server.url}${path}`, {
+      method: 'POST', body: new URLSearchParams(fields), redirect: 'manual',
+    });
+    const get = async path => (await fetch(`${server.url}${path}`)).text();
+    const ids = html => [...html.matchAll(/id="task-(\d+)" type="checkbox"/g)].map(match => Number(match[1]));
+    const options = (html, id) => new RegExp(`<select id="destination-project-${id}"[^>]*>([\\s\\S]*?)</select>`).exec(html)[1].trim();
+    const summary = (html, projectName, expected) => {
+      const row = [...html.matchAll(/data-testid="project-row">([\s\S]*?)<\/li>/g)].find(match => match[1].includes(`>${projectName}</span>`));
+      assert.ok(row);
+      assert.ok(row[1].includes(`data-testid="project-summary">${expected} completed`));
+    };
+    let source = await get('/projects/1');
+    assert.deepEqual(ids(source), [1, 2]);
+    assert.equal(options(source, 1), '');
+    assert.match(source, /id="destination-project-1"[^>]* disabled/);
+    assert.match(source, /<button type="submit" disabled>Move task/);
+    await post('/projects', { name: 'Destination' });
+    await post('/projects', { name: 'Third' });
+    await post('/projects', { name: 'Archived' });
+    await post('/projects/4/archive');
+    await post('/projects/2/tasks', { title: 'Destination first' });
+    await post('/projects/2/tasks', { title: 'Destination second' });
+    await post('/projects/2/default-task-priority', { priority: 'Low' });
+    await post('/projects/1/tasks/1/priority', { priority: 'High' });
+    await post('/projects/1/tasks/1/due-date', { dueDate: '2024-02-29' });
+    await post('/projects/2/rename', { name: 'Destination renamed' });
+    source = await get('/projects/1');
+    assert.equal(options(source, 1), '<option value="2">Destination renamed</option><option value="3">Third</option>');
+    const filters = { filter: 'Completed', priorityFilter: 'High', dueFrom: '2024-02-29', dueThrough: '2024-03-01' };
+    const sourcePath = '/projects/1?filter=Completed&priorityFilter=High&dueFrom=2024-02-29&dueThrough=2024-03-01';
+    const filtered = await get(sourcePath);
+    assert.deepEqual(ids(filtered), [1]);
+    const moveForm = /<form[^>]*action="\/projects\/1\/tasks\/1\/move">([\s\S]*?)<\/form>/.exec(filtered)[1];
+    for (const [key, value] of Object.entries(filters)) assert.ok(moveForm.includes(`name="${key}" value="${value}"`));
+    for (const destination of ['', '1', '4', '999', 'invalid', '2.5']) {
+      assert.equal((await post('/projects/1/tasks/1/move', { ...filters, destination })).status, 422);
+      assert.equal(await get('/projects/1'), source);
+    }
+    assert.equal((await post('/projects/2/tasks/1/move', { destination: '3' })).status, 404);
+    const moved = await post('/projects/1/tasks/1/move', { ...filters, destination: '2' });
+    assert.equal(moved.status, 303);
+    assert.equal(moved.headers.get('location'), sourcePath);
+    const remaining = await get(sourcePath);
+    assert.deepEqual(ids(remaining), []);
+    assert.match(remaining, /<option selected>Completed<\/option>/);
+    assert.match(remaining, /<option selected>High<\/option>/);
+    assert.match(remaining, /id="due-from"[^>]*value="2024-02-29"/);
+    assert.match(remaining, /id="due-through"[^>]*value="2024-03-01"/);
+    assert.deepEqual(ids(await get('/projects/1')), [2]);
+    let destination = await get('/projects/2');
+    assert.deepEqual(ids(destination), [3, 4, 1]);
+    assert.match(destination, /aria-label="Complete Move me" checked/);
+    assert.match(destination, /id="task-priority-1"[^>]*>\s*<option>Low<\/option><option>Normal<\/option><option selected>High<\/option>/);
+    assert.match(destination, /id="task-due-date-1"[^>]*value="2024-02-29"/);
+    assert.equal(options(destination, 1), '<option value="1">Source</option><option value="3">Third</option>');
+    summary(await get('/'), 'Source', '0/1');
+    summary(await get('/'), 'Destination renamed', '1/3');
+    await post('/projects/2/tasks', { title: 'Created after move' });
+    assert.deepEqual(ids(await get('/projects/2')), [3, 4, 1, 5]);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(ids(await get('/projects/2')), [3, 4, 1, 5]);
+    assert.equal(await get(sourcePath), remaining);
+    await post('/projects/2/archive');
+    destination = await get('/projects/2');
+    assert.match(destination, /id="destination-project-1"[^>]* disabled/);
+    assert.match(destination, /<button type="submit" disabled>Move task/);
+    assert.equal((await post('/projects/2/tasks/1/move', { destination: '3' })).status, 403);
+    assert.equal((await post('/projects/1/tasks/2/move', { destination: '2' })).status, 422);
+    assert.equal(await get('/projects/2'), destination);
+    await post('/projects/2/restore');
+    assert.doesNotMatch(await get('/projects/2'), /id="destination-project-1"[^>]* disabled/);
+    await post('/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(ids(await get('/projects/1')), [2, 1]);
+    assert.deepEqual(ids(await get('/projects/2')), [3, 4, 5]);
+    assert.deepEqual(ids(await get(sourcePath)), [1]);
+    // A task with no due date also retains its independent state on moving.
+    await post('/projects/1/tasks/2/move', { destination: '2' });
+    assert.deepEqual(ids(await get('/projects/2')), [3, 4, 5, 2]);
+    await server.stop();
+    server = await start(dbPath);
+    assert.deepEqual(ids(await get('/projects/1')), [1]);
+    assert.deepEqual(ids(await get('/projects/2')), [3, 4, 5, 2]);
+    const saved = new DatabaseSync(dbPath);
+    assert.deepEqual({ ...saved.prepare('SELECT project_id, title, completed, priority, due_date FROM tasks WHERE id = 1').get() },
+      { project_id: 1, title: 'Move me', completed: 1, priority: 'High', due_date: '2024-02-29' });
+    assert.deepEqual({ ...saved.prepare('SELECT project_id, title, completed, priority, due_date FROM tasks WHERE id = 2').get() },
+      { project_id: 2, title: 'Stay', completed: 0, priority: 'Normal', due_date: '' });
+    saved.close();
+    summary(await get('/'), 'Source', '1/1');
+    summary(await get('/'), 'Destination renamed', '0/4');
+    const health = await fetch(`${server.url}/health`);
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { status: 'ok' });
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task priorities migrate, remain independent, and survive renames, archive, and restarts', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-priority-'));
   let server;
@@ -698,7 +817,7 @@ test('project priority defaults migrate, affect only future tasks, and persist i
     await server.stop();
     server = await start(dbPath);
     assert.equal(await get(path), archived);
-    assert.equal(await get('/projects/2'), other);
+    assert.equal(withoutMoveControls(await get('/projects/2')), withoutMoveControls(other));
     await post('/projects/1/restore');
     const restored = await get('/projects/1');
     assert.equal(defaultPriority(restored), 'High');
@@ -710,7 +829,7 @@ test('project priority defaults migrate, affect only future tasks, and persist i
     await server.stop();
     server = await start(dbPath);
     assert.equal(await get('/projects/1'), saved);
-    assert.equal(await get('/projects/2'), other);
+    assert.equal(withoutMoveControls(await get('/projects/2')), withoutMoveControls(other));
     assert.match(await get('/'), /data-testid="project-summary">1\/5 completed/);
   } finally {
     if (server) await server.stop();
@@ -949,7 +1068,7 @@ test('inclusive due ranges intersect filters, survive edits, reject invalid rang
     assert.equal(await get(path), archived);
     await post('/projects/1/restore');
     assert.equal(await get(path), saved);
-    assert.equal(await get('/projects/2'), other);
+    assert.equal(withoutMoveControls(await get('/projects/2')), withoutMoveControls(other));
     assert.equal(await get('/'), newSummary);
   } finally {
     if (server) await server.stop();

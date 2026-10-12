@@ -54,3 +54,14 @@ Dates must be real Gregorian calendar days in YYYY-MM-DD format, with years
 date. Invalid values show an alert and preserve the saved date. Due dates persist
 across renames and restarts without changing tasks or filters. Archived projects
 disable due-date editing until restored.
+
+Due from and Due through apply an inclusive date range alongside the completion
+and priority filters. Blank boundaries are unbounded; undated tasks match only
+when both boundaries are blank. Invalid ranges preserve the applied filters.
+
+Each task row offers Destination project and Move task controls. Destinations
+are other active projects in project creation order. Moving appends the task to
+its destination while preserving its title, completion, priority and due date,
+and keeps the source page open with its filters unchanged. Task order and
+ownership persist across restarts. Archived projects cannot send or receive
+tasks; moving is also disabled when there are no eligible destinations.
