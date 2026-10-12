@@ -1,0 +1,18 @@
+"""Inspect immutable accepted source for the declared stack without executing it."""
+import hashlib,json,re,subprocess
+from pathlib import Path
+from datetime import datetime,timezone
+r=Path('runs/instruction-effects/eval-015');out=r/'preflight/stack015-inspection001';assert not out.exists();m=json.loads((r/'manifest.json').read_text());rows=[]
+def git(*args):return subprocess.check_output(['git',*args],stderr=subprocess.PIPE)
+for b in m['runtime']['builder_configurations']:
+ bid=b['builder_id'];results=sorted((r/'tasks/task-015/attempts'/bid).glob('attempt-*/result.json'));accepted=[(p,json.loads(p.read_text())) for p in results if json.loads(p.read_text())['accepted']];assert len(accepted)==1;p,result=accepted[0];commit=result['commit'];files=git('ls-tree','-r','--name-only',commit).decode().splitlines();pkgbytes=git('show',commit+':package.json');pkg=json.loads(pkgbytes);sources={f:git('show',commit+':'+f).decode() for f in files if f.endswith(('.js','.mjs','.cjs','.html'))};joined='\n'.join(sources.values());imports=sorted(set(re.findall(r"(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\()\s*['\"]([^'\"]+)['\"]",joined)));issues=[]
+ if pkg.get('type')!='module':issues.append('package type is not module')
+ if pkg.get('dependencies') or pkg.get('devDependencies') or pkg.get('optionalDependencies'):issues.append('external dependency declarations present')
+ if 'server.js' not in pkg.get('scripts',{}).get('start',''):issues.append('start script does not name server.js')
+ if not any(x in ('node:http','http') for x in imports):issues.append('no literal built-in HTTP import observed')
+ if 'node:sqlite' not in imports:issues.append('no literal node:sqlite import observed')
+ allowed={'fs','fs/promises','path','url','http','sqlite','crypto','assert','assert/strict','test','os','util','stream','events','timers','timers/promises','module'}
+ external=[x for x in imports if not x.startswith(('./','../','/')) and x.removeprefix('node:') not in allowed]
+ if external:issues.append('unexpected literal imports require review')
+ rows.append({'builder_id':bid,'commit':commit,'tree':result['tree'],'accepted_result_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'package_sha256':hashlib.sha256(pkgbytes).hexdigest(),'start':pkg.get('scripts',{}).get('start'),'imports':imports,'unexpected_imports':external,'source_files':{f:hashlib.sha256(v.encode()).hexdigest() for f,v in sources.items()},'future_delete_label_mentions':[f for f,v in sources.items() if re.search(r'Delete task|Delete project',v,re.I)],'external_browser_asset_mentions':[f for f,v in sources.items() if re.search(r'(?:src|href)=[\"\x27]https?://',v)],'inspection_issues':issues})
+out.mkdir();(out/'executed-controller.py').write_bytes(Path(__file__).read_bytes());(out/'inspection.json').write_text(json.dumps({'utc':datetime.now(timezone.utc).isoformat(),'immutable_accepted_stage':15,'native_model_calls':0,'verifier_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'rows':rows,'scope':'Static accepted-source inventory of package declarations, literal imports, launch entry point and potential early UI labels/assets. Runtime SQLite backups and native functional checks are separate evidence; static scan does not prove absence of computed imports or arbitrary undispatched behavior.'},indent=2)+'\n');print(json.dumps({'builders':len(rows),'issues':[(x['builder_id'],x['inspection_issues'],x['future_delete_label_mentions'],x['external_browser_asset_mentions']) for x in rows if x['inspection_issues'] or x['future_delete_label_mentions'] or x['external_browser_asset_mentions']],'evidence':str(out/'inspection.json')}))
