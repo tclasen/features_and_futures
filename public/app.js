@@ -29,6 +29,22 @@ async function renderList() {
   const create = element('button', 'Create project', { type: 'submit' });
   form.append(input, create);
   app.append(form);
+  const importForm = element('form');
+  const jsonInput = element('textarea', undefined, { 'aria-label': 'Project JSON', name: 'document' });
+  const importedName = element('input', undefined, { type: 'text', 'aria-label': 'Imported project name', name: 'name' });
+  const importButton = element('button', 'Import project', { type: 'submit' });
+  importForm.append(jsonInput, importedName, importButton);
+  app.append(importForm);
+  importForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    let document;
+    try { document = JSON.parse(jsonInput.value); } catch { showError('Invalid project JSON'); return; }
+    if (!importedName.value.trim()) { showError('Project name is required'); importedName.focus(); return; }
+    const response = await fetch('/api/import', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ document, name: importedName.value }) });
+    if (!response.ok) { const error = await response.json(); showError(error.error || 'Invalid project JSON'); return; }
+    const result = await response.json();
+    window.location.href = `/projects/${encodeURIComponent(result.id)}`;
+  });
   const filter = element('select', undefined, { 'aria-label': 'Project filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
   app.append(filter);

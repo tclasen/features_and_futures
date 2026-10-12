@@ -231,6 +231,43 @@ const server = createServer(async (request, response) => {
     db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(Number(body.value.archived), id);
     return sendJson(response, 200, { id, archived: body.value.archived });
   }
+  if (url.pathname === '/api/import' && request.method === 'POST') {
+    const parsed = await readBody(request);
+    if (parsed.error) return sendJson(response, 400, { error: 'Invalid project JSON' });
+    const body = parsed.value;
+    const override = typeof body?.name === 'string' ? body.name.trim() : '';
+    if (!override) return sendJson(response, 400, { error: 'Project name is required' });
+    const document = body?.document;
+    const priorities = ['Low', 'Normal', 'High'];
+    const validTask = task => task && typeof task === 'object' &&
+      typeof task.title === 'string' && task.title.trim() && typeof task.completed === 'boolean' &&
+      priorities.includes(task.priority) && typeof task.dueDate === 'string' &&
+      (task.dueDate === '' || isValidDueDate(task.dueDate)) && typeof task.notes === 'string' && typeof task.deleted === 'boolean';
+    const source = document?.project;
+    if (!document || document.format !== 'workboard-project' || document.version !== 1 || !Number.isInteger(document.version) ||
+        !source || typeof source !== 'object' || typeof source.name !== 'string' || !source.name.trim() ||
+        typeof source.archived !== 'boolean' || !priorities.includes(source.defaultPriority) ||
+        !Array.isArray(source.tasks) || !source.tasks.every(validTask)) {
+      return sendJson(response, 400, { error: 'Invalid project JSON' });
+    }
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const projectResult = db.prepare('INSERT INTO projects (name, archived, default_priority) VALUES (?, ?, ?)').run(override, Number(source.archived), source.defaultPriority);
+      const projectId = Number(projectResult.lastInsertRowid);
+      const insertTask = db.prepare('INSERT INTO tasks (project_id, title, completed, priority, due_date, notes, deleted, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+      const insertPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, sort_order) VALUES (?, ?, ?)');
+      source.tasks.forEach((task, index) => {
+        const order = index + 1;
+        const result = insertTask.run(projectId, task.title, Number(task.completed), task.priority, task.dueDate || null, task.notes.replace(/\\r\\n?/g, '\\n'), Number(task.deleted), order);
+        insertPosition.run(Number(result.lastInsertRowid), projectId, order);
+      });
+      db.exec('COMMIT');
+      return sendJson(response, 201, { id: projectId });
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
   if (url.pathname === '/api/projects' && request.method === 'GET') {
     const projects = db.prepare(`SELECT p.id, p.name, p.archived, p.default_priority AS defaultPriority,
       COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS totalCount,
