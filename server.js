@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
   priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High')),
-  due_date TEXT
+  due_date TEXT,
+  notes TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS task_positions (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -33,6 +34,7 @@ try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT
 try { db.exec("ALTER TABLE projects ADD COLUMN default_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 try { db.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 db.exec(`INSERT INTO task_positions (task_id, project_id, position)
   SELECT t.id, t.project_id, ROW_NUMBER() OVER (PARTITION BY t.project_id ORDER BY t.id)
   FROM tasks t WHERE NOT EXISTS (SELECT 1 FROM task_positions tp WHERE tp.task_id = t.id AND tp.project_id = t.project_id)`);
@@ -61,7 +63,7 @@ const server = http.createServer(async (req, res) => {
   if (tasks && req.method === 'GET') {
     const projectId = Number(tasks[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate FROM tasks t JOIN task_positions tp ON tp.task_id = t.id AND tp.project_id = t.project_id WHERE t.project_id = ? ORDER BY tp.position, t.id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes FROM tasks t JOIN task_positions tp ON tp.task_id = t.id AND tp.project_id = t.project_id WHERE t.project_id = ? ORDER BY tp.position, t.id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
   if (tasks && req.method === 'POST') {
     let body = '';
@@ -124,6 +126,11 @@ const server = http.createServer(async (req, res) => {
           db.prepare('INSERT INTO task_positions (task_id, project_id, position) VALUES (?, ?, ?)').run(id, destinationId, next);
         }
         db.prepare('UPDATE tasks SET project_id = ? WHERE id = ?').run(destinationId, id);
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
+      }
+      if (typeof data.notes === 'string') {
+        const result = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.notes, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
         return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
       }
       if (Object.hasOwn(data, 'dueDate')) {
