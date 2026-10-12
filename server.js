@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  completed INTEGER NOT NULL DEFAULT 0
+  completed INTEGER NOT NULL DEFAULT 0,
+  priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))
 )`);
 // Upgrade databases created by earlier checkpoints.
 try { db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0'); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
+try { db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))"); } catch (error) { if (!String(error.message).includes('duplicate column')) throw error; }
 const indexPath = join(dirname(fileURLToPath(import.meta.url)), 'index.html');
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -46,7 +48,7 @@ const server = http.createServer(async (req, res) => {
   if (tasks && req.method === 'GET') {
     const projectId = Number(tasks[1]);
     if (!db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId)) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
-    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
+    return send(200, 'application/json; charset=utf-8', JSON.stringify(db.prepare('SELECT id, project_id AS projectId, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id').all(projectId).map(task => ({ ...task, completed: Boolean(task.completed) }))));
   }
   if (tasks && req.method === 'POST') {
     let body = '';
@@ -95,6 +97,12 @@ const server = http.createServer(async (req, res) => {
         const result = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(title, id);
         if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
         return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true, title }));
+      }
+      if (data.priority !== undefined) {
+        if (!['Low', 'Normal', 'High'].includes(data.priority)) return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid priority' }));
+        const result = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.priority, id);
+        if (!result.changes) return send(404, 'application/json; charset=utf-8', JSON.stringify({ error: 'Not found' }));
+        return send(200, 'application/json; charset=utf-8', JSON.stringify({ ok: true }));
       }
       if (typeof data.completed !== 'boolean') return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid request' }));
       const result = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE archived = 0)').run(data.completed ? 1 : 0, id);
