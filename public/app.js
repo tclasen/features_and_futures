@@ -32,6 +32,12 @@ async function renderList() {
   const filter = element('select', undefined, { 'aria-label': 'Project filter' });
   for (const value of ['Active', 'Archived']) filter.append(element('option', value, { value }));
   app.append(filter);
+  const searchForm = element('form');
+  const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Project search' });
+  const searchButton = element('button', 'Search projects', { type: 'submit' });
+  searchForm.append(searchInput, searchButton);
+  app.append(searchForm);
+  let appliedProjectQuery = '';
   const list = element('section', undefined, { 'aria-label': 'Projects' });
   app.append(list);
   form.addEventListener('submit', async event => {
@@ -60,10 +66,16 @@ async function renderList() {
     list.replaceChildren();
     for (const project of projects) {
       if (filter.value === 'Active' && project.archived || filter.value === 'Archived' && !project.archived) continue;
+      if (!searchMatches(project.name, appliedProjectQuery)) continue;
       list.append(projectRow(project, renderProjects));
     }
   };
   filter.addEventListener('change', () => renderProjects().catch(() => showError('Could not load projects')));
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedProjectQuery = searchInput.value.trim();
+    renderProjects().catch(() => showError('Could not load projects'));
+  });
   await renderProjects();
 }
 
@@ -161,6 +173,12 @@ async function renderProject(id) {
   app.append(dueRangeForm);
   let appliedDueFrom = '';
   let appliedDueThrough = '';
+  const searchForm = element('form');
+  const searchInput = element('input', undefined, { type: 'text', 'aria-label': 'Task search' });
+  const searchButton = element('button', 'Search tasks', { type: 'submit' });
+  searchForm.append(searchInput, searchButton);
+  app.append(searchForm);
+  let appliedTaskQuery = '';
   const list = element('section', undefined, { 'aria-label': 'Tasks' });
   app.append(list);
 
@@ -172,6 +190,7 @@ async function renderProject(id) {
     for (const task of tasks) {
       if (filter.value === 'Open' && task.completed || filter.value === 'Completed' && !task.completed) continue;
       if (priorityFilter.value !== 'All' && task.priority !== priorityFilter.value) continue;
+      if (!searchMatches(task.title, appliedTaskQuery)) continue;
       if ((appliedDueFrom || appliedDueThrough) && (!task.dueDate ||
           (appliedDueFrom && task.dueDate < appliedDueFrom) ||
           (appliedDueThrough && task.dueDate > appliedDueThrough))) continue;
@@ -262,6 +281,12 @@ async function renderProject(id) {
   };
   filter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
   priorityFilter.addEventListener('change', () => renderTasks().catch(() => showError('Could not load tasks')));
+  searchForm.addEventListener('submit', event => {
+    event.preventDefault();
+    appliedTaskQuery = searchInput.value.trim();
+    app.querySelector('[role="alert"]')?.remove();
+    renderTasks().catch(() => showError('Could not load tasks'));
+  });
   dueRangeForm.addEventListener('submit', event => {
     event.preventDefault();
     const from = dueFrom.value.trim();
@@ -292,6 +317,11 @@ async function renderProject(id) {
     await renderTasks();
   });
   await renderTasks();
+}
+
+function searchMatches(value, query) {
+  const asciiLower = text => text.replace(/[A-Z]/g, character => character.toLowerCase());
+  return asciiLower(value).includes(asciiLower(query));
 }
 
 function isValidDate(value) {
