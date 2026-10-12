@@ -22,6 +22,9 @@ Active project pages also let you rename projects with `New project name` and
 `Rename project`. Names are trimmed and required. Renaming preserves the URL,
 creation order, tasks, and completion summary. Archived projects disable renaming;
 restoration enables it again.
+Each task can also be renamed and assigned a Low, Normal, or High priority.
+Existing and new tasks default to Normal. Renaming preserves completion and
+priority; archived projects disable task renaming and priority changes.
 Projects, names, tasks, and archive state persist in the configured SQLite file; existing
 databases are migrated automatically.
 

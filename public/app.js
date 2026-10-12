@@ -181,7 +181,37 @@ async function renderTasks(project) {
       });
       renameControls.append(renameInput, renameButton);
       renameForm.append(renameLabel, renameControls);
-      row.append(title, checkbox, renameForm);
+      const priorityControls = document.createElement('div');
+      const priorityLabel = document.createElement('label');
+      priorityLabel.htmlFor = `task-priority-${task.id}`;
+      priorityLabel.textContent = 'Task priority';
+      const priority = document.createElement('select');
+      priority.id = priorityLabel.htmlFor;
+      for (const value of ['Low', 'Normal', 'High']) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        priority.append(option);
+      }
+      priority.value = task.priority;
+      priority.disabled = project.archived;
+      priority.addEventListener('change', async () => {
+        app.querySelector('[role="alert"]')?.remove();
+        priority.disabled = true;
+        try {
+          const saved = await request(`${endpoint}/${task.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: priority.value }),
+          });
+          Object.assign(task, saved);
+        } catch (error) { showError(error); }
+        finally {
+          priority.value = task.priority;
+          priority.disabled = project.archived;
+        }
+      });
+      priorityControls.append(priorityLabel, priority);
+      row.append(title, checkbox, priorityControls, renameForm);
       list.append(row);
     }
   }

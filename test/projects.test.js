@@ -8,7 +8,45 @@ import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 
-test('projects, tasks, archives, renames, and summaries persist with the original schema migrated', async () => {
+test('existing tasks migrate to Normal without changing their data', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-migration-'));
+  const databasePath = join(directory, 'legacy.sqlite');
+  const legacy = new DatabaseSync(databasePath);
+  legacy.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES projects(id), title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+    INSERT INTO projects (id, name, archived) VALUES (7, 'Existing project', 1);
+    INSERT INTO tasks (id, project_id, title, completed) VALUES (12, 7, 'Existing completed task', 1), (13, 7, 'Existing open task', 0);
+  `);
+  legacy.close();
+  try {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', `
+      await import('./server.js');
+      const { DatabaseSync } = await import('node:sqlite');
+      const db = new DatabaseSync(process.env.DB_PATH);
+      console.log(JSON.stringify(db.prepare('SELECT * FROM tasks ORDER BY id').all()));
+      db.close();
+      process.kill(process.pid, 'SIGTERM');
+    `], {
+      env: { ...process.env, PORT: '0', DB_PATH: databasePath },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    let diagnostics = '';
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { diagnostics += chunk; });
+    const [code] = await once(child, 'exit');
+    assert.equal(code, 0, diagnostics);
+    assert.deepEqual(JSON.parse(output), [
+      { id: 12, project_id: 7, title: 'Existing completed task', completed: 1, priority: 'Normal' },
+      { id: 13, project_id: 7, title: 'Existing open task', completed: 0, priority: 'Normal' },
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('projects, tasks, archives, renames, priorities, and summaries persist with the original schema migrated', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-test-'));
   const legacy = new DatabaseSync(join(directory, 'projects.sqlite'));
   legacy.exec('CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
@@ -65,6 +103,11 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
   }
+  async function setPriority(projectId, taskId, priority) {
+    return fetch(`${base}/api/projects/${projectId}/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priority }),
+    });
+  }
   async function archiveProject(projectId, archived) {
     return fetch(`${base}/api/projects/${projectId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived }),
@@ -117,8 +160,11 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     const firstTask = await created.json();
     assert.equal(firstTask.title, 'First task');
     assert.equal(firstTask.completed, false);
+    assert.equal(firstTask.priority, 'Normal');
     const secondTask = await (await createTask(first.id, '<b>Second task</b>')).json();
     const otherTask = await (await createTask(second.id, 'Other project task')).json();
+    assert.equal(secondTask.priority, 'Normal');
+    assert.equal(otherTask.priority, 'Normal');
     assert.deepEqual(await tasks(first.id), [firstTask, secondTask]);
     assert.deepEqual(await tasks(second.id), [otherTask]);
     assert.equal((await completeTask(second.id, firstTask.id, true)).status, 404);
@@ -132,6 +178,22 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     Object.assign(first, { total: 2, completed: 1 });
     Object.assign(second, { total: 1, completed: 0 });
     assert.deepEqual(await projects(), expected);
+    for (const priority of ['Urgent', 'high', '', null, 1]) {
+      assert.equal((await setPriority(first.id, firstTask.id, priority)).status, 400);
+    }
+    assert.equal((await setPriority(second.id, firstTask.id, 'High')).status, 404);
+    assert.equal((await setPriority(first.id, 99999, 'High')).status, 404);
+    assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+    for (const priority of ['Low', 'Normal', 'High']) {
+      const saved = await setPriority(first.id, firstTask.id, priority);
+      assert.equal(saved.status, 200);
+      firstTask.priority = priority;
+      completedTask.priority = priority;
+      assert.deepEqual(await saved.json(), completedTask);
+      assert.deepEqual(await tasks(first.id), [completedTask, secondTask]);
+      assert.deepEqual(await tasks(second.id), [otherTask]);
+      assert.deepEqual(await projects(), expected);
+    }
     for (const title of ['', '  \t\n  ', null]) {
       const invalid = await renameTask(first.id, firstTask.id, title);
       assert.equal(invalid.status, 400);
@@ -177,6 +239,7 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     assert.deepEqual(await projects(), expected);
     assert.equal((await createTask(first.id, 'Blocked')).status, 409);
     assert.equal((await completeTask(first.id, firstTask.id, false)).status, 409);
+    assert.equal((await setPriority(first.id, firstTask.id, 'Low')).status, 409);
     const blockedTaskRename = await renameTask(first.id, firstTask.id, 'Blocked title');
     assert.equal(blockedTaskRename.status, 409);
     assert.deepEqual(await blockedTaskRename.json(), { error: 'Archived project' });
@@ -205,6 +268,10 @@ test('projects, tasks, archives, renames, and summaries persist with the origina
     assert.equal(restoredTaskRename.status, 200);
     firstTask.title = 'Restored task';
     assert.deepEqual(await restoredTaskRename.json(), firstTask);
+    const restoredPriority = await setPriority(first.id, secondTask.id, 'Low');
+    assert.equal(restoredPriority.status, 200);
+    secondTask.priority = 'Low';
+    assert.deepEqual(await restoredPriority.json(), secondTask);
     first.completed = 0;
     await stop();
     await start();
