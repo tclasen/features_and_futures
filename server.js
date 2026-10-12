@@ -25,6 +25,28 @@ database.exec(`
   )
 `);
 
+// Upgrade older databases before preparing statements that use newer columns.
+const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
+if (!projectColumns.some((column) => column.name === 'archived')) {
+  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
+}
+if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
+  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
+}
+const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
+if (!taskColumns.some((column) => column.name === 'priority')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+if (!taskColumns.some((column) => column.name === 'due_date')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+}
+if (!taskColumns.some((column) => column.name === 'notes')) {
+  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+}
+if (!taskColumns.some((column) => column.name === 'deleted')) {
+  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
+}
+
 // Keep a position for every task in every project it has belonged to. A task's
 // current project remains on tasks; this table also remembers prior positions.
 database.exec(`
@@ -42,21 +64,6 @@ database.exec(`
   WHERE NOT EXISTS (SELECT 1 FROM task_project_positions);
 `);
 
-// Add persistent priorities to databases created by earlier versions of Workboard.
-const taskColumns = database.prepare('PRAGMA table_info(tasks)').all();
-if (!taskColumns.some((column) => column.name === 'priority')) {
-  database.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
-}
-
-// Add the archive flag to databases created by earlier versions of Workboard.
-const projectColumns = database.prepare('PRAGMA table_info(projects)').all();
-if (!projectColumns.some((column) => column.name === 'archived')) {
-  database.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
-}
-if (!projectColumns.some((column) => column.name === 'default_task_priority')) {
-  database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK (default_task_priority IN ('Low', 'Normal', 'High'))");
-}
-
 const listProjects = database.prepare(`
   SELECT p.id, p.name, p.archived,
     COUNT(CASE WHEN t.deleted = 0 THEN t.id END) AS total_count,
@@ -69,17 +76,6 @@ const createProject = database.prepare('INSERT INTO projects (name) VALUES (?)')
 const setProjectArchived = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ?');
 const updateProjectDefaultPriority = database.prepare('UPDATE projects SET default_task_priority = ? WHERE id = ?');
-// Add optional due dates to databases created before Task 009.
-if (!taskColumns.some((column) => column.name === 'due_date')) {
-  database.exec('ALTER TABLE tasks ADD COLUMN due_date TEXT');
-}
-if (!taskColumns.some((column) => column.name === 'notes')) {
-  database.exec("ALTER TABLE tasks ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
-}
-if (!taskColumns.some((column) => column.name === 'deleted')) {
-  database.exec('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))');
-}
-
 const setTaskDeleted = database.prepare('UPDATE tasks SET deleted = ? WHERE id = ? AND project_id = ?');
 const listTasks = database.prepare(`SELECT t.id, t.title, t.completed, t.priority, t.due_date, t.notes, t.deleted
   FROM tasks t JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
