@@ -237,6 +237,10 @@ const server = http.createServer(async (req, res) => {
         // separately so saving the already-current date remains a successful edit.
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
         updateDueDate.run(canonical, taskId, projectId);
+        // Return the persisted value (rather than the request value) so the UI
+        // and callers observe precisely what survives a subsequent reload.
+        const savedTask = getTask.get(taskId);
+        if ((savedTask.dueDate || '') !== (canonical || '')) return json(res, 500, { error: 'Unable to save due date' });
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
