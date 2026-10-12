@@ -22,6 +22,10 @@ db.exec(`
 if (!db.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'archived')) {
   db.exec('ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1))');
 }
+if (!db.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'priority')) {
+  db.exec("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'Normal' CHECK (priority IN ('Low', 'Normal', 'High'))");
+}
+const priorities = ['Low', 'Normal', 'High'];
 const listProjects = db.prepare(`
   SELECT p.id, p.name, p.archived, COUNT(t.id) AS total,
          COALESCE(SUM(t.completed), 0) AS completed
@@ -32,11 +36,12 @@ const findProject = db.prepare('SELECT id, name, archived FROM projects WHERE id
 const setArchived = db.prepare('UPDATE projects SET archived = ? WHERE id = ?');
 const createProject = db.prepare('INSERT INTO projects (name) VALUES (?)');
 const renameProject = db.prepare('UPDATE projects SET name = ? WHERE id = ?');
-const listTasks = db.prepare('SELECT id, title, completed FROM tasks WHERE project_id = ? ORDER BY id');
+const listTasks = db.prepare('SELECT id, title, completed, priority FROM tasks WHERE project_id = ? ORDER BY id');
 const createTask = db.prepare('INSERT INTO tasks (project_id, title) VALUES (?, ?)');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
 const findTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
 const renameTask = db.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
+const setTaskPriority = db.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
 
 function projectFilter(value) {
   return value === 'Archived' ? 'Archived' : 'Active';
@@ -154,6 +159,13 @@ function projectPage(project, filter = 'All', error = '') {
               <span>${escapeHtml(task.title)}</span>
             </label>
           </form>
+          <form class="filter" method="post" action="/projects/${project.id}/tasks/${task.id}/priority">
+            <input type="hidden" name="filter" value="${filter}">
+            <label for="task-priority-${task.id}">Task priority</label>
+            <select id="task-priority-${task.id}" name="priority"${project.archived ? ' disabled' : ''} onchange="this.form.requestSubmit()">
+              ${priorities.map((value) => `<option${value === task.priority ? ' selected' : ''}>${value}</option>`).join('')}
+            </select>
+          </form>
           <form class="create" method="post" action="/projects/${project.id}/tasks/${task.id}/rename">
             <input type="hidden" name="filter" value="${filter}">
             <label for="new-task-title-${task.id}">New task title</label>
@@ -242,7 +254,7 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       html(response, 200, projectPage(project, taskFilter(url.searchParams.get('filter'))));
-    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/rename)?)?$/.test(url.pathname)) {
+    } else if (request.method === 'POST' && /^\/projects\/\d+\/tasks(?:\/\d+(?:\/(?:rename|priority))?)?$/.test(url.pathname)) {
       const [, , projectId, , taskId, action] = url.pathname.split('/');
       const id = Number(projectId);
       const project = Number.isSafeInteger(id) ? findProject.get(id) : null;
@@ -256,7 +268,18 @@ const server = http.createServer(async (request, response) => {
         html(response, 403, projectPage(project, filter, 'Archived project is read-only'));
         return;
       }
-      if (action === 'rename') {
+      if (action === 'priority') {
+        if (!findTask.get(Number(taskId), id)) {
+          html(response, 404, page('Not found', '<h1>Task not found</h1>'));
+          return;
+        }
+        const priority = form.get('priority');
+        if (!priorities.includes(priority)) {
+          html(response, 400, projectPage(project, filter, 'Invalid task priority'));
+          return;
+        }
+        setTaskPriority.run(priority, Number(taskId), id);
+      } else if (action === 'rename') {
         if (!findTask.get(Number(taskId), id)) {
           html(response, 404, page('Not found', '<h1>Task not found</h1>'));
           return;

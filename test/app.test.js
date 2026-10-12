@@ -30,6 +30,80 @@ async function launch(dbPath) {
   };
 }
 
+test('priorities migrate, remain independent, preserve task data, and survive archive and restart', async () => {
+  const directory = await mkdtemp(resolve('data-test-'));
+  let server;
+  try {
+    const dbPath = resolve(directory, 'test.sqlite');
+    const oldDb = new DatabaseSync(dbPath);
+    oldDb.exec(`
+      CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);
+      CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+        title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0);
+      INSERT INTO projects (name) VALUES ('First'), ('Second');
+      INSERT INTO tasks (project_id, title, completed) VALUES (1, 'Done', 1);
+    `);
+    oldDb.close();
+    server = await launch(dbPath);
+    const get = async (path) => (await fetch(server.base + path)).text();
+    const post = (path, values = {}) => fetch(server.base + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const selected = (html, id, priority, disabled = false) => {
+      const select = html.match(new RegExp(`<select id="task-priority-${id}"[^>]*>([\\s\\S]*?)</select>`));
+      assert.ok(select);
+      assert.equal(select[0].includes(' disabled'), disabled);
+      assert.equal(select[1].trim(), ['Low', 'Normal', 'High'].map((value) =>
+        `<option${value === priority ? ' selected' : ''}>${value}</option>`).join(''));
+    };
+    await post('/projects/1/tasks', { title: 'Pending' });
+    await post('/projects/2/tasks', { title: 'Other' });
+    selected(await get('/projects/1'), 1, 'Normal');
+    selected(await get('/projects/1'), 2, 'Normal');
+    selected(await get('/projects/2'), 3, 'Normal');
+    const response = await post('/projects/1/tasks/1/priority', { priority: 'High', filter: 'Completed' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), '/projects/1?filter=Completed');
+    await post('/projects/1/tasks/2/priority', { priority: 'Low' });
+    for (const priority of ['', 'Urgent', 'high']) {
+      assert.equal((await post('/projects/1/tasks/1/priority', { priority })).status, 400);
+    }
+    assert.equal((await post('/projects/2/tasks/1/priority', { priority: 'Low' })).status, 404);
+    assert.equal((await post('/projects/1/tasks/999/priority', { priority: 'Low' })).status, 404);
+    await post('/projects/1/tasks/1/rename', { title: 'Renamed' });
+    let detail = await get('/projects/1');
+    selected(detail, 1, 'High');
+    selected(detail, 2, 'Low');
+    selected(await get('/projects/2'), 3, 'Normal');
+    assert.match(detail, /aria-label="Complete Renamed" checked/);
+    assert.ok(detail.indexOf('Complete Renamed') < detail.indexOf('Complete Pending'));
+    assert.doesNotMatch(await get('/projects/1?filter=Open'), /Complete Renamed/);
+    selected(await get('/projects/1?filter=Completed'), 1, 'High');
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+    await server.stop();
+    server = await launch(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/archive');
+    detail = await get('/projects/1');
+    selected(detail, 1, 'High', true);
+    selected(detail, 2, 'Low', true);
+    assert.equal((await post('/projects/1/tasks/1/priority', { priority: 'Low' })).status, 403);
+    assert.equal(await get('/projects/1'), detail);
+    await server.stop();
+    server = await launch(dbPath);
+    assert.equal(await get('/projects/1'), detail);
+    await post('/projects/1/restore');
+    selected(await get('/projects/1'), 1, 'High');
+    selected(await get('/projects/1'), 2, 'Low');
+    await post('/projects/1/tasks/1/priority', { priority: 'Normal' });
+    selected(await get('/projects/1'), 1, 'Normal');
+    assert.match(await get('/'), /data-testid="project-summary">1\/2 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('tasks validate, filter, remain project-scoped, and persist completion', async () => {
   const directory = await mkdtemp(resolve('data-test-'));
   let server;
