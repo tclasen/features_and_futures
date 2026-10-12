@@ -92,3 +92,9 @@ action. Resolved empty results announce `No matching tasks`; pages are server-re
 so no empty announcement is rendered during an unresolved result update.
 Bulk-action tests cover intersecting filters across owners, unchanged unrelated data,
 server-side restrictions, summaries, empty results, movement and real process restarts.
+`Directory order` defaults to `Original` on each opening. `Priority` sorts High first,
+`Due date` sorts ascending with undated tasks last, and `Title` sorts literal ASCII-folded
+text by Unicode code point. Ties retain original owner/task order. Ordering survives
+filter, search, range and bulk actions without changing stored positions or exports.
+Ordering tests cover cross-owner sorting, stable ties, archived/deleted views, Unicode,
+validation, retained selections, unchanged stored data and restart defaults.

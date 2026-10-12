@@ -319,9 +319,38 @@ function matchesTask(task, filter, priority, range, query) {
       (!range.through || task.due_date <= range.through)));
 }
 
-function directoryLocation(scope, filter, priority, range, query) {
+const directoryOrders = ['Original', 'Priority', 'Due date', 'Title'];
+
+function directoryOrder(value) {
+  return directoryOrders.includes(value) ? value : 'Original';
+}
+
+// Compare code points, not UTF-16 code units or locale-dependent collation.
+function compareTitles(left, right) {
+  const fold = (title) => Array.from(title.replace(/[A-Z]/g, (letter) => letter.toLowerCase()),
+    (character) => character.codePointAt(0));
+  const a = fold(left), b = fold(right);
+  for (let index = 0; index < Math.min(a.length, b.length); index++) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return a.length - b.length;
+}
+
+function orderDirectory(results, order) {
+  // Stable sort retains Original order for ties; this never writes saved positions.
+  return results.sort(({ task: a }, { task: b }) => {
+    if (order === 'Priority') return priorities.indexOf(b.priority) - priorities.indexOf(a.priority);
+    if (order === 'Due date') {
+      if (!a.due_date || !b.due_date) return Number(!a.due_date) - Number(!b.due_date);
+      return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0;
+    }
+    return order === 'Title' ? compareTitles(a.title, b.title) : 0;
+  });
+}
+
+function directoryLocation(scope, filter, priority, range, query, order = 'Original') {
   return `/directory?${new URLSearchParams({ scope, filter, priorityFilter: priority,
-    dueFrom: range.from, dueThrough: range.through, search: query })}`;
+    dueFrom: range.from, dueThrough: range.through, search: query, order })}`;
 }
 
 function directoryTasks(scope, filter, priority, range, query) {
@@ -331,8 +360,8 @@ function directoryTasks(scope, filter, priority, range, query) {
       .map((task) => ({ project, task })));
 }
 
-function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, query = '', error = '', draft = range) {
-  const results = directoryTasks(scope, filter, priority, range, query);
+function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, query = '', error = '', draft = range, order = 'Original') {
+  const results = orderDirectory(directoryTasks(scope, filter, priority, range, query), order);
   const canUpdate = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canUpdate && results.some(({ task }) => !task.completed);
   const canReopen = canUpdate && results.some(({ task }) => task.completed);
@@ -347,7 +376,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
     </div>`);
   const hidden = (name, value) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`;
   const rangeFields = hidden('dueFrom', range.from) + hidden('dueThrough', range.through);
-  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority);
+  const selections = hidden('scope', scope) + hidden('filter', filter) + hidden('priorityFilter', priority) + hidden('order', order);
   const select = (id, label, name, options, selected) => `<label for="${id}">${label}</label>
     <select id="${id}" name="${name}" onchange="this.form.requestSubmit()">
       ${options.map((option) => `<option${selected === option ? ' selected' : ''}>${option}</option>`).join('')}
@@ -361,6 +390,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       ${select('project-scope', 'Project scope', 'scope', ['Active', 'Archived'], scope)}
       ${select('task-filter', 'Task filter', 'filter', ['All', 'Open', 'Completed', 'Deleted'], filter)}
       ${select('priority-filter', 'Priority filter', 'priorityFilter', ['All', ...priorities], priority)}
+      ${select('directory-order', 'Directory order', 'order', directoryOrders, order)}
     </form>
     <form class="filter" method="post" action="/directory/due-range">
       ${selections}${rangeFields}${hidden('search', query)}
@@ -528,7 +558,8 @@ const server = http.createServer(async (request, response) => {
     } else if (request.method === 'GET' && url.pathname === '/directory') {
       html(response, 200, directoryPage(projectFilter(url.searchParams.get('scope')),
         taskFilter(url.searchParams.get('filter')), priorityFilter(url.searchParams.get('priorityFilter')),
-        appliedRange(url.searchParams), searchQuery(url.searchParams)));
+        appliedRange(url.searchParams), searchQuery(url.searchParams), '', undefined,
+        directoryOrder(url.searchParams.get('order'))));
     } else if (request.method === 'POST' && url.pathname === '/directory/completion') {
       const form = await readForm(request);
       const scope = projectFilter(form.get('scope'));
@@ -545,7 +576,7 @@ const server = http.createServer(async (request, response) => {
           }
         });
       }
-      response.writeHead(303, { Location: directoryLocation(scope, filter, priority, range, query) });
+      response.writeHead(303, { Location: directoryLocation(scope, filter, priority, range, query, directoryOrder(form.get('order'))) });
       response.end();
     } else if (request.method === 'POST' && url.pathname === '/directory/due-range') {
       const form = await readForm(request);
@@ -556,9 +587,9 @@ const server = http.createServer(async (request, response) => {
       const draft = { from: (form.get('from') || '').trim(), through: (form.get('through') || '').trim() };
       const error = rangeError(draft);
       if (error) {
-        html(response, 400, directoryPage(scope, filter, priority, appliedRange(form), query, error, draft));
+        html(response, 400, directoryPage(scope, filter, priority, appliedRange(form), query, error, draft, directoryOrder(form.get('order'))));
       } else {
-        response.writeHead(303, { Location: directoryLocation(scope, filter, priority, draft, query) });
+        response.writeHead(303, { Location: directoryLocation(scope, filter, priority, draft, query, directoryOrder(form.get('order'))) });
         response.end();
       }
     } else if (request.method === 'GET' && url.pathname === '/') {
