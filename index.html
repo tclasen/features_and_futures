@@ -44,6 +44,11 @@
     <p id="alert" class="alert" role="alert" hidden></p>
     <label for="project-filter" style="margin-top: 20px">Project filter</label>
     <select id="project-filter"><option>Active</option><option>Archived</option></select>
+    <form id="project-search-form" class="task-controls">
+      <label for="project-search">Project search</label>
+      <input id="project-search" type="text" autocomplete="off">
+      <button type="submit">Search projects</button>
+    </form>
     <section id="project-list" class="project-list" aria-label="Projects"></section>
   </main>
   <main id="project-detail" hidden>
@@ -70,6 +75,11 @@
     <select id="task-filter">
       <option>All</option><option>Open</option><option>Completed</option>
     </select>
+    <form id="task-search-form" class="task-controls">
+      <label for="task-search">Task search</label>
+      <input id="task-search" type="text" autocomplete="off">
+      <button type="submit">Search tasks</button>
+    </form>
     <label for="priority-filter" style="margin-top: 20px">Priority filter</label>
     <select id="priority-filter">
       <option>All</option><option>Low</option><option>Normal</option><option>High</option>
@@ -99,6 +109,10 @@
       const fromInput = document.querySelector('#due-from');
       const throughInput = document.querySelector('#due-through');
       const rangeAlert = document.querySelector('#range-alert');
+      const taskSearchForm = document.querySelector('#task-search-form');
+      const taskSearchInput = document.querySelector('#task-search');
+      let appliedTaskQuery = '';
+      const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
       let appliedRange = { from: '', through: '' };
       const archived = Boolean(window.initialProject.archived);
       let activeProjects = [];
@@ -129,7 +143,8 @@
           const matchesDate = !hasRange || (task.due_date
             && (!appliedRange.from || task.due_date >= appliedRange.from)
             && (!appliedRange.through || task.due_date <= appliedRange.through));
-          return matchesCompletion && matchesPriority && matchesDate;
+          const matchesSearch = !appliedTaskQuery || asciiLower(task.title).includes(asciiLower(appliedTaskQuery));
+          return matchesCompletion && matchesPriority && matchesDate && matchesSearch;
         });
         list.innerHTML = visibleTasks.map((task) => {
           const destinations = activeProjects.filter((project) => project.id !== projectId);
@@ -179,6 +194,11 @@
       });
       filter.addEventListener('change', renderTasks);
       priorityFilter.addEventListener('change', renderTasks);
+      taskSearchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        appliedTaskQuery = taskSearchInput.value.trim();
+        renderTasks();
+      });
       const validCalendarDate = (value) => {
         const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
         if (!match) return false;
@@ -344,13 +364,18 @@
       const alert = document.querySelector('#alert');
       const input = document.querySelector('#project-name');
       const filter = document.querySelector('#project-filter');
+      const searchForm = document.querySelector('#project-search-form');
+      const searchInput = document.querySelector('#project-search');
+      let appliedQuery = '';
+      const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
       const escapeText = (value) => {
         const element = document.createElement('span');
         element.textContent = value;
         return element.innerHTML;
       };
       const render = (projects) => {
-        list.innerHTML = projects.map((project) => `
+        const visibleProjects = projects.filter((project) => !appliedQuery || asciiLower(project.name).includes(asciiLower(appliedQuery)));
+        list.innerHTML = visibleProjects.map((project) => `
           <div class="project-row" data-testid="project-row">
             <span class="project-name">${escapeText(project.name)}</span>
             <span class="project-summary" data-testid="project-summary">${project.completed_count}/${project.total_count} completed</span>
@@ -363,6 +388,11 @@
       const loadProjects = () => fetch(`/api/projects?filter=${filter.value}`).then((response) => response.json()).then(render);
       loadProjects();
       filter.addEventListener('change', loadProjects);
+      searchForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        appliedQuery = searchInput.value.trim();
+        loadProjects();
+      });
       document.querySelector('#create-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const name = input.value.trim();
