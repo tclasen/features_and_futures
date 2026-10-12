@@ -58,3 +58,13 @@ trims whitespace and preserves the task's project, creation order, completion
 state, and filter membership. Empty titles are rejected with an alert. Renamed
 titles persist across restarts. Archived projects disable task rename controls
 and reject rename requests until restored.
+
+Each task row has a Task due date textbox and Save due date button. Dates are
+optional: saving an empty or whitespace-only value clears the date. Nonempty
+values are trimmed and must be real Gregorian calendar dates in `YYYY-MM-DD`
+format, with years from `0001` through `9999`. Invalid dates show an alert and
+preserve the saved date. Dates represent calendar days without timezone conversion.
+Saving dates preserves both selected filters and all other task data. Dates
+survive renaming, reloads, and process restarts; existing databases migrate with
+empty dates. Archived projects disable these controls and reject saves until
+restored.

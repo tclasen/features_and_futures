@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { normalizeDueDate } from './due-date.js';
 
 const taskPriorities = ['Low', 'Normal', 'High'];
 const taskFilters = ['All', 'Open', 'Completed'];
@@ -112,6 +113,10 @@ export function createApp(databasePath) {
   if (!database.prepare('PRAGMA table_info(projects)').all().some((column) => column.name === 'default_task_priority')) {
     database.exec("ALTER TABLE projects ADD COLUMN default_task_priority TEXT NOT NULL DEFAULT 'Normal' CHECK(default_task_priority IN ('Low', 'Normal', 'High'))");
   }
+  // Legacy and new tasks have no due date until one is explicitly saved.
+  if (!database.prepare('PRAGMA table_info(tasks)').all().some((column) => column.name === 'due_date')) {
+    database.exec("ALTER TABLE tasks ADD COLUMN due_date TEXT NOT NULL DEFAULT ''");
+  }
   const listProjects = database.prepare(`SELECT projects.id, projects.name,
     COUNT(tasks.id) AS total, COALESCE(SUM(tasks.completed), 0) AS completed
     FROM projects LEFT JOIN tasks ON tasks.project_id = projects.id
@@ -121,7 +126,7 @@ export function createApp(databasePath) {
   const updateArchive = database.prepare('UPDATE projects SET archived = ? WHERE id = ?');
   const renameProject = database.prepare('UPDATE projects SET name = ? WHERE id = ? AND archived = 0');
   const insertProject = database.prepare('INSERT INTO projects (name) VALUES (?)');
-  const listTasks = database.prepare(`SELECT id, title, completed, priority FROM tasks
+  const listTasks = database.prepare(`SELECT id, title, completed, priority, due_date FROM tasks
     WHERE project_id = ? AND (? = 'All' OR completed = ?)
       AND (? = 'All' OR priority = ?) ORDER BY id ASC`);
   const insertTask = database.prepare('INSERT INTO tasks (project_id, title, priority) VALUES (?, ?, ?)');
@@ -129,8 +134,9 @@ export function createApp(databasePath) {
   const findTask = database.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?');
   const renameTask = database.prepare('UPDATE tasks SET title = ? WHERE id = ? AND project_id = ?');
   const updateTaskPriority = database.prepare('UPDATE tasks SET priority = ? WHERE id = ? AND project_id = ?');
+  const updateTaskDueDate = database.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 
-  function taskRow(task, project, filters, renameError) {
+  function taskRow(task, project, filters, renameError, dueDateError) {
     const disabled = project.archived ? ' disabled' : '';
     return `<li data-testid="task-row"><span class="name">${escapeHtml(task.title)}</span>
 <form method="post" action="/projects/${project.id}/tasks/${task.id}/completion">${hiddenTaskFilters(filters)}<input type="checkbox" name="completed" value="1" aria-label="Complete ${escapeHtml(task.title)}"${task.completed ? ' checked' : ''}${disabled} onchange="this.form.requestSubmit()"><noscript><button type="submit"${disabled}>Save completion</button></noscript></form>
@@ -145,10 +151,16 @@ ${hiddenTaskFilters(filters)}
 <label for="new-task-title-${task.id}">New task title</label>
 <div class="fields"><input id="new-task-title-${task.id}" name="title" type="text" value="${escapeHtml(task.title)}"${disabled}${renameError ? ` aria-describedby="task-rename-error-${task.id}" aria-invalid="true"` : ''}><button type="submit"${disabled}>Rename task</button></div>
 ${renameError ? `<p id="task-rename-error-${task.id}" role="alert">${escapeHtml(renameError)}</p>` : ''}
+</form>
+<form method="post" action="/projects/${project.id}/tasks/${task.id}/due-date">
+${hiddenTaskFilters(filters)}
+<label for="task-due-date-${task.id}">Task due date</label>
+<div class="fields"><input id="task-due-date-${task.id}" name="dueDate" type="text" value="${escapeHtml(task.due_date)}"${disabled}${dueDateError ? ` aria-describedby="task-due-date-error-${task.id}" aria-invalid="true"` : ''}><button type="submit"${disabled}>Save due date</button></div>
+${dueDateError ? `<p id="task-due-date-error-${task.id}" role="alert">${escapeHtml(dueDateError)}</p>` : ''}
 </form></li>`;
   }
 
-  function projectPage(project, filters, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '' } = {}) {
+  function projectPage(project, filters, { taskError = '', renameError = '', taskRenameError = '', taskRenameId, priorityError = '', taskDueDateError = '', taskDueDateId } = {}) {
     const { filter, priorityFilter } = filters;
     const tasks = listTasks.all(project.id, filter, filter === 'Completed' ? 1 : 0, priorityFilter, priorityFilter);
     return page(project.name, `<h1>${escapeHtml(project.name)}</h1>
@@ -181,7 +193,7 @@ ${taskError ? `<p id="task-error" role="alert">${escapeHtml(taskError)}</p>` : '
 <select id="priority-filter" name="priorityFilter" onchange="this.form.requestSubmit()">${priorityFilters.map((option) => `<option${option === priorityFilter ? ' selected' : ''}>${option}</option>`).join('')}</select>
 <noscript><button type="submit">Apply filters</button></noscript>
 </form>
-${tasks.length ? `<ul>${tasks.map((task) => taskRow(task, project, filters, task.id === taskRenameId ? taskRenameError : '')).join('')}</ul>` : '<p class="empty">No tasks match this filter.</p>'}`);
+${tasks.length ? `<ul>${tasks.map((task) => taskRow(task, project, filters, task.id === taskRenameId ? taskRenameError : '', task.id === taskDueDateId ? taskDueDateError : '')).join('')}</ul>` : '<p class="empty">No tasks match this filter.</p>'}`);
   }
 
   const normalizeProjectFilter = (value) => value === 'Archived' ? 'Archived' : 'Active';
@@ -208,7 +220,7 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
     try {
       const url = new URL(request.url, 'http://localhost');
       const pathname = url.pathname;
-      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority))?|\/(archive|restore|rename|default-priority))?$/);
+      const projectRoute = pathname.match(/^\/projects\/([1-9]\d*)(?:\/tasks(?:\/([1-9]\d*)\/(completion|rename|priority|due-date))?|\/(archive|restore|rename|default-priority))?$/);
       if (request.method === 'GET' && pathname === '/health') {
         response.writeHead(200, { 'Content-Type': 'application/json' });
         response.end(JSON.stringify({ status: 'ok' }));
@@ -296,7 +308,16 @@ ${projects.length ? `<ul>${projects.map((project) => `<li data-testid="project-r
             sendHtml(response, 404, page('Not found', '<h1>Task not found</h1>'));
             return;
           }
-          if (projectRoute[3] === 'rename') {
+          if (projectRoute[3] === 'due-date') {
+            const dueDate = normalizeDueDate(form.get('dueDate') ?? '');
+            if (dueDate === null) {
+              sendHtml(response, 422, projectPage(findProject.get(id), readTaskFilters(form), {
+                taskDueDateId: taskId, taskDueDateError: 'Due date must be a valid YYYY-MM-DD date',
+              }));
+              return;
+            }
+            updateTaskDueDate.run(dueDate, taskId, id);
+          } else if (projectRoute[3] === 'rename') {
             const title = (form.get('title') ?? '').trim();
             if (!title) {
               sendHtml(response, 422, projectPage(findProject.get(id), readTaskFilters(form), {
