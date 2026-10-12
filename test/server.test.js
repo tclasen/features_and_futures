@@ -177,6 +177,43 @@ test('projects and tasks validate, stay isolated, filter, and survive server res
     await start();
     assert.match(await tasksPage(), /<h1>Restored name<\/h1>/);
     assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
+
+    // Task renaming changes only the title, retaining ownership and completion.
+    const blankTaskRename = await postTask('/projects/1/tasks/1/rename', { title: '   ' });
+    assert.equal(blankTaskRename.status, 422);
+    assert.match(await blankTaskRename.text(), /role="alert">Task title is required/);
+    assert.match(await tasksPage(), /aria-label="Complete First task"/);
+    assert.equal((await postTask('/projects/2/tasks/1/rename', { title: 'Wrong owner' })).status, 404);
+    assert.equal((await postTask('/projects/1/tasks/999/rename', { title: 'Missing' })).status, 404);
+    const taskRenamed = await postTask('/projects/1/tasks/1/rename', {
+      title: '  Renamed <task>  ', filter: 'Completed'
+    });
+    assert.equal(taskRenamed.status, 303);
+    assert.equal(taskRenamed.headers.get('location'), '/projects/1?filter=Completed');
+    const renamedTasks = await tasksPage();
+    assert.match(renamedTasks, /aria-label="Complete Renamed &lt;task&gt;" checked/);
+    assert.ok(renamedTasks.indexOf('Renamed &lt;task&gt;') < renamedTasks.indexOf('&lt;Second task&gt;'));
+    assert.equal(rowCount(await tasksPage(1, 'Completed')), 1);
+    assert.doesNotMatch(await tasksPage(1, 'Open'), /Renamed &lt;task&gt;/);
+    assert.equal(rowCount(await tasksPage(2)), 0);
+    assert.match(await (await fetch(base)).text(), /1\/2 completed/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), renamedTasks);
+    await postTask('/projects/1/archive', {});
+    const archivedTasks = await tasksPage();
+    assert.equal((archivedTasks.match(/id="new-task-title-\d+"[^>]* disabled/g) || []).length, 2);
+    assert.equal((archivedTasks.match(/<button type="submit" disabled>Rename task/g) || []).length, 2);
+    assert.equal((await postTask('/projects/1/tasks/1/rename', { title: 'Forbidden' })).status, 403);
+    await postTask('/projects/1/restore', {});
+    assert.equal(await tasksPage(), renamedTasks);
+    assert.equal((await postTask('/projects/1/tasks/2/rename', { title: '  Renamed open task  ' })).status, 303);
+    const finalTasks = await tasksPage();
+    assert.match(await tasksPage(1, 'Open'), /aria-label="Complete Renamed open task"/);
+    await stop();
+    await start();
+    assert.equal(await tasksPage(), finalTasks);
+    assert.match(await (await fetch(base)).text(), /1\/2 completed/);
   } finally {
     await stop();
     await rm(dir, { recursive: true, force: true });
