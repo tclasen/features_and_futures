@@ -113,6 +113,7 @@ async function openProject(id) {
   taskSearchInput.value = '';
   document.querySelector('#detail-name').textContent = project.name;
   activeProjectId = project.id;
+  document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(project.id)}/export`;
   setProjectArchived(project.archived);
   defaultPriority.value = project.defaultPriority || 'Normal';
   defaultPriority.dataset.saved = defaultPriority.value;
@@ -359,6 +360,7 @@ async function renderRoute() {
     const project = await request(`/api/projects/${encodeURIComponent(decodeURIComponent(match[1]))}`);
     document.querySelector('#detail-name').textContent = project.name;
     activeProjectId = project.id;
+    document.querySelector('#download-project').href = `/api/projects/${encodeURIComponent(project.id)}/export`;
     taskFilter.value = 'All';
     priorityFilter.value = 'All';
     resetDueRange();

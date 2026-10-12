@@ -77,6 +77,36 @@ const server = createServer(async (req, res) => {
     res.end(JSON.stringify({ status: 'ok' }));
     return;
   }
+  const exportMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/export$/);
+  if (req.method === 'GET' && exportMatch) {
+    const projectId = decodeURIComponent(exportMatch[1]);
+    const project = findProject.get(projectId);
+    if (!project) return json(res, 404, { error: 'Project not found' });
+    const tasks = listTasks.all(projectId).map(task => ({
+      title: task.title,
+      completed: Boolean(task.completed),
+      priority: task.priority || 'Normal',
+      dueDate: task.dueDate || '',
+      notes: String(task.notes || '').replace(/\r\n?/g, '\n'),
+      deleted: Boolean(task.deleted)
+    }));
+    const document = {
+      format: 'workboard-project',
+      version: 1,
+      project: {
+        name: project.name,
+        archived: Boolean(project.archived),
+        defaultPriority: project.defaultPriority || 'Normal',
+        tasks
+      }
+    };
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="workboard-project.json"'
+    });
+    res.end(JSON.stringify(document));
+    return;
+  }
   if (url.pathname === '/api/projects' && req.method === 'GET') {
     return json(res, 200, listProjects.all().map(project => ({ ...project, archived: Boolean(project.archived) })));
   }
