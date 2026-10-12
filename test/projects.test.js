@@ -32,6 +32,89 @@ async function start(databasePath) {
   };
 }
 
+test('project defaults migrate, apply only to new tasks, and survive edits and restarts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-default-'));
+  const databasePath = join(directory, 'projects.sqlite');
+  const oldDb = new DatabaseSync(databasePath);
+  oldDb.exec(`
+    CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL,
+      title TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0, priority TEXT NOT NULL DEFAULT 'Normal');
+    INSERT INTO projects (name) VALUES ('Existing');
+    INSERT INTO tasks (project_id, title, completed, priority) VALUES (1, 'Original', 1, 'Low');
+  `);
+  oldDb.close();
+  let server;
+  try {
+    server = await start(databasePath);
+    const get = async (path) => (await fetch(server.baseUrl + path)).text();
+    const post = (path, values = {}) => fetch(server.baseUrl + path, {
+      method: 'POST', body: new URLSearchParams(values), redirect: 'manual',
+    });
+    const selected = (body, id, expected, disabled = false) => {
+      const select = body.match(new RegExp(`<select id="${id}"[^>]*>([\\s\\S]*?)</select>`));
+      assert.ok(select);
+      assert.equal(select[0].includes(' disabled'), disabled);
+      assert.equal(select[1].trim(), ['Low', 'Normal', 'High'].map((value) =>
+        `<option${value === expected ? ' selected' : ''}>${value}</option>`).join(''));
+    };
+    selected(await get('/projects/1'), 'default-task-priority', 'Normal');
+    selected(await get('/projects/1'), 'task-priority-1', 'Low');
+    await post('/projects', { name: 'New' });
+    selected(await get('/projects/2'), 'default-task-priority', 'Normal');
+    await post('/projects/1/tasks', { title: 'Normal task' });
+    const summary = await get('/');
+    const filters = { filter: 'Completed', priorityFilter: 'Low' };
+    const path = '/projects/1?filter=Completed&priorityFilter=Low';
+    const before = await get(path);
+    const response = await post('/projects/1/default-priority', { ...filters, priority: 'High' });
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get('location'), path);
+    const after = await get(path);
+    assert.equal(after, before.replace('<option selected>Normal</option><option>High</option>',
+      '<option>Normal</option><option selected>High</option>'));
+    assert.equal(await get('/'), summary);
+    selected(await get('/projects/1'), 'task-priority-2', 'Normal');
+    selected(await get('/projects/2'), 'default-task-priority', 'Normal');
+    await post('/projects/1/tasks', { title: 'High task' });
+    await post('/projects/2/tasks', { title: 'Other task' });
+    selected(await get('/projects/1'), 'task-priority-3', 'High');
+    selected(await get('/projects/2'), 'task-priority-4', 'Normal');
+    await post('/projects/1/default-priority', { priority: 'Low' });
+    selected(await get('/projects/1'), 'task-priority-3', 'High');
+    await post('/projects/1/tasks', { title: 'Low task' });
+    selected(await get('/projects/1'), 'task-priority-5', 'Low');
+    await post('/projects/1/rename', { name: 'Renamed project' });
+    await post('/projects/1/tasks/3/rename', { title: 'Renamed task' });
+    await post('/projects/1/tasks/3', { completed: '1' });
+    const saved = await get('/projects/1');
+    assert.match(saved, /aria-label="Complete Renamed task" checked/);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'Urgent' })).status, 400);
+    assert.equal((await post('/projects/999/default-priority', { priority: 'High' })).status, 404);
+    assert.equal(await get('/projects/1'), saved);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/projects/1'), saved);
+    await post('/projects/1/archive');
+    const archived = await get('/projects/1');
+    selected(archived, 'default-task-priority', 'Low', true);
+    assert.equal((await post('/projects/1/default-priority', { priority: 'High' })).status, 403);
+    assert.equal(await get('/projects/1'), archived);
+    await server.stop();
+    server = await start(databasePath);
+    assert.equal(await get('/projects/1'), archived);
+    await post('/projects/1/restore');
+    assert.equal(await get('/projects/1'), saved);
+    await post('/projects/1/tasks', { title: 'After restore' });
+    selected(await get('/projects/1'), 'task-priority-6', 'Low');
+    assert.match(await get('/'), /2\/5 completed/);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('combined priority and completion filters preserve selections through edits and archive', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-filters-'));
   const databasePath = join(directory, 'projects.sqlite');
