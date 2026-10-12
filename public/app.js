@@ -235,6 +235,28 @@ async function renderProject(id) {
         }
       });
       row.append(dueDate, saveDueDate);
+      const destination = element('select', undefined, { 'aria-label': 'Destination project' });
+      const eligibleProjects = projects.filter(item => !item.archived && String(item.id) !== id);
+      for (const candidate of eligibleProjects) {
+        destination.append(element('option', candidate.name, { value: candidate.id }));
+      }
+      const moveButton = element('button', 'Move task', { type: 'button' });
+      destination.disabled = project.archived || eligibleProjects.length === 0;
+      moveButton.disabled = project.archived || eligibleProjects.length === 0;
+      moveButton.addEventListener('click', async () => {
+        const update = await fetch(`/api/projects/${encodeURIComponent(id)}/tasks/${task.id}/move`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ destinationProjectId: Number(destination.value) })
+        });
+        if (!update.ok) {
+          const error = await update.json();
+          showError(error.error || 'Could not move task');
+        } else {
+          app.querySelector('[role="alert"]')?.remove();
+          await renderTasks();
+        }
+      });
+      row.append(destination, moveButton);
       list.append(row);
     }
   };
