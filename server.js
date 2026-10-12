@@ -496,10 +496,15 @@ ${escapeHtml(task.notes).replace(/\r/g, '&#13;')}</textarea>
   `);
 }
 
+function matchingDirectoryTasks(scope, filter, priority, range, search) {
+  return listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
+    .filter((task) => matchesTask(task, filter, priority, range, search));
+}
+
 function directoryPage(scope, filter, priority, range, search, error = '', draftRange = range) {
-  const rows = listDirectoryTasks.all(scope === 'Archived' ? 1 : 0)
-    .filter((task) => matchesTask(task, filter, priority, range, search))
-    .map((task) => `
+  const tasks = matchingDirectoryTasks(scope, filter, priority, range, search);
+  const editable = scope === 'Active' && filter !== 'Deleted';
+  const rows = tasks.map((task) => `
       <li data-testid="directory-task-row">
         <span data-testid="directory-task-title">${escapeHtml(task.title)}</span>
         <span data-testid="directory-project-name">${escapeHtml(task.project_name)}</span>
@@ -551,7 +556,15 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
       <input id="directory-search" name="search" type="text" value="${escapeHtml(search)}">
       <button type="submit">Search directory</button>
     </form>
-    <div data-filter-results>${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty">No matching tasks.</p>'}</div>
+    <div data-filter-results>
+      <form action="/directory/completion" method="post">
+        <input type="hidden" name="scope" value="${scope}">
+        ${taskFilterFields(filter, priority, range, search)}
+        <button type="submit" name="completed" value="1" data-directory-action${editable && tasks.some((task) => !task.completed) ? '' : ' disabled'}>Complete visible tasks</button>
+        <button type="submit" name="completed" value="0" data-directory-action${editable && tasks.some((task) => task.completed) ? '' : ' disabled'}>Reopen visible tasks</button>
+      </form>
+      ${rows ? `<ul class="projects">${rows}</ul>` : '<p class="empty" data-directory-empty role="status">No matching tasks</p>'}
+    </div>
   `);
 }
 
@@ -620,6 +633,31 @@ const server = http.createServer(async (request, response) => {
       sendHtml(response, error ? 400 : 200, directoryPage(
         projectFilter(url.searchParams.get('scope')), taskFilter(url.searchParams.get('filter')),
         priorityFilter(url.searchParams.get('priorityFilter')), range, readSearch(url.searchParams), error, draftRange));
+    } else if (request.method === 'POST' && url.pathname === '/directory/completion') {
+      const form = await readForm(request);
+      const scope = projectFilter(form.get('scope'));
+      const filter = taskFilter(form.get('filter'));
+      const priority = priorityFilter(form.get('priorityFilter'));
+      const search = readSearch(form);
+      const range = readDueRange(form);
+      const error = dueRangeError(range);
+      if (error || !['0', '1'].includes(form.get('completed'))) {
+        sendHtml(response, 400, directoryPage(scope, filter, priority, savedDueRange(form), search,
+          error || 'Invalid completion state', range));
+        return;
+      }
+      if (scope === 'Active' && filter !== 'Deleted') {
+        inTransaction(() => {
+          const completed = Number(form.get('completed'));
+          for (const task of matchingDirectoryTasks(scope, filter, priority, range, search)) {
+            if (task.completed !== completed) updateTask.run(completed, task.id, task.project_id);
+          }
+        });
+      }
+      const query = new URLSearchParams({ scope, filter, priorityFilter: priority,
+        dueFrom: range.from, dueThrough: range.through, search });
+      response.writeHead(303, { Location: `/directory?${query}` });
+      response.end();
     } else if (request.method === 'POST' && url.pathname === '/projects/import') {
       const form = await readForm(request);
       const draft = { json: form.get('json') || '', name: form.get('name') || '' };

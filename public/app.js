@@ -2,7 +2,21 @@
 // text entered into search/range fields or submit an older selection.
 let pendingFilter;
 
-document.addEventListener('submit', () => pendingFilter?.abort());
+function markResultsLoading(results, disableActions = true) {
+  results.setAttribute('aria-busy', 'true');
+  for (const announcement of results.querySelectorAll('[data-directory-empty]')) announcement.hidden = true;
+  if (disableActions) {
+    for (const button of results.querySelectorAll('[data-directory-action]')) button.disabled = true;
+  }
+}
+
+document.addEventListener('submit', () => {
+  pendingFilter?.abort();
+  const results = document.querySelector('[data-filter-results]');
+  // Do not disable submit buttons here: the browser still needs the submitter's
+  // name/value when constructing the form body after this event.
+  if (results) markResultsLoading(results, false);
+});
 
 document.addEventListener('change', async (event) => {
   const control = event.target;
@@ -25,6 +39,7 @@ document.addEventListener('change', async (event) => {
   pendingFilter?.abort();
   const request = new AbortController();
   pendingFilter = request;
+  markResultsLoading(results);
   try {
     const response = await fetch(url, { signal: request.signal });
     if (!response.ok) throw new Error('Unable to load filtered results');
@@ -34,6 +49,7 @@ document.addEventListener('change', async (event) => {
       .querySelector('[data-filter-results]');
     if (!next) throw new Error('Missing filtered results');
     results.replaceChildren(...next.childNodes);
+    results.removeAttribute('aria-busy');
   } catch (error) {
     if (!request.signal.aborted) location.assign(url);
   } finally {

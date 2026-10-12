@@ -84,6 +84,110 @@ function directoryRows(html) {
   });
 }
 
+test('directory bulk completion changes only eligible matching tasks and persists', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-bulk-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const task = (title, fields = {}) => ({ title, completed: false, priority: 'High',
+      dueDate: '2024-02-29', notes: '  literal <b>📝</b>\n  ', deleted: false, ...fields });
+    const imported = async (name, archived, tasks) => post(server.baseUrl, '/projects/import', {
+      name, json: JSON.stringify({ format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Low', tasks } }),
+    });
+    await imported('First', false, [task('Hit  One'), task('Hit Two', { completed: true }),
+      task('Hit Deleted', { deleted: true }), task('Hit Low', { priority: 'Low' }),
+      task('Hit Undated', { dueDate: '' }), task('Miss'), task('Hit Later', { dueDate: '2024-03-01' })]);
+    await imported('Second', false, [task('HIT\tThree')]);
+    await imported('Archived', true, [task('Hit Archived')]);
+    const snapshot = () => {
+      const db = new DatabaseSync(databasePath);
+      try { return {
+        tasks: db.prepare('SELECT * FROM tasks ORDER BY id').all().map((row) => ({ ...row })),
+        projects: db.prepare('SELECT * FROM projects ORDER BY id').all(),
+        positions: db.prepare('SELECT * FROM task_positions ORDER BY project_id, position').all(),
+      }; } finally { db.close(); }
+    };
+    const before = snapshot();
+    const fields = { scope: 'Active', filter: 'Open', priorityFilter: 'High',
+      search: '  hit ', dueFrom: '2024-02-29', dueThrough: '2024-02-29' };
+    const get = async (query = fields) => (await fetch(`${server.baseUrl}/directory?${new URLSearchParams(query)}`)).text();
+    const enabled = (html, label) => !new RegExp(`<button[^>]*disabled[^>]*>${label}</button>`).test(html);
+    let html = await get();
+    assert.equal(enabled(html, 'Complete visible tasks'), true);
+    assert.equal(enabled(html, 'Reopen visible tasks'), false);
+    assert.deepEqual(directoryRows(html).map((row) => row.title), ['Hit  One', 'HIT\tThree']);
+    const bulk = (query, completed) => post(server.baseUrl, '/directory/completion', { ...query, completed });
+    let response = await bulk(fields, '1');
+    assert.equal(response.status, 303);
+    const location = response.headers.get('location');
+    assert.equal(new URL(location, server.baseUrl).searchParams.get('search'), 'hit');
+    html = await (await fetch(`${server.baseUrl}${location}`)).text();
+    assert.deepEqual(directoryRows(html), []);
+    assert.match(html, />No matching tasks<\/p>/);
+    assert.equal(enabled(html, 'Complete visible tasks'), false);
+    assert.equal(enabled(html, 'Reopen visible tasks'), false);
+    const after = snapshot();
+    assert.deepEqual(after.projects, before.projects);
+    assert.deepEqual(after.positions, before.positions);
+    assert.deepEqual(after.tasks, before.tasks.map((row) => ({ ...row,
+      completed: [1, 8].includes(row.id) ? 1 : row.completed })));
+    assert.deepEqual(projectSummaries(await (await fetch(server.baseUrl)).text()), ['2/6 completed', '1/1 completed']);
+
+    for (const query of [{ ...fields, scope: 'Archived' }, { ...fields, filter: 'Deleted' },
+      { ...fields, search: 'no match' }]) {
+      html = await get(query);
+      assert.equal(enabled(html, 'Complete visible tasks'), false);
+      assert.equal(enabled(html, 'Reopen visible tasks'), false);
+      await bulk(query, '0');
+      assert.deepEqual(snapshot(), after);
+    }
+    response = await bulk({ ...fields, dueFrom: '1900-02-29' }, '0');
+    assert.equal(response.status, 400);
+    assert.deepEqual(snapshot(), after);
+    response = await bulk(fields, 'bad');
+    assert.equal(response.status, 400);
+    assert.deepEqual(snapshot(), after);
+
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), after);
+    const completedFields = { ...fields, filter: 'Completed' };
+    html = await get(completedFields);
+    assert.equal(enabled(html, 'Complete visible tasks'), false);
+    assert.equal(enabled(html, 'Reopen visible tasks'), true);
+    assert.equal(directoryRows(html).length, 3);
+    response = await bulk(completedFields, '0');
+    html = await (await fetch(`${server.baseUrl}${response.headers.get('location')}`)).text();
+    assert.deepEqual(directoryRows(html), []);
+    assert.match(html, /<option selected>Completed<\/option>/);
+    const reopened = snapshot();
+    assert.deepEqual(reopened.tasks, before.tasks.map((row) => ({ ...row,
+      completed: [1, 2, 8].includes(row.id) ? 0 : row.completed })));
+    await server.stop();
+    server = await startServer(databasePath);
+    assert.deepEqual(snapshot(), reopened);
+    await post(server.baseUrl, '/projects/1/tasks/1/move', { destination: '2' });
+    await post(server.baseUrl, '/projects/2/tasks/1/move', { destination: '1' });
+    assert.deepEqual(snapshot().tasks, reopened.tasks);
+    assert.deepEqual(directoryRows(await get({})).map((row) => row.title),
+      ['Hit  One', 'Hit Two', 'Hit Low', 'Hit Undated', 'Miss', 'Hit Later', 'HIT\tThree']);
+    const returned = snapshot();
+    // All allows mixed completion states; repeated actions are idempotent.
+    const all = { ...fields, filter: 'All' };
+    await bulk(all, '1');
+    const complete = snapshot();
+    await bulk(all, '1');
+    assert.deepEqual(snapshot(), complete);
+    await bulk(all, '0');
+    assert.deepEqual(snapshot(), returned);
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('task directory intersects read-only filters and preserves project order and stored data', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-'));
   const databasePath = join(directory, 'board.sqlite');

@@ -12,7 +12,15 @@ test('rapid automatic filter changes preserve drafts and propagate the latest se
   const replacements = [];
   const locations = [];
   const form = { method: 'get', action: 'http://localhost/projects/1' };
-  const results = { replaceChildren: (...children) => replacements.push(children) };
+  const announcement = { hidden: false };
+  const buttons = [{ disabled: false }, { disabled: false }];
+  let busy = false;
+  const results = {
+    replaceChildren: (...children) => replacements.push(children),
+    setAttribute: () => { busy = true; },
+    removeAttribute: () => { busy = false; },
+    querySelectorAll: (selector) => selector === '[data-directory-empty]' ? [announcement] : buttons,
+  };
   const source = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
   runInNewContext(source, {
     document: {
@@ -31,7 +39,14 @@ test('rapid automatic filter changes preserve drafts and propagate the latest se
     selected[name] = value;
     return handlers.change({ target: { name, value, form, matches: () => true } });
   };
+  handlers.submit();
+  assert.equal(announcement.hidden, true);
+  assert.ok(buttons.every((button) => !button.disabled), 'submission must retain the clicked button name/value');
+  announcement.hidden = false;
   const first = change('filter', 'Deleted');
+  assert.equal(busy, true);
+  assert.equal(announcement.hidden, true);
+  assert.ok(buttons.every((button) => button.disabled));
   const second = change('priorityFilter', 'High');
   assert.equal(hidden[0].value, 'Deleted');
   assert.equal(hidden[1].value, 'High');
@@ -39,6 +54,7 @@ test('rapid automatic filter changes preserve drafts and propagate the latest se
   assert.match(locations[1], /filter=Deleted&priorityFilter=High/);
   requests[1].resolve({ ok: true, text: async () => 'latest rows' });
   await second;
+  assert.equal(busy, false);
   requests[0].resolve({ ok: true, text: async () => 'stale rows' });
   await first;
   assert.deepEqual(replacements, [['latest rows']]);
