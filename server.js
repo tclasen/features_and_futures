@@ -334,6 +334,7 @@ function directoryPage(scope, filter, priorityFilter, range, query, error = '', 
         <button type="submit"${scope === 'Archived' || filter === 'Deleted' ||
           !tasks.some(task => Boolean(task.completed) === (action === 'reopen')) ? ' disabled' : ''}>${action === 'complete' ? 'Complete visible tasks' : 'Reopen visible tasks'}</button>
       </form>`).join('')}
+    <p data-testid="directory-summary">${tasks.filter(task => task.completed).length}/${tasks.length} completed</p>
     ${tasks.length ? tasks.map(task => `
       <div class="row" data-testid="directory-task-row">
         <span data-testid="directory-task-title" style="white-space: pre-wrap">${escapeHtml(task.title)}</span>

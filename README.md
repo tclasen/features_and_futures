@@ -32,7 +32,10 @@ in Active scope, preserving every other field and all selected filters. Controls
 are disabled for archived/deleted views or when no visible task needs that action.
 Bulk updates are atomic and persist across restarts. Resolved empty directory
 results announce No matching tasks; results are server-rendered, not asynchronously
-replaced with temporary empty results.
+replaced with temporary empty results. A read-only directory summary shows
+completed matching tasks out of all matching tasks, including retained completion
+flags in Deleted views. It follows resolved filters and bulk updates; ordering
+never changes its counts. Empty results show 0/0 completed.
 Each task has a multiline Task notes field and Save notes button. Notes preserve
 whitespace, Unicode and literal markup as plain text, persist across restarts,
 and travel with moved tasks. They do not participate in search or change filters
