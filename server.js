@@ -238,6 +238,10 @@ const server = http.createServer(async (req, res) => {
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
         const result = updateDueDate.get(canonical, taskId, projectId);
         if (!result) return json(res, 404, { error: 'Task not found' });
+        // Confirm the committed value from SQLite before acknowledging the edit;
+        // this also ensures the response reflects exactly what a restarted process reads.
+        const savedTask = getTask.get(taskId);
+        if ((savedTask.dueDate || null) !== canonical) throw new Error('Due date was not persisted');
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
