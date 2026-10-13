@@ -218,7 +218,7 @@ async function loadTasks() {
     fetch(`/api/projects/${activeProjectId}/tasks`), fetch('/api/projects')
   ]);
   if (!response.ok || !projectsResponse.ok) return;
-  projectTasks = await response.json();
+  projectTasks = (await response.json()).map(task => ({ ...task, dueDate: task.dueDate ?? task.due_date ?? '' }));
   allProjects = await projectsResponse.json();
   renderTasks();
 }
