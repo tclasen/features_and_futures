@@ -56,6 +56,7 @@ async function showRoute() {
     document.querySelector('#directory-scope').value = 'Active';
     document.querySelector('#directory-task-filter').value = 'All';
     document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-order').value = 'Original';
     document.querySelector('#directory-search').value = '';
     document.querySelector('#directory-due-from').value = '';
     document.querySelector('#directory-due-through').value = '';
@@ -120,6 +121,23 @@ function renderDirectory() {
     if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
     matching.push(task);
+  }
+  const order = document.querySelector('#directory-order').value;
+  const priorityRank = { High: 0, Normal: 1, Low: 2 };
+  if (order !== 'Original') matching.sort((a, b) => {
+    let comparison = 0;
+    if (order === 'Priority') comparison = priorityRank[a.priority || 'Normal'] - priorityRank[b.priority || 'Normal'];
+    else if (order === 'Due date') comparison = (a.dueDate || '\uffff').localeCompare(b.dueDate || '\uffff');
+    else {
+      const left = Array.from(a.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+      const right = Array.from(b.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+      const length = Math.min(left.length, right.length);
+      for (let i = 0; i < length && comparison === 0; i++) comparison = left[i] - right[i];
+      if (comparison === 0) comparison = left.length - right.length;
+    }
+    return comparison;
+  });
+  for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
@@ -428,7 +446,7 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
 document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
-for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter', 'directory-order']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
 document.querySelector('#complete-visible').addEventListener('click', () => bulkDirectory(true));
 document.querySelector('#reopen-visible').addEventListener('click', () => bulkDirectory(false));
