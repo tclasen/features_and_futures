@@ -57,6 +57,12 @@ function taskTitle(row) {
   return find(row, (node) => node.tag === 'span')[0].textContent;
 }
 
+function directorySummary(app) {
+  const summaries = find(app, (node) => node.attributes['data-testid'] === 'directory-summary');
+  assert.equal(summaries.length, 1);
+  return summaries[0];
+}
+
 async function applyDueRange(ui, from, through) {
   ui.byId('due-from').value = from;
   ui.byId('due-through').value = through;
@@ -1409,12 +1415,16 @@ test('directory bulk actions retain intersecting filters, disable ineligible act
   ui.byId('directory-order').value = 'Title';
   await ui.byId('directory-order').fire('change');
   assert.equal(ui.button('Reopen visible tasks').disabled, true);
+  assert.equal(directorySummary(ui.app).textContent, '0/1 completed');
   const complete = ui.button('Complete visible tasks').fire('click');
   assert.equal(ui.button('Complete visible tasks').disabled, true);
   assert.equal(ui.app.attributes['aria-busy'], 'true');
   assert.deepEqual(empty(), []);
+  assert.equal(directorySummary(ui.app).hidden, true);
   resolveWrite();
   await complete;
+  assert.equal(directorySummary(ui.app).hidden, false);
+  assert.equal(directorySummary(ui.app).textContent, '0/0 completed');
   assert.equal(ui.rows('directory-task').length, 0);
   assert.deepEqual(empty(), ['No matching tasks']);
   assert.equal(ui.byId('task-filter').value, 'Open');
@@ -1425,10 +1435,12 @@ test('directory bulk actions retain intersecting filters, disable ineligible act
   ui.byId('task-filter').value = 'Completed';
   await ui.byId('task-filter').fire('change');
   assert.equal(ui.rows('directory-task').length, 2);
+  assert.equal(directorySummary(ui.app).textContent, '2/2 completed');
   assert.deepEqual(empty(), []);
   const reopen = ui.button('Reopen visible tasks').fire('click');
   resolveWrite();
   await reopen;
+  assert.equal(directorySummary(ui.app).textContent, '0/0 completed');
   assert.equal(ui.rows('directory-task').length, 0);
   assert.equal(ui.byId('directory-order').value, 'Title');
   assert.deepEqual(empty(), ['No matching tasks']);
@@ -1455,11 +1467,15 @@ test('directory initial loading suppresses empty results until the request resol
   const loading = runInNewContext(`(async () => {\n${source}\n})()`,
     { document, window, fetch, normalizeDueRange, matchesSearch, matchesTaskFilters, orderDirectoryTasks });
   assert.equal(find(app, (node) => node.attributes.role === 'status').length, 0);
+  assert.equal(directorySummary(app).hidden, true);
+  assert.equal(directorySummary(app).textContent, '');
   for (const label of ['Complete visible tasks', 'Reopen visible tasks']) {
     assert.equal(find(app, (node) => node.tag === 'button' && node.textContent === label)[0].disabled, true);
   }
   resolveResults();
   await loading;
+  assert.equal(directorySummary(app).hidden, false);
+  assert.equal(directorySummary(app).textContent, '0/0 completed');
   assert.deepEqual(find(app, (node) => node.attributes.role === 'status').map((node) => node.textContent), ['No matching tasks']);
   assert.equal(app.attributes['aria-busy'], 'false');
 });
@@ -1525,4 +1541,59 @@ test('directory order spans owners, retains filters and resets on each opening w
   assert.equal(ui.calls.length, 1);
   const reopened = await page('/task-directory', respond);
   assert.equal(reopened.byId('directory-order').value, 'Original');
+});
+
+test('directory totals count only intersecting results across live, deleted and archived views without writes', async () => {
+  const tasks = [
+    { id: 1, projectId: 1, title: 'Match\t  task', completed: true, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: false },
+    { id: 2, projectId: 2, title: 'MATCH task', completed: false, priority: 'High', dueDate: '2024-03-01', archived: false, deleted: false },
+    { id: 3, projectId: 2, title: 'Other', completed: true, priority: 'Low', dueDate: '', archived: false, deleted: false },
+    { id: 4, projectId: 1, title: 'Match task', completed: true, priority: 'High', dueDate: '2024-02-29', archived: false, deleted: true },
+    { id: 5, projectId: 3, title: 'Match task', completed: true, priority: 'High', dueDate: '2024-02-29', archived: true, deleted: false },
+    { id: 6, projectId: 3, title: 'Match task', completed: false, priority: 'High', dueDate: '2024-02-29', archived: true, deleted: true },
+  ];
+  const before = structuredClone(tasks);
+  const ui = await page('/task-directory', () => structuredClone(tasks));
+  const assertSummary = (completed, total) => {
+    const summary = directorySummary(ui.app);
+    assert.equal(summary.hidden, false);
+    assert.equal(summary.textContent, `${completed}/${total} completed`);
+    assert.equal(ui.rows('directory-task').length, total);
+  };
+  const select = async (id, value) => {
+    ui.byId(id).value = value;
+    await ui.byId(id).fire('change');
+  };
+  assertSummary(2, 3);
+  for (const order of ['Priority', 'Due date', 'Title', 'Original']) {
+    await select('directory-order', order);
+    assertSummary(2, 3);
+  }
+  await select('priority-filter', 'High');
+  assertSummary(1, 2);
+  await applySearch(ui, 'directory', ' match \t task ');
+  assertSummary(1, 2);
+  await applyDueRange(ui, '2024-02-29', '2024-02-29');
+  assertSummary(1, 1);
+  await applyDueRange(ui, '1900-02-29', '');
+  assertSummary(1, 1); // Invalid drafts preserve the resolved range and counts.
+  await select('task-filter', 'Open');
+  assertSummary(0, 0);
+  assert.equal(find(ui.app, (node) => node.attributes.role === 'status')[0].textContent, 'No matching tasks');
+  await select('task-filter', 'Completed');
+  assertSummary(1, 1);
+  await select('task-filter', 'Deleted');
+  assertSummary(1, 1);
+  await select('project-scope', 'Archived');
+  assertSummary(0, 1);
+  await select('task-filter', 'All');
+  assertSummary(1, 1);
+  await applySearch(ui, 'directory', 'missing');
+  assertSummary(0, 0);
+  await applySearch(ui, 'directory', '');
+  assertSummary(1, 1);
+  assert.equal(ui.calls.length, 1);
+  assert.deepEqual(tasks, before);
+  const reopened = await page('/task-directory', () => structuredClone(tasks));
+  assert.equal(directorySummary(reopened.app).textContent, '2/3 completed');
 });

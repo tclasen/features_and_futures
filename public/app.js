@@ -95,8 +95,9 @@ async function showDirectory() {
   complete.addEventListener('click', () => bulkCompletion(true));
   reopen.addEventListener('click', () => bulkCompletion(false));
   actions.append(complete, reopen);
+  const summary = element('p', '', { 'data-testid': 'directory-summary' });
   const empty = element('p', 'No matching tasks', { role: 'status' });
-  app.append(controls, rangeForm, search, actions, list);
+  app.append(controls, rangeForm, search, actions, summary, list);
 
   function visibleTasks() {
     return tasks.filter((task) => task.archived === (scope.value === 'Archived')
@@ -127,6 +128,11 @@ async function showDirectory() {
 
   function render() {
     const visible = orderDirectoryTasks(visibleTasks(), order.value);
+    summary.hidden = loading;
+    if (!loading) {
+      const completedCount = visible.filter((task) => task.completed).length;
+      summary.textContent = `${completedCount}/${visible.length} completed`;
+    }
     const readOnly = loading || scope.value === 'Archived' || completion.value === 'Deleted';
     complete.disabled = readOnly || !visible.some((task) => !task.completed);
     reopen.disabled = readOnly || !visible.some((task) => task.completed);
