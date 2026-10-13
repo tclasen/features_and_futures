@@ -7,7 +7,8 @@ import path from 'node:path';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
-// Make each acknowledged edit durable before a process restart can occur.
+// Use a durable journal so acknowledged edits survive an immediate process restart.
+db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
