@@ -347,3 +347,9 @@ L026/L069 task021 transition: attempt096 accepted with six complete receipts, de
 L060 resource ledger reconciliation: registered 10 additional names (10 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L026 retained provider incidents verified through sequence 21: completed raw request pairs and native/publication histories independently restored; missing counters remain unknown and deeper causes unestablished. Recovery outcomes remain separate. Evidence: preflight/provider-incidents005-20261013T060453189767Z/verified.json. PM verification only; no comparison change.
+
+L026 first21 closed retained incidents independently recomputed under frozen manifest pricing and original raw/source evidence; native and publication histories/working files restored. Unavailable counters remain unknown, later incidents are excluded. Evidence: preflight/retained-incidents-audit021001. PM verification only; no comparison change.
+
+L026 retained provider incidents verified through sequence 24: completed raw request pairs and native/publication histories independently restored; missing counters remain unknown and deeper causes unestablished. Recovery outcomes remain separate. Evidence: preflight/provider-incidents005-20261013T061219148711Z/verified.json. PM verification only; no comparison change.
+
+L060 resource ledger reconciliation: registered 5 additional names (4 present and 1 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
