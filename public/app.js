@@ -418,9 +418,10 @@ async function renderDirectory() {
   rangeForm.append(from, through, element('button', 'Apply due range', { type: 'submit' }));
   const completeVisible = element('button', 'Complete visible tasks', { type: 'button' });
   const reopenVisible = element('button', 'Reopen visible tasks', { type: 'button' });
+  const summary = element('p', '0/0 completed', { 'data-testid': 'directory-summary' });
   const empty = element('p', 'No matching tasks');
   const list = element('section', undefined, { 'aria-label': 'Directory tasks' });
-  app.append(scope, taskFilter, priorityFilter, directoryOrder, searchForm, rangeForm, completeVisible, reopenVisible, empty, list);
+  app.append(scope, taskFilter, priorityFilter, directoryOrder, searchForm, rangeForm, completeVisible, reopenVisible, summary, empty, list);
   let query = '', low = '', high = '';
   const render = async () => {
     empty.hidden = true;
@@ -462,6 +463,7 @@ async function renderDirectory() {
       const open = element('button', 'Open project', { type: 'button' });
       open.addEventListener('click', () => { window.location.href = `/projects/${task.projectId}`; }); row.append(open); list.append(row);
     }
+    summary.textContent = `${visible.filter(task => task.completed).length}/${visible.length} completed`;
     empty.hidden = visible.length !== 0;
     const eligible = scope.value === 'Active' && taskFilter.value !== 'Deleted' ? visible.filter(task => !task.deleted) : [];
     completeVisible.disabled = !eligible.some(task => !task.completed);
