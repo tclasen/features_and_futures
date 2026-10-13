@@ -239,7 +239,7 @@ const server = http.createServer(async (req, res) => {
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
         updateDueDate.run(canonical, taskId, projectId);
         const updated = getTask.get(taskId);
-        updated.dueDate = getTaskDueDate.get(taskId, projectId)?.dueDate ?? null;
+        updated.dueDate = getTaskDueDate.get(taskId, projectId)?.dueDate || '';
         return json(res, 200, updated);
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
