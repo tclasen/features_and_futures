@@ -128,9 +128,14 @@ function renderDirectory() {
   if (order === 'Priority') matching.sort((a, b) => rank[a.priority || 'Normal'] - rank[b.priority || 'Normal'] || originalIndex.get(a.id) - originalIndex.get(b.id));
   else if (order === 'Due date') matching.sort((a, b) => (a.dueDate ? 0 : 1) - (b.dueDate ? 0 : 1) || (a.dueDate || '').localeCompare(b.dueDate || '') || originalIndex.get(a.id) - originalIndex.get(b.id));
   else if (order === 'Title') matching.sort((a, b) => {
-    const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
-    const right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-    return (left < right ? -1 : left > right ? 1 : 0) || originalIndex.get(a.id) - originalIndex.get(b.id);
+    const left = Array.from(a.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+    const right = Array.from(b.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+    let comparison = 0;
+    for (let i = 0; i < Math.min(left.length, right.length); i++) {
+      if (left[i] !== right[i]) { comparison = left[i] - right[i]; break; }
+    }
+    if (!comparison) comparison = left.length - right.length;
+    return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
