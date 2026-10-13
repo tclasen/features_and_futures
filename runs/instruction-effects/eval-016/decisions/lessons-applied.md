@@ -285,3 +285,15 @@ L060 resource ledger reconciliation: registered 1 additional names (1 present an
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L069 archive-first task021 recovery verified: five identical b004 diagnostics, all seventy-seven original histories and working trees plus before-restore bundle independently restored. The recorded own-task020 restoration matches attempt078 start. Effective task021 repair remains pending; no comparison change or implementation hint.
+
+L069 task021 recovery outcome: verified own020 restoration did not establish a behavioral fix; original078 fails011date and073Unicode ordering. Native/publication078 histories independently restored and079starts from rejected078commit. Active079 remains unassessed; no PM implementation or comparison change. Evidence: preflight/task021-recovery-outcome013.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L062 partial021 publication verified:366 source checkpoints and732 original refs, including independently restored rejected001–077 and before-recovery006/012/018/024/030/036/042/048/054/059/065/071/077. All prior remote heads preserved, zero-finding exact-target scan, temporary snapshot removed. Accounting totals remain scoped to closed020; current and later native attempts are excluded.
