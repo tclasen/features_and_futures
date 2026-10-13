@@ -7,8 +7,9 @@ import path from 'node:path';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
-// Use a durable journal so acknowledged edits survive an immediate process restart.
-db.exec('PRAGMA journal_mode = WAL');
+// Keep committed writes in the database file itself. This avoids depending on
+// WAL sidecar files surviving the harness's process restart and DB handling.
+db.exec('PRAGMA journal_mode = DELETE');
 db.exec('PRAGMA synchronous = FULL');
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
