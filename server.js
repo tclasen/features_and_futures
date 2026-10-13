@@ -362,6 +362,7 @@ function directoryTasks(scope, filter, priority, range, query) {
 
 function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range = { from: '', through: '' }, query = '', error = '', draft = range, order = 'Original') {
   const results = orderDirectory(directoryTasks(scope, filter, priority, range, query), order);
+  const completedCount = results.filter(({ task }) => task.completed).length;
   const canUpdate = scope === 'Active' && filter !== 'Deleted';
   const canComplete = canUpdate && results.some(({ task }) => !task.completed);
   const canReopen = canUpdate && results.some(({ task }) => task.completed);
@@ -411,6 +412,7 @@ function directoryPage(scope = 'Active', filter = 'All', priority = 'All', range
       <button type="submit" name="completed" value="true"${canComplete ? '' : ' disabled'}>Complete visible tasks</button>
       <button type="submit" name="completed" value="false"${canReopen ? '' : ' disabled'}>Reopen visible tasks</button>
     </form>
+    <p data-testid="directory-summary">${completedCount}/${results.length} completed</p>
     <section class="tasks" aria-label="Directory tasks">
       ${rows.join('')}${rows.length ? '' : '<p role="status">No matching tasks</p>'}
     </section>`);
