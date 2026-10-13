@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DB_PATH || path.join(root, 'workboard.sqlite');
+// Resolve configured relative paths against the launch directory once. This
+// keeps restart launches from accidentally opening a different SQLite file.
+const dbPath = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(root, 'workboard.sqlite');
 const db = new DatabaseSync(dbPath);
 db.exec(`CREATE TABLE IF NOT EXISTS projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
