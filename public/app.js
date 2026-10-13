@@ -92,6 +92,7 @@ async function renderDirectory() {
     </form>
     <button type="button" id="complete-visible" disabled>Complete visible tasks</button>
     <button type="button" id="reopen-visible" disabled>Reopen visible tasks</button>
+    <p id="directory-summary" data-testid="directory-summary" hidden></p>
     <p id="empty-directory" role="status" hidden>No matching tasks</p>
     <ul id="directory-tasks" aria-label="Task directory"></ul>`;
   app.querySelector('#back').addEventListener('click', () => { window.location.href = '/'; });
@@ -115,6 +116,11 @@ async function renderDirectory() {
     list.replaceChildren();
     const visible = orderDirectoryTasks(tasks.filter((task) => task.archived === (scope.value === 'archived') &&
       matchesTask(task, completion.value, priority.value, appliedFrom, appliedThrough, query)), order.value);
+    const summary = app.querySelector('#directory-summary');
+    summary.hidden = loading || !resolved;
+    if (!summary.hidden) {
+      summary.textContent = `${visible.filter((task) => task.completed).length}/${visible.length} completed`;
+    }
     app.querySelector('#empty-directory').hidden = loading || !resolved || visible.length > 0;
     list.setAttribute('aria-busy', String(loading));
     const readOnly = loading || scope.value === 'archived' || completion.value === 'deleted';

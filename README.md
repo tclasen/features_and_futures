@@ -126,3 +126,9 @@ orders literal titles by Unicode code point after folding only ASCII uppercase.
 Ties retain original project/task order. Ordering retains all directory filters,
 search and applied range, including after bulk completion actions, and never
 changes saved positions, project task views, exports or later moves.
+
+The directory summary shows `{K}/{N} completed` for its current resolved results,
+including Archived and Deleted views. It follows all filters, searches, applied
+due ranges and bulk completion actions; changing directory order leaves counts
+unchanged. Empty results show `0/0 completed` and No matching tasks. The summary
+and empty-result announcement stay hidden while results are loading.
