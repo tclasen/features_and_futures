@@ -393,6 +393,7 @@ function setDirectoryCompletion(scope, filter, priorityFilter, dueRange, search,
 
 function directoryPage(scope, filter, priorityFilter, dueRange, search, error = '', order = 'Original') {
   const tasks = orderDirectoryTasks(directoryTasks(scope, filter, priorityFilter, dueRange, search), order);
+  const completedCount = tasks.reduce((count, task) => count + Number(Boolean(task.completed)), 0);
   const readOnly = scope === 'Archived' || filter === 'Deleted';
   const query = escapeHtml(directoryQuery(scope, filter, priorityFilter, dueRange, search, order));
   const completionForm = (action, label, completed) => `
@@ -440,6 +441,7 @@ function directoryPage(scope, filter, priorityFilter, dueRange, search, error = 
       ${completionForm('complete', 'Complete visible tasks', true)}
       ${completionForm('reopen', 'Reopen visible tasks', false)}
     </div>
+    <p data-testid="directory-summary">${completedCount}/${tasks.length} completed</p>
     ${tasks.length ? `<ul class="task-list">${tasks.map(task => `
       <li class="task-row" data-testid="directory-task-row">
         <div class="directory-field" data-testid="directory-task-title">${escapeHtml(task.title)}</div>
