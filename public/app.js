@@ -56,6 +56,7 @@ async function showRoute() {
     document.querySelector('#directory-scope').value = 'Active';
     document.querySelector('#directory-task-filter').value = 'All';
     document.querySelector('#directory-priority-filter').value = 'All';
+    document.querySelector('#directory-order').value = 'Original';
     document.querySelector('#directory-search').value = '';
     document.querySelector('#directory-due-from').value = '';
     document.querySelector('#directory-due-through').value = '';
@@ -120,6 +121,30 @@ function renderDirectory() {
     if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
     matching.push(task);
+    const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
+    const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
+    const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
+    const completion = document.createElement('span'); completion.dataset.testid = 'directory-task-completion'; completion.textContent = task.completed ? 'Completed' : 'Open';
+    const pr = document.createElement('span'); pr.dataset.testid = 'directory-task-priority'; pr.textContent = task.priority || 'Normal';
+    const due = document.createElement('span'); due.dataset.testid = 'directory-task-due-date'; due.textContent = task.dueDate || '';
+    const notes = document.createElement('span'); notes.dataset.testid = 'directory-task-notes'; notes.textContent = task.notes || '';
+    const open = document.createElement('button'); open.textContent = 'Open project'; open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
+    row.append(title, owner, completion, pr, due, notes, open); out.append(row);
+  }
+  const order = document.querySelector('#directory-order').value;
+  if (order !== 'Original') {
+    const rank = { High: 0, Normal: 1, Low: 2 };
+    matching.sort((a, b) => {
+      if (order === 'Priority') return rank[a.priority || 'Normal'] - rank[b.priority || 'Normal'];
+      if (order === 'Due date') return (!a.dueDate) - (!b.dueDate) || (a.dueDate || '').localeCompare(b.dueDate || '');
+      const x = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
+      const y = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+  }
+  // Rows are generated after sorting so their view order is independent of storage.
+  out.replaceChildren();
+  for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
@@ -428,7 +453,7 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
 document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
-for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter', 'directory-order']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
 document.querySelector('#complete-visible').addEventListener('click', () => bulkDirectory(true));
 document.querySelector('#reopen-visible').addEventListener('click', () => bulkDirectory(false));
