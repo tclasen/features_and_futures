@@ -259,3 +259,5 @@ L062 publication006 extra observation correction: short ls-remote pattern main m
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
 
 L060 resource ledger reconciliation: registered 1 additional names (1 present and 0 absent at recorded inventory); original ledger retained and tracker003 adopts actual deployment/retirement records plus complete current owned inventory. Prior173 retirement restorations remain subset proofs; newly covered archives require independent verification. No comparison change.
+
+L073 verified: use preflight/closed-attempt-status001.py exact terminal event/result/index gate before preservation; actual rejected070 and accepted b008 admitted, live071 excluded. Initial aggregate-count inference and failed reads remain in task021-attempt070-early-observation001. No native execution or comparison change.
