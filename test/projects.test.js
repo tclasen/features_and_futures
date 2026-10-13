@@ -84,6 +84,71 @@ function directoryRows(html) {
   });
 }
 
+test('directory summary counts resolved matches across filters, scopes, ordering and bulk updates', { timeout: 15000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-summary-'));
+  const databasePath = join(directory, 'board.sqlite');
+  let server;
+  try {
+    server = await startServer(databasePath);
+    const task = (title, completed, priority = 'High', dueDate = '2024-02-29', deleted = false) =>
+      ({ title, completed, priority, dueDate, deleted, notes: 'unchanged' });
+    const imported = async (name, archived, tasks) => post(server.baseUrl, '/projects/import', {
+      name, json: JSON.stringify({ format: 'workboard-project', version: 1,
+        project: { name, archived, defaultPriority: 'Normal', tasks } }),
+    });
+    await imported('First', false, [task('Hit One', false), task('Hit Two', true),
+      task('Miss', true, 'Low', ''), task('Gone', true, 'High', '', true)]);
+    await imported('Second', false, [task('HIT\tThree', false), task('Gone open', false, 'Low', '', true)]);
+    await imported('Archived', true, [task('Old open', false), task('Old done', true),
+      task('Old gone', true, 'High', '', true)]);
+    const get = async (fields = {}) => (await fetch(`${server.baseUrl}/directory?${new URLSearchParams(fields)}`)).text();
+    const check = (html, expected) => {
+      const summaries = [...html.matchAll(/data-testid="directory-summary">([^<]*)<\/p>/g)];
+      assert.equal(summaries.length, 1);
+      assert.equal(summaries[0][1], expected);
+      const rows = directoryRows(html);
+      assert.equal(expected, `${rows.filter((row) => row.completion === 'Completed').length}/${rows.length} completed`);
+      assert.equal(html.includes('No matching tasks'), rows.length === 0);
+    };
+    const snapshots = async () => Promise.all([1, 2, 3].map(async (id) =>
+      (await fetch(`${server.baseUrl}/projects/${id}/download`)).json()));
+    const before = await snapshots();
+    for (const [fields, expected] of [
+      [{}, '2/4 completed'], [{ filter: 'Open' }, '0/2 completed'],
+      [{ filter: 'Completed' }, '2/2 completed'], [{ filter: 'Deleted' }, '1/2 completed'],
+      [{ priorityFilter: 'Low' }, '1/1 completed'], [{ search: ' hit ' }, '1/3 completed'],
+      [{ dueFrom: '2024-02-29', dueThrough: '2024-02-29' }, '1/3 completed'],
+      [{ scope: 'Archived' }, '1/2 completed'],
+      [{ scope: 'Archived', filter: 'Deleted' }, '1/1 completed'],
+      [{ scope: 'Archived', search: 'missing' }, '0/0 completed'],
+      [{ search: 'missing' }, '0/0 completed'],
+    ]) {
+      for (const order of ['Original', 'Priority', 'Due date', 'Title']) {
+        check(await get({ ...fields, order }), expected);
+      }
+    }
+    check(await get({ dueFrom: '2024-02-30', appliedFrom: '2024-02-29', appliedThrough: '2024-02-29' }), '1/3 completed');
+    assert.deepEqual(await snapshots(), before, 'summary/filter/order views never mutate records');
+    const fields = { filter: 'Open', priorityFilter: 'High', search: 'hit',
+      dueFrom: '2024-02-29', dueThrough: '2024-02-29', order: 'Title' };
+    const complete = await post(server.baseUrl, '/directory/completion', { ...fields, completed: '1' });
+    check(await (await fetch(`${server.baseUrl}${complete.headers.get('location')}`)).text(), '0/0 completed');
+    check(await get(), '4/4 completed');
+    assert.deepEqual(projectSummaries(await (await fetch(server.baseUrl)).text()), ['3/3 completed', '1/1 completed']);
+    const reopen = await post(server.baseUrl, '/directory/completion', { ...fields, filter: 'Completed', completed: '0' });
+    check(await (await fetch(`${server.baseUrl}${reopen.headers.get('location')}`)).text(), '0/0 completed');
+    check(await get(), '1/4 completed');
+    check(await get({ filter: 'Deleted' }), '1/2 completed');
+    check(await get({ scope: 'Archived' }), '1/2 completed');
+    await server.stop();
+    server = await startServer(databasePath);
+    check(await get(), '1/4 completed');
+  } finally {
+    if (server) await server.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('directory order spans owners, retains filters and bulk actions, and never changes stored order', { timeout: 15000 }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'workboard-directory-order-'));
   const databasePath = join(directory, 'board.sqlite');

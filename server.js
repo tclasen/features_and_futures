@@ -565,6 +565,7 @@ function directoryPage(scope, filter, priority, range, search, error = '', draft
       <button type="submit">Search directory</button>
     </form>
     <div data-filter-results>
+      <p data-testid="directory-summary">${tasks.filter((task) => task.completed).length}/${tasks.length} completed</p>
       <form action="/directory/completion" method="post">
         ${orderField}
         <input type="hidden" name="scope" value="${scope}">

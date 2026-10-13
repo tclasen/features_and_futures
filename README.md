@@ -38,6 +38,8 @@ Complete visible tasks and Reopen visible tasks atomically update completion for
 
 Directory order offers Original, Priority, Due date and Title, defaulting to Original on each opening. Priority sorts High/Normal/Low; dates sort ascending with undated tasks last; titles sort by literal ASCII-folded Unicode code points without whitespace normalization. Ties retain Original order across owners. Ordering remains selected through filtering, search, range validation and bulk completion, and never changes stored task positions, project views or exports.
 
+The directory displays one read-only completion summary for its resolved results: completed matching tasks divided by all matching tasks. It includes retained completion flags in Deleted views and works identically in Archived scope. Filters, search, ranges and bulk actions refresh the counts with the rows; ordering does not change them. Empty resolved results show `0/0 completed` alongside No matching tasks.
+
 ## Verify
 
 ```sh
