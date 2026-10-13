@@ -122,6 +122,8 @@ function renderDirectory() {
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
     matching.push(task);
   }
+  const completedCount = matching.filter(task => Boolean(task.completed)).length;
+  document.querySelector('[data-testid="directory-summary"]').textContent = `${completedCount}/${matching.length} completed`;
   const order = document.querySelector('#directory-order').value;
   const rank = { High: 0, Normal: 1, Low: 2 };
   if (order === 'Priority') matching.sort((a, b) => rank[a.priority || 'Normal'] - rank[b.priority || 'Normal']);
