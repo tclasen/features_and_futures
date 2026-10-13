@@ -127,7 +127,13 @@ function renderDirectory() {
   if (order !== 'Original') matching.sort((a, b) => {
     let comparison = 0;
     if (order === 'Priority') comparison = priorityRank[a.priority || 'Normal'] - priorityRank[b.priority || 'Normal'];
-    else if (order === 'Due date') comparison = (a.dueDate || '\uffff').localeCompare(b.dueDate || '\uffff');
+    else if (order === 'Due date') {
+      // Canonical YYYY-MM-DD strings sort chronologically by code point; avoid
+      // locale-dependent collation so directory ordering is portable.
+      const left = a.dueDate || '\uffff';
+      const right = b.dueDate || '\uffff';
+      comparison = left < right ? -1 : left > right ? 1 : 0;
+    }
     else {
       const left = Array.from(a.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
       const right = Array.from(b.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
