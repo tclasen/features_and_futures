@@ -127,8 +127,10 @@ function renderDirectory() {
   if (order === 'Priority') matching.sort((a, b) => priorityRank[a.priority || 'Normal'] - priorityRank[b.priority || 'Normal']);
   else if (order === 'Due date') matching.sort((a, b) => (a.dueDate ? 0 : 1) - (b.dueDate ? 0 : 1) || (a.dueDate || '').localeCompare(b.dueDate || ''));
   else if (order === 'Title') matching.sort((a, b) => {
-    const x = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), y = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-    return x < y ? -1 : x > y ? 1 : 0;
+    const x = Array.from(a.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+    const y = Array.from(b.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+    for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+    return x.length - y.length;
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
