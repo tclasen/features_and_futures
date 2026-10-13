@@ -110,6 +110,7 @@ function renderDirectory() {
   const out = document.querySelector('#directory-results'); out.replaceChildren();
   const scope = document.querySelector('#directory-scope').value, filter = document.querySelector('#directory-task-filter').value, priority = document.querySelector('#directory-priority-filter').value;
   const matching = [];
+  const originalIndex = new Map(directoryRows.map((task, index) => [task.id, index]));
   for (const task of directoryRows) {
     if (Boolean(task.projectArchived) !== (scope === 'Archived')) continue;
     if (filter === 'Deleted' ? !task.deleted : task.deleted) continue;
@@ -120,6 +121,22 @@ function renderDirectory() {
     if ((directoryRange.from || directoryRange.through) && !task.dueDate) continue;
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
     matching.push(task);
+  }
+  const order = document.querySelector('#directory-order').value;
+  if (order !== 'Original') {
+    const priorityRank = { High: 0, Normal: 1, Low: 2 };
+    matching.sort((a, b) => {
+      let comparison = 0;
+      if (order === 'Priority') comparison = (priorityRank[a.priority || 'Normal'] ?? 1) - (priorityRank[b.priority || 'Normal'] ?? 1);
+      else if (order === 'Due date') comparison = !a.dueDate ? (!b.dueDate ? 0 : 1) : !b.dueDate ? -1 : a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+      else if (order === 'Title') {
+        const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
+        comparison = left < right ? -1 : left > right ? 1 : 0;
+      }
+      return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
+    });
+  }
+  for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
     const title = document.createElement('span'); title.dataset.testid = 'directory-task-title'; title.textContent = task.title;
     const owner = document.createElement('span'); owner.dataset.testid = 'directory-project-name'; owner.textContent = task.projectName;
@@ -428,7 +445,7 @@ document.querySelector('#rename-form').addEventListener('submit', async event =>
 document.querySelector('#back-button').addEventListener('click', () => navigate('/'));
 document.querySelector('#open-directory').addEventListener('click', () => navigate('/directory'));
 document.querySelector('#directory-back').addEventListener('click', () => navigate('/'));
-for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
+for (const id of ['directory-scope', 'directory-task-filter', 'directory-priority-filter', 'directory-order']) document.querySelector(`#${id}`).addEventListener('change', renderDirectory);
 document.querySelector('#search-directory').addEventListener('click', () => { directoryQuery = normalizeSearch(document.querySelector('#directory-search').value.trim()); renderDirectory(); });
 document.querySelector('#complete-visible').addEventListener('click', () => bulkDirectory(true));
 document.querySelector('#reopen-visible').addEventListener('click', () => bulkDirectory(false));
