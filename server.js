@@ -235,9 +235,13 @@ const server = http.createServer(async (req, res) => {
         }
         // SQLite may report zero changed rows for a no-op update. Check ownership
         // separately so saving the already-current date remains a successful edit.
-        if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
-        const result = updateDueDate.run(canonical, taskId, projectId);
-        if (!result.changes && getTask.get(taskId)?.projectId !== projectId) return json(res, 404, { error: 'Task not found' });
+        const ownedTask = getTask.get(taskId);
+        if (!ownedTask || Number(ownedTask.projectId) !== projectId) return json(res, 404, { error: 'Task not found' });
+        updateDueDate.run(canonical, taskId, projectId);
+        // Read back the persisted value (including successful no-op updates) so
+        // callers always receive the canonical saved date.
+        const savedTask = getTask.get(taskId);
+        if (!savedTask || Number(savedTask.projectId) !== projectId) return json(res, 404, { error: 'Task not found' });
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
