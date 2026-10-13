@@ -122,6 +122,9 @@ function renderDirectory() {
     if (task.dueDate && ((directoryRange.from && task.dueDate < directoryRange.from) || (directoryRange.through && task.dueDate > directoryRange.through))) continue;
     matching.push(task);
   }
+  // Capture original directory positions before sorting so ties always preserve
+  // owner creation order and each owner's persisted task order.
+  const originalPosition = new Map(matching.map((task, index) => [task.id, index]));
   const order = document.querySelector('#directory-order').value;
   const priorityRank = { High: 0, Normal: 1, Low: 2 };
   if (order !== 'Original') matching.sort((a, b) => {
@@ -141,7 +144,7 @@ function renderDirectory() {
       for (let i = 0; i < length && comparison === 0; i++) comparison = left[i] - right[i];
       if (comparison === 0) comparison = left.length - right.length;
     }
-    return comparison;
+    return comparison || originalPosition.get(a.id) - originalPosition.get(b.id);
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
