@@ -49,7 +49,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_project_positions (
 )`);
 db.exec(`INSERT OR IGNORE INTO task_project_positions (task_id, project_id, position)
   SELECT id, project_id, sort_order FROM tasks`);
-const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted
+const listTasks = db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, COALESCE(t.due_date, '') AS dueDate, t.notes, t.deleted
   FROM tasks t LEFT JOIN task_project_positions p ON p.task_id = t.id AND p.project_id = t.project_id
   WHERE t.project_id = ? ORDER BY p.position, t.id`);
 const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, sort_order) VALUES (?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM tasks WHERE project_id = ?), 0))');
@@ -57,7 +57,7 @@ const addTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id,
 const nextTaskPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
 const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
 const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
-const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE id = ?');
+const getTask = db.prepare("SELECT id, project_id AS projectId, title, completed, priority, COALESCE(due_date, '') AS dueDate, notes, deleted FROM tasks WHERE id = ?");
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
 const updateTask = db.prepare('UPDATE tasks SET completed = ? WHERE id = ? AND project_id = ?');
@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, listProjects.all());
   }
   if (url.pathname === '/api/directory' && req.method === 'GET') {
-    return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM tasks t JOIN projects p ON p.id=t.project_id ORDER BY p.id, (SELECT position FROM task_project_positions x WHERE x.task_id=t.id AND x.project_id=t.project_id), t.id`).all());
+    return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, COALESCE(t.due_date, '') AS dueDate, t.notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM tasks t JOIN projects p ON p.id=t.project_id ORDER BY p.id, (SELECT position FROM task_project_positions x WHERE x.task_id=t.id AND x.project_id=t.project_id), t.id`).all());
   }
   if (url.pathname === '/api/directory/bulk' && req.method === 'POST') {
     try {
