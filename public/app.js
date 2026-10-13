@@ -128,7 +128,12 @@ function renderDirectory() {
   else if (order === 'Due date') matching.sort((a, b) => (a.dueDate ? 0 : 1) - (b.dueDate ? 0 : 1) || (a.dueDate || '').localeCompare(b.dueDate || ''));
   else if (order === 'Title') matching.sort((a, b) => {
     const x = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), y = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-    return x < y ? -1 : x > y ? 1 : 0;
+    const left = Array.from(x, ch => ch.codePointAt(0));
+    const right = Array.from(y, ch => ch.codePointAt(0));
+    for (let i = 0; i < Math.min(left.length, right.length); i++) {
+      if (left[i] !== right[i]) return left[i] - right[i];
+    }
+    return left.length - right.length;
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
