@@ -325,8 +325,9 @@ function renderTasks() {
         error.hidden = false;
         return;
       }
-      task.dueDate = (await response.json()).dueDate;
-      dueDate.value = task.dueDate || '';
+      const savedTask = await response.json();
+      task.dueDate = savedTask.dueDate || '';
+      dueDate.value = task.dueDate;
       renderTasks();
     });
     const notes = document.createElement('textarea');
