@@ -56,7 +56,11 @@ const createTask = db.prepare('INSERT INTO tasks (project_id, title, priority, s
 const addTaskPosition = db.prepare('INSERT INTO task_project_positions (task_id, project_id, position) VALUES (?, ?, ?)');
 const nextTaskPosition = db.prepare('SELECT COALESCE(MAX(position) + 1, 0) AS position FROM task_project_positions WHERE project_id = ?');
 const getTaskPosition = db.prepare('SELECT position FROM task_project_positions WHERE task_id = ? AND project_id = ?');
-const moveTask = db.prepare('UPDATE tasks SET project_id = ?, sort_order = ? WHERE id = ? AND project_id = ?');
+// Moving ownership must only change location/order; explicitly carry editable fields
+// through the update to guard against schema triggers or future move-query changes.
+const moveTask = db.prepare(`UPDATE tasks SET project_id = ?, sort_order = ?,
+  title = title, completed = completed, priority = priority, due_date = due_date,
+  notes = notes, deleted = deleted WHERE id = ? AND project_id = ?`);
 const getTask = db.prepare('SELECT id, project_id AS projectId, title, completed, priority, due_date AS dueDate, notes, deleted FROM tasks WHERE id = ?');
 const updateDueDate = db.prepare('UPDATE tasks SET due_date = ? WHERE id = ? AND project_id = ?');
 const updateNotes = db.prepare('UPDATE tasks SET notes = ? WHERE id = ? AND project_id = ?');
