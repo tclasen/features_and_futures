@@ -129,7 +129,12 @@ function renderDirectory() {
   else if (order === 'Title') matching.sort((a, b) => {
     const fold = value => value.replace(/[A-Z]/g, ch => ch.toLowerCase());
     const x = fold(a.title), y = fold(b.title);
-    return x < y ? -1 : x > y ? 1 : 0;
+    const left = Array.from(x, ch => ch.codePointAt(0));
+    const right = Array.from(y, ch => ch.codePointAt(0));
+    for (let i = 0; i < Math.min(left.length, right.length); i++) {
+      if (left[i] !== right[i]) return left[i] < right[i] ? -1 : 1;
+    }
+    return left.length < right.length ? -1 : left.length > right.length ? 1 : 0;
   });
   for (const task of matching) {
     const row = document.createElement('div'); row.dataset.testid = 'directory-task-row';
