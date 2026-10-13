@@ -44,8 +44,12 @@ class Element {
     if (!this.disabled) await this.listeners.get(event)?.({ preventDefault() {} });
   }
   querySelector(selector) {
-    assert.equal(selector, '[role="alert"]');
-    return find(this, (node) => node.attributes.role === 'alert')[0] || null;
+    if (selector === '[role="alert"]') {
+      return find(this, (node) => node.attributes.role === 'alert')[0] || null;
+    }
+    const testId = selector.match(/^\[data-testid="([^"]+)"\]$/)?.[1];
+    assert.ok(testId, `Unsupported selector: ${selector}`);
+    return find(this, (node) => node.attributes['data-testid'] === testId)[0] || null;
   }
 }
 
@@ -1596,4 +1600,76 @@ test('directory totals count only intersecting results across live, deleted and 
   assert.deepEqual(tasks, before);
   const reopened = await page('/task-directory', () => structuredClone(tasks));
   assert.equal(directorySummary(reopened.app).textContent, '2/3 completed');
+});
+
+test('overlapping saves and creation retain controls and wait for priority durability before navigation', async () => {
+  const project = { id: 1, name: 'Owner', archived: false, defaultPriority: 'Normal' };
+  const tasks = [{ id: 1, title: 'First', completed: false, priority: 'Normal', dueDate: '', notes: '', deleted: false }];
+  const prioritySave = Promise.withResolvers();
+  const destinations = Array.from({ length: 1200 }, (_, index) => ({ id: index + 2, name: `Destination ${index}`, archived: false }));
+  const ui = await page('/projects/1', async (path, options) => {
+    if (!options) return structuredClone(path.endsWith('/tasks') ? tasks : project);
+    const body = JSON.parse(options.body);
+    if (Object.hasOwn(body, 'priority')) await prioritySave.promise;
+    if (options.method === 'POST') {
+      const task = { ...tasks[0], id: 2, title: body.title, completed: false };
+      tasks.push(task);
+      return structuredClone(task);
+    }
+    Object.assign(tasks[0], body);
+    return structuredClone(tasks[0]);
+  }, destinations);
+  const originalRow = ui.rows('task')[0];
+  const priority = ui.byId('task-priority-1');
+  const notes = ui.byId('task-notes-1');
+  notes.value = '  Draft\n<literal> Ω  ';
+  priority.value = 'High';
+  const savingPriority = priority.fire('change');
+  assert.equal(priority.disabled, true);
+  const checkbox = find(originalRow, (node) => node.attributes.type === 'checkbox')[0];
+  checkbox.checked = true;
+  await checkbox.fire('change');
+  ui.byId('task-title').value = 'Second';
+  await find(ui.app, (node) => node.tag === 'form' && node.children.some((child) => child.attributes.id === 'task-title'))[0].fire('submit');
+  assert.equal(ui.rows('task')[0], originalRow);
+  assert.equal(ui.byId('task-priority-1'), priority);
+  assert.equal(priority.disabled, true);
+  assert.equal(notes.value, '  Draft\n<literal> Ω  ');
+  const leaving = ui.button('Projects').fire('click');
+  await Promise.resolve();
+  assert.equal(ui.window.location.href, '/projects/1');
+  prioritySave.resolve();
+  await Promise.all([savingPriority, leaving]);
+  assert.equal(tasks[0].priority, 'High');
+  assert.equal(tasks[0].completed, true);
+  assert.equal(priority.disabled, false);
+  assert.equal(ui.window.location.href, '/');
+  const reopened = await page('/projects/1', (path) => structuredClone(path.endsWith('/tasks') ? tasks : project), destinations);
+  assert.equal(reopened.byId('task-priority-1').value, 'High');
+});
+
+test('filtering and bulk updates reuse directory rows while updating their completion totals', async () => {
+  const tasks = [
+    { id: 1, projectId: 1, projectName: 'Owner', title: 'Alpha', completed: false, priority: 'High', dueDate: '', notes: '', deleted: false, archived: false },
+    { id: 2, projectId: 2, projectName: 'Other', title: 'Beta', completed: true, priority: 'Low', dueDate: '', notes: '', deleted: false, archived: false },
+  ];
+  const ui = await page('/task-directory', (path, options) => {
+    if (options) {
+      const body = JSON.parse(options.body);
+      for (const task of tasks) {
+        if (matchesTaskFilters(task, body.completion, body.priority, body.dueRange, body.query)) task.completed = body.completed;
+      }
+    }
+    return structuredClone(tasks);
+  });
+  const rows = ui.rows('directory-task');
+  await applySearch(ui, 'directory', 'Alpha');
+  assert.equal(ui.rows('directory-task')[0], rows[0]);
+  await ui.button('Complete visible tasks').fire('click');
+  assert.equal(ui.rows('directory-task')[0], rows[0]);
+  assert.equal(rows[0].querySelector('[data-testid="directory-task-completion"]').textContent, 'Completed');
+  assert.equal(directorySummary(ui.app).textContent, '1/1 completed');
+  await applySearch(ui, 'directory', '');
+  assert.deepEqual(ui.rows('directory-task'), rows);
+  assert.equal(directorySummary(ui.app).textContent, '2/2 completed');
 });

@@ -4,6 +4,7 @@ import { matchesTaskFilters } from './task-filters.js';
 import { orderDirectoryTasks } from './directory-order.js';
 
 const app = document.querySelector('#app');
+const pendingWrites = new Set();
 
 function element(tag, text, attributes = {}) {
   const node = document.createElement(tag);
@@ -12,11 +13,34 @@ function element(tag, text, attributes = {}) {
   return node;
 }
 
+function renderRows(list, rows) {
+  // Avoid detaching focused controls when only saved fields changed.
+  if (list.children.length === rows.length
+    && rows.every((row, index) => list.children[index] === row)) return;
+  list.replaceChildren(...rows);
+}
+
 async function request(path, options) {
-  const response = await fetch(path, options);
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || 'Unable to complete request');
-  return body;
+  const operation = (async () => {
+    const response = await fetch(path, options);
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || 'Unable to complete request');
+    return body;
+  })();
+  const writing = options?.method && options.method !== 'GET';
+  if (writing) pendingWrites.add(operation);
+  try {
+    return await operation;
+  } finally {
+    pendingWrites.delete(operation);
+  }
+}
+
+async function navigate(path) {
+  // A control's selected value can precede its saved response. Let in-flight
+  // edits finish before leaving so the next page reads the durable state.
+  while (pendingWrites.size) await Promise.allSettled([...pendingWrites]);
+  window.location.href = path;
 }
 
 function showError(message) {
@@ -71,10 +95,11 @@ function filterSelect(id, label, options, controls, onChange) {
 
 async function showDirectory() {
   const back = element('button', 'Projects', { type: 'button' });
-  back.addEventListener('click', () => { window.location.href = '/'; });
+  back.addEventListener('click', () => navigate('/'));
   app.replaceChildren(back, element('h1', 'Task directory'));
   document.title = 'Task directory · Workboard';
   let tasks = [];
+  const rows = new Map();
   let dueRange = { from: '', through: '' };
   let query = '';
   let loading = true;
@@ -138,22 +163,32 @@ async function showDirectory() {
     reopen.disabled = readOnly || !visible.some((task) => task.completed);
     empty.remove();
     if (!loading && visible.length === 0) app.append(empty);
-    list.replaceChildren(...visible.map((task) => {
-      const row = element('li', '', { 'data-testid': 'directory-task-row' });
-      for (const [field, value] of [
-        ['directory-task-title', task.title], ['directory-project-name', task.projectName],
-        ['directory-task-completion', task.completed ? 'Completed' : 'Open'],
-        ['directory-task-priority', task.priority],
-        ['directory-task-due-date', task.dueDate ?? ''], ['directory-task-notes', task.notes ?? ''],
-      ]) {
-        // textContent keeps literal markup and notes as plain text.
-        row.append(element('div', value, { 'data-testid': field }));
+    renderRows(list, visible.map((task) => {
+      let row = rows.get(task.id);
+      if (!row) {
+        row = createDirectoryRow(task);
+        rows.set(task.id, row);
       }
-      const open = element('button', 'Open project', { type: 'button' });
-      open.addEventListener('click', () => { window.location.href = `/projects/${task.projectId}`; });
-      row.append(open);
+      row.querySelector('[data-testid="directory-task-completion"]').textContent = task.completed ? 'Completed' : 'Open';
       return row;
     }));
+  }
+
+  function createDirectoryRow(task) {
+    const row = element('li', '', { 'data-testid': 'directory-task-row' });
+    for (const [field, value] of [
+      ['directory-task-title', task.title], ['directory-project-name', task.projectName],
+      ['directory-task-completion', task.completed ? 'Completed' : 'Open'],
+      ['directory-task-priority', task.priority],
+      ['directory-task-due-date', task.dueDate ?? ''], ['directory-task-notes', task.notes ?? ''],
+    ]) {
+      // textContent keeps literal markup and notes as plain text.
+      row.append(element('div', value, { 'data-testid': field }));
+    }
+    const open = element('button', 'Open project', { type: 'button' });
+    open.addEventListener('click', () => navigate(`/projects/${task.projectId}`));
+    row.append(open);
+    return row;
   }
 
   render();
@@ -169,7 +204,7 @@ async function showDirectory() {
 function projectRow(project, onArchiveChange) {
   const row = element('li', '', { 'data-testid': 'project-row' });
   const open = element('button', 'Open project', { type: 'button' });
-  open.addEventListener('click', () => { window.location.href = `/projects/${project.id}`; });
+  open.addEventListener('click', () => navigate(`/projects/${project.id}`));
   const archive = element('button', project.archived ? 'Restore project' : 'Archive project', { type: 'button' });
   archive.addEventListener('click', async () => {
     archive.disabled = true;
@@ -215,7 +250,7 @@ function projectImportForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.value, json: source.value }),
       });
-      window.location.href = `/projects/${project.id}`;
+      navigate(`/projects/${project.id}`);
     } catch (error) {
       showError(error.message);
     } finally {
@@ -228,6 +263,7 @@ function projectImportForm() {
 async function showProjects() {
   app.replaceChildren(element('h1', 'Workboard'));
   let projects = [];
+  const rows = new Map();
   const form = element('form');
   const label = element('label', 'Project name', { for: 'project-name' });
   const input = element('input', '', { id: 'project-name', name: 'name', type: 'text' });
@@ -248,11 +284,18 @@ async function showProjects() {
   function renderProjects() {
     const visible = projects.filter((project) => project.archived === (filter.value === 'Archived')
       && matchesSearch(project.name, searchQuery));
-    list.replaceChildren(...visible.map((project) => projectRow(project, renderProjects)));
+    renderRows(list, visible.map((project) => {
+      let entry = rows.get(project.id);
+      if (!entry || entry.archived !== project.archived) {
+        entry = { archived: project.archived, row: projectRow(project, renderProjects) };
+        rows.set(project.id, entry);
+      }
+      return entry.row;
+    }));
   }
   filter.addEventListener('change', renderProjects);
   const directory = element('button', 'Task directory', { type: 'button' });
-  directory.addEventListener('click', () => { window.location.href = '/task-directory'; });
+  directory.addEventListener('click', () => navigate('/task-directory'));
   app.append(form, filters, search, directory, list, projectImportForm());
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -294,16 +337,14 @@ async function showProjects() {
 async function showProject(id) {
   app.replaceChildren();
   const back = element('button', 'Projects', { type: 'button' });
-  back.addEventListener('click', () => { window.location.href = '/'; });
+  back.addEventListener('click', () => navigate('/'));
   app.append(back);
   try {
     const project = await request(`/api/projects/${id}`);
     const heading = element('h1', project.name);
     app.append(heading);
     const download = element('button', 'Download project', { type: 'button' });
-    download.addEventListener('click', () => {
-      window.location.href = `/api/projects/${project.id}/export`;
-    });
+    download.addEventListener('click', () => navigate(`/api/projects/${project.id}/export`));
     app.append(download);
     document.title = `${project.name} · Workboard`;
     if (project.archived) app.append(element('p', 'Archived project'));
@@ -401,6 +442,7 @@ function taskRenameForm(task, path, archived, onRename) {
         body: JSON.stringify({ title }),
       });
       task.title = saved.title;
+      input.value = task.title;
       app.querySelector('[role="alert"]')?.remove();
       onRename();
     } catch (error) {
@@ -573,6 +615,7 @@ async function showTasks(projectId, archived) {
   const path = `/api/projects/${projectId}/tasks`;
   let tasks = [];
   let destinations = [];
+  const rows = new Map();
   const form = element('form');
   const input = element('input', '', { id: 'task-title', name: 'title', type: 'text' });
   const create = element('button', 'Create task', { type: 'submit' });
@@ -605,44 +648,60 @@ async function showTasks(projectId, archived) {
   function renderTasks() {
     const visible = tasks.filter((task) =>
       matchesTaskFilters(task, filter.value, priorityFilter.value, dueRange, searchQuery));
-    list.replaceChildren(...visible.map((task) => {
-      const row = element('li', '', { 'data-testid': 'task-row' });
-      const readOnly = archived || Boolean(task.deleted);
-      const checkbox = element('input', '', {
-        type: 'checkbox', 'aria-label': `Complete ${task.title}`,
-      });
-      checkbox.checked = task.completed;
-      checkbox.disabled = readOnly;
-      checkbox.addEventListener('change', async () => {
-        checkbox.disabled = true;
-        try {
-          const saved = await request(`${path}/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: checkbox.checked }),
-          });
-          task.completed = saved.completed;
-          app.querySelector('[role="alert"]')?.remove();
-          renderTasks();
-        } catch (error) {
-          checkbox.checked = task.completed;
-          showError(error.message);
-        } finally {
-          checkbox.disabled = readOnly;
-        }
-      });
-      const details = element('div', '', { class: 'task-details' });
-      details.append(element('span', task.title), taskRenameForm(task, path, readOnly, renderTasks),
-        taskPriorityControl(task, path, readOnly, renderTasks), taskDueDateForm(task, path, readOnly, renderTasks),
-        taskNotesForm(task, path, readOnly, renderTasks),
-        taskMoveForm(task, path, readOnly, destinations, () => {
-          tasks = tasks.filter((remaining) => remaining.id !== task.id);
-          renderTasks();
-        }));
-      details.append(taskDeletionControl(task, path, archived, renderTasks));
-      row.append(checkbox, details);
-      return row;
+    renderRows(list, visible.map((task) => {
+      let entry = rows.get(task.id);
+      if (!entry || entry.deleted !== Boolean(task.deleted)) {
+        entry = { deleted: Boolean(task.deleted), row: createTaskRow(task) };
+        rows.set(task.id, entry);
+      }
+      return entry.row;
     }));
+  }
+
+  // Keep controls alive across edits and filtering. Rebuilding unrelated rows
+  // discards drafts and pending-control state, and duplicates large destination menus.
+  function createTaskRow(task) {
+    const row = element('li', '', { 'data-testid': 'task-row' });
+    const readOnly = archived || Boolean(task.deleted);
+    const checkbox = element('input', '', {
+      type: 'checkbox', 'aria-label': `Complete ${task.title}`,
+    });
+    checkbox.checked = task.completed;
+    checkbox.disabled = readOnly;
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      try {
+        const saved = await request(`${path}/${task.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ completed: checkbox.checked }),
+        });
+        task.completed = saved.completed;
+        app.querySelector('[role="alert"]')?.remove();
+        renderTasks();
+      } catch (error) {
+        checkbox.checked = task.completed;
+        showError(error.message);
+      } finally {
+        checkbox.disabled = readOnly;
+      }
+    });
+    const details = element('div', '', { class: 'task-details' });
+    const title = element('span', task.title);
+    details.append(title, taskRenameForm(task, path, readOnly, () => {
+      title.textContent = task.title;
+      checkbox.setAttribute('aria-label', `Complete ${task.title}`);
+      renderTasks();
+    }),
+      taskPriorityControl(task, path, readOnly, renderTasks), taskDueDateForm(task, path, readOnly, renderTasks),
+      taskNotesForm(task, path, readOnly, renderTasks),
+      taskMoveForm(task, path, readOnly, destinations, () => {
+        tasks = tasks.filter((remaining) => remaining.id !== task.id);
+        renderTasks();
+      }));
+    details.append(taskDeletionControl(task, path, archived, renderTasks));
+    row.append(checkbox, details);
+    return row;
   }
 
   filter.addEventListener('change', renderTasks);

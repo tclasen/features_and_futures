@@ -193,3 +193,8 @@ result, including retained completion flags in Deleted views. It updates with
 filters, search, ranges and saved bulk actions; ordering never changes the counts.
 While results load, the summary and empty-result announcement are hidden.
 Project summaries continue to count only their own live tasks.
+
+Task and directory rows are reused across filtering and saved edits to avoid
+rebuilding destination menus and discarding other controls' draft or pending
+state. In-app navigation waits for outstanding writes to finish before opening
+the next page. Saved task edits still re-evaluate every applied filter.
