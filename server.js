@@ -355,6 +355,10 @@ const page = `<!doctype html>
       app.append(searchForm);
       const list = document.createElement('ul');
       app.append(list);
+      const summary = document.createElement('p');
+      summary.dataset.testid = 'directory-summary';
+      summary.textContent = '0/0 completed';
+      app.append(summary);
       const bulkActions = document.createElement('div');
       const completeVisible = document.createElement('button');
       completeVisible.type = 'button';
@@ -444,6 +448,8 @@ const page = `<!doctype html>
           }
           return comparison || left.originalIndex - right.originalIndex;
         });
+        const completedCount = visibleTasks.reduce((count, result) => count + (result.task.completed ? 1 : 0), 0);
+        summary.textContent = completedCount + '/' + visibleTasks.length + ' completed';
         for (const result of visibleTasks) {
           const task = result.task;
           const row = document.createElement('li');
