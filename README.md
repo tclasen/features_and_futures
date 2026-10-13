@@ -62,6 +62,11 @@ matching rows; summaries still count all tasks. Search remains available in
 archived projects. Opening a project from the list or returning via Projects
 starts with an empty search.
 Existing databases are migrated automatically.
+With JavaScript enabled, form updates keep the page in place and temporarily
+disable controls until the server has saved the change and returned resolved
+results. This prevents a following interaction from interrupting a save. Empty
+directory announcements stay hidden during updates. Validation still uses the
+server's rules, and project downloads use the browser's normal download handling.
 Each task has a multiline Task notes textarea and Save notes button. Notes are
 saved as plain text without trimming, including whitespace, Unicode and literal
 markup. Empty text clears notes. Notes persist through restarts, renames, moves

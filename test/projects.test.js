@@ -206,9 +206,10 @@ test('directory bulk completion intersects filters, protects read-only tasks and
     assert.match(empty, /role="status">No matching tasks<\/p>/);
     assert.match(empty, /<button type="submit" disabled>Complete visible tasks/);
     assert.match(empty, /<button type="submit" disabled>Reopen visible tasks/);
-    // Native navigation renders resolved results; hide the old announcement on submission.
-    assert.match(empty, /document.addEventListener\('submit'/);
-    assert.match(empty, /announcement.hidden = true/);
+    assert.match(empty, /<script src="\/client.js" defer><\/script>/);
+    const scriptResponse = await fetch(server.address + '/client.js');
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get('content-type'), /text\/javascript/);
     const expected = {
       ...original,
       tasks: original.tasks.map(task => [1, 8].includes(task.id) ? { ...task, completed: 1 } : task),

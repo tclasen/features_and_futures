@@ -1,12 +1,13 @@
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const port = Number(process.env.PORT ?? 8080);
 const databasePath = process.env.DB_PATH ?? './data/workboard.sqlite';
 if (databasePath !== ':memory:') mkdirSync(dirname(resolve(databasePath)), { recursive: true });
 const database = new DatabaseSync(databasePath);
+const clientScript = readFileSync(new URL('./client.js', import.meta.url));
 database.exec(`
   PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS projects (
@@ -212,6 +213,7 @@ function page(title, content) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} · Workboard</title>
+  <script src="/client.js" defer></script>
   <style>
     :root { font-family: system-ui, sans-serif; color: #18293a; background: #f4f6f9; }
     * { box-sizing: border-box; }
@@ -452,12 +454,6 @@ function directoryPage(scope, filter, priorityFilter, dueRange, search, error = 
         <div class="directory-field" data-testid="directory-task-notes">${escapeHtml(task.notes)}</div>
         <form method="get" action="/projects/${task.project_id}"><button type="submit">Open project</button></form>
       </li>`).join('')}</ul>` : '<p class="empty" id="directory-empty" role="status">No matching tasks</p>'}
-    <script>
-      document.addEventListener('submit', () => {
-        const announcement = document.getElementById('directory-empty');
-        if (announcement) announcement.hidden = true;
-      });
-    </script>
   `);
 }
 
@@ -624,7 +620,10 @@ const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
     const search = (url.searchParams.get('search') ?? '').trim();
     const projectFilter = url.searchParams.get('filter') === 'Archived' ? 'Archived' : 'Active';
-    if (request.method === 'GET' && url.pathname === '/health') {
+    if (request.method === 'GET' && url.pathname === '/client.js') {
+      response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(clientScript);
+    } else if (request.method === 'GET' && url.pathname === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ status: 'ok' }));
     } else if (request.method === 'GET' && url.pathname === '/') {
