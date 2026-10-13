@@ -124,11 +124,19 @@ function renderDirectory() {
   }
   const order = document.querySelector('#directory-order').value;
   const priorityRank = { High: 0, Normal: 1, Low: 2 };
+  const compareCodePoints = (left, right) => {
+    const a = Array.from(left, char => char.codePointAt(0));
+    const b = Array.from(right, char => char.codePointAt(0));
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  };
   matching.sort((a, b) => {
     let result = 0;
     if (order === 'Priority') result = priorityRank[a.task.priority] - priorityRank[b.task.priority];
     else if (order === 'Due date') result = (!a.task.dueDate) - (!b.task.dueDate) || (a.task.dueDate || '').localeCompare(b.task.dueDate || '');
-    else if (order === 'Title') result = a.task.title.replace(/[A-Z]/g, c => c.toLowerCase()).localeCompare(b.task.title.replace(/[A-Z]/g, c => c.toLowerCase()));
+    else if (order === 'Title') result = compareCodePoints(a.task.title.replace(/[A-Z]/g, c => c.toLowerCase()), b.task.title.replace(/[A-Z]/g, c => c.toLowerCase()));
     return result || a.originalIndex - b.originalIndex;
   });
   for (const {task} of matching) {
