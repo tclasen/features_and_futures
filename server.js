@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, listProjects.all());
   }
   if (url.pathname === '/api/directory' && req.method === 'GET') {
-    return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, t.due_date AS dueDate, t.notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM tasks t JOIN projects p ON p.id=t.project_id ORDER BY p.id, (SELECT position FROM task_project_positions x WHERE x.task_id=t.id AND x.project_id=t.project_id), t.id`).all());
+    return json(res, 200, db.prepare(`SELECT t.id, t.project_id AS projectId, t.title, t.completed, t.priority, COALESCE(t.due_date, '') AS dueDate, COALESCE(t.notes, '') AS notes, t.deleted, p.name AS projectName, p.archived AS projectArchived FROM tasks t JOIN projects p ON p.id=t.project_id ORDER BY p.id, (SELECT position FROM task_project_positions x WHERE x.task_id=t.id AND x.project_id=t.project_id), t.id`).all());
   }
   if (url.pathname === '/api/directory/bulk' && req.method === 'POST') {
     try {
