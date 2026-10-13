@@ -130,8 +130,11 @@ function renderDirectory() {
       if (order === 'Priority') comparison = (priorityRank[a.priority || 'Normal'] ?? 1) - (priorityRank[b.priority || 'Normal'] ?? 1);
       else if (order === 'Due date') comparison = !a.dueDate ? (!b.dueDate ? 0 : 1) : !b.dueDate ? -1 : a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
       else if (order === 'Title') {
-        const left = a.title.replace(/[A-Z]/g, c => c.toLowerCase()), right = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-        comparison = left < right ? -1 : left > right ? 1 : 0;
+        const left = Array.from(a.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+        const right = Array.from(b.title.replace(/[A-Z]/g, c => c.toLowerCase()), c => c.codePointAt(0));
+        const length = Math.min(left.length, right.length);
+        for (let i = 0; i < length && comparison === 0; i++) comparison = left[i] - right[i];
+        if (comparison === 0) comparison = left.length - right.length;
       }
       return comparison || originalIndex.get(a.id) - originalIndex.get(b.id);
     });
