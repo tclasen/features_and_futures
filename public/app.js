@@ -137,9 +137,12 @@ function renderDirectory() {
     matching.sort((a, b) => {
       if (order === 'Priority') return rank[a.priority || 'Normal'] - rank[b.priority || 'Normal'];
       if (order === 'Due date') return (!a.dueDate) - (!b.dueDate) || (a.dueDate || '').localeCompare(b.dueDate || '');
-      const x = a.title.replace(/[A-Z]/g, c => c.toLowerCase());
-      const y = b.title.replace(/[A-Z]/g, c => c.toLowerCase());
-      return x < y ? -1 : x > y ? 1 : 0;
+      const x = [...a.title.replace(/[A-Z]/g, c => c.toLowerCase())].map(c => c.codePointAt(0));
+      const y = [...b.title.replace(/[A-Z]/g, c => c.toLowerCase())].map(c => c.codePointAt(0));
+      for (let i = 0; i < Math.min(x.length, y.length); i++) {
+        if (x[i] !== y[i]) return x[i] - y[i];
+      }
+      return x.length - y.length;
     });
   }
   // Rows are generated after sorting so their view order is independent of storage.
