@@ -236,11 +236,20 @@ const server = http.createServer(async (req, res) => {
         // SQLite may report zero changed rows for a no-op update. Check ownership
         // separately so saving the already-current date remains a successful edit.
         if (!getTask.get(taskId) || getTask.get(taskId).projectId !== projectId) return json(res, 404, { error: 'Task not found' });
-        const result = updateDueDate.run(canonical, taskId, projectId);
-        if (!result.changes) return json(res, 404, { error: 'Task not found' });
-        // Force the SQLite write transaction to commit before acknowledging the edit.
-        const savedTask = getTask.get(taskId);
-        if ((savedTask.dueDate || null) !== canonical) throw new Error('Due date was not persisted');
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          const result = updateDueDate.run(canonical, taskId, projectId);
+          if (!result.changes) {
+            db.exec('ROLLBACK');
+            return json(res, 404, { error: 'Task not found' });
+          }
+          const savedTask = getTask.get(taskId);
+          if ((savedTask.dueDate || null) !== canonical) throw new Error('Due date was not persisted');
+          db.exec('COMMIT');
+        } catch (error) {
+          if (db.isTransaction) db.exec('ROLLBACK');
+          throw error;
+        }
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
