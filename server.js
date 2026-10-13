@@ -235,9 +235,14 @@ const server = http.createServer(async (req, res) => {
         }
         // Verify ownership independently of SQLite's changes count: unchanged
         // values are valid saves, but must never be mistaken for a missing task.
-        const ownedTask = db.prepare('SELECT 1 FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
+        const ownedTask = db.prepare('SELECT id FROM tasks WHERE id = ? AND project_id = ?').get(taskId, projectId);
         if (!ownedTask) return json(res, 404, { error: 'Task not found' });
+        // Persist the canonical value before responding; the row remains owned by
+        // the requested project even when an identical value is saved.
         updateDueDate.run(canonical, taskId, projectId);
+        const savedTask = getTask.get(taskId);
+        if (!savedTask || savedTask.projectId !== projectId) return json(res, 404, { error: 'Task not found' });
+        return json(res, 200, savedTask);
       } else if (typeof data.notes === 'string') {
         const result = updateNotes.run(data.notes, taskId, projectId);
         if (!result.changes) return json(res, 404, { error: 'Task not found' });
