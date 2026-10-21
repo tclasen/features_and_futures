@@ -1,0 +1,4397 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: directory.spec.mjs >> 066 directory includes original imported records and uses current whitespace matching without mutating project state
+- Location: runs/instruction-effects/eval-016/tasks/task-022/suite/directory.spec.mjs:20:2
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByTestId('project-row').filter({ hasText: 'task-022 Directory whitespace' }).visible()
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" getByTestId('project-row').filter({ hasText: 'task-022 Directory whitespace' }).visible() with timeout 5000ms
+  - waiting for getByTestId('project-row').filter({ hasText: 'task-022 Directory whitespace' }).visible()
+
+```
+
+```yaml
+- main:
+  - paragraph: Your workspace
+  - heading "Workboard" [level=1]
+  - button "Task directory" [disabled]
+  - text: Project name
+  - textbox "Project name" [disabled]: task-022 Directory whitespace
+  - button "Create project" [disabled]
+  - text: Project JSON
+  - textbox "Project JSON" [disabled]
+  - text: Imported project name
+  - textbox "Imported project name" [disabled]
+  - button "Import project" [disabled]
+  - heading "Projects" [level=2]
+  - text: Project filter
+  - combobox "Project filter" [disabled]:
+    - option "Active" [selected]
+    - option "Archived"
+  - text: Project search
+  - textbox "Project search" [disabled]
+  - button "Search projects" [disabled]
+  - list:
+    - listitem:
+      - text: task-001 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-001 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-001 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-001 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-001 Persistence sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-002 Persistence sentinel 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-003 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-004 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-005 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-006 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-007 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-008 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-009 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-010 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-011 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-012 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-013 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-014 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-015 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-016 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Export foreign 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Export full Ω 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Export empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-017 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Export foreign 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Export full Ω 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Export empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Import origin 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Import copy 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Parse guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Import restart 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Import empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-018 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Directory Zulu owner 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Directory Alpha owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Directory filter owner 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Directory whitespace 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Export foreign 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Export full Ω 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Export empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Import origin 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Import copy 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Parse guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Import restart 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Import empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-019 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Bulk first owner 0/7 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Bulk second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Bulk protected 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Bulk restart first 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Bulk restart second 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Directory Zulu owner 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Directory Alpha owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Directory filter owner 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Directory whitespace 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Export foreign 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Export full Ω 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Export empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Import origin 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Import copy 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Parse guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Import restart 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Import empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-020 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Bulk first owner 0/7 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Bulk second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Bulk protected 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Bulk restart first 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Bulk restart second 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Defaults independent 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Defaults inheritance 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Defaults renamed 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Deletion fields 4/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Deletion target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Deletion order 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Ordering Zulu owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Ordering Alpha owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Ordering actions owner 3/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Ordering active guard owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Ordering Unicode owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Directory Zulu owner 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Directory Alpha owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Directory filter owner 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Directory whitespace 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Calendar persistence 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Calendar validation 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Calendar independence 2/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Calendar second owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Calendar archival 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Range boundaries 0/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Range intersections 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Range validation 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Range archival 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Range owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Export foreign 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Export full Ω 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Export empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Import origin 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Import copy 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Parse guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task guard existing 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Import restart 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Import empty 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Transfer target 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Transfer source 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Filtered transfer target 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Filtered transfer source 1/5 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Options first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Options second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Options owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Read-only transfer target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Read-only transfer owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Notes values 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Notes target 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Notes owner 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority intersection 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority live filters 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority rename filters 1/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Archived combined filters 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority ownership 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority other owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority completion 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Priority archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Return holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Return owner 1/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Return identity holding 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Returned owner renamed 0/3 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Position second owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Position third owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Position first owner 0/4 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Whitespace retained owner 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Whitespace Saved first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Whitespace Saved second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Whitespace unrelated sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search Mixed first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search unrelated 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search mixed last 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search double gap 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search double sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search task intersections 1/6 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Search internal spacing 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Alpha create 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Blank validation sentinel 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Order first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Order second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task reload 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task owner 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Other project 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task filters 0/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Archive lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Archive tasks 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Summary project 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Transfer restart origin 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Identity updated 1/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Identity second 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Rename invalid 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Rename archive 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task rename identity 1/2 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task rename invalid 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-021 Task rename archive 0/1 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Bulk first owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Bulk protected 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Bulk restart first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Defaults independent 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Defaults lifecycle 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Deletion fields 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Deletion target 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Deletion restart 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Deleted intersections 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Ordering Zulu owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Ordering actions owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Ordering archived first 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Ordering Unicode owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Summary first owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Summary empty owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Directory Zulu owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+    - listitem:
+      - text: task-022 Directory filter owner 0/0 completed
+      - button "Open project" [disabled]
+      - button "Archive project" [disabled]
+```
+
+# Test source
+
+```ts
+  1  | import { expect } from '@playwright/test';
+  2  | export const stage = Number(process.env.FF_STAGE);
+  3  | export function projectName(name) {
+  4  |   return (process.env.FF_FIXTURE_PREFIX ? process.env.FF_FIXTURE_PREFIX + ' ' : '') + name.trim();
+  5  | }
+  6  | export function projectRow(page, name) {
+  7  |   return page.getByTestId('project-row').filter({ hasText: projectName(name) }).filter({ visible: true });
+  8  | }
+  9  | export function taskRow(page, title) {
+  10 |   return page.getByTestId('task-row').filter({has:page.getByRole('checkbox',{name:'Complete '+title,exact:true})}).filter({visible:true});
+  11 | }
+  12 | export async function createProject(page, name) {
+  13 |   await page.goto('/');
+  14 |   await page.getByRole('textbox', { name: 'Project name', exact: true }).fill(name === name.trim() ? projectName(name) : '  ' + projectName(name) + '  ');
+  15 |   await page.getByRole('button', { name: 'Create project', exact: true }).click();
+> 16 |   await expect(projectRow(page, name.trim())).toBeVisible();
+     |                                               ^ Error: expect(locator).toBeVisible() failed
+  17 | }
+  18 | export async function openProject(page, name) {
+  19 |   await projectRow(page, name).getByRole('button', { name: 'Open project', exact: true }).click();
+  20 |   await expect(page.getByRole('heading', { name: projectName(name), exact: true }).first()).toBeVisible();
+  21 | }
+  22 | export async function createTask(page, title) {
+  23 |   await page.getByRole('textbox', { name: 'Task title', exact: true }).fill(title);
+  24 |   await page.getByRole('button', { name: 'Create task', exact: true }).click();
+  25 |   await expect(taskRow(page, title.trim())).toBeVisible();
+  26 |   await expect(taskRow(page, title.trim()).getByRole('checkbox', { name: 'Complete ' + title.trim(), exact: true })).toBeVisible();
+  27 | }
+  28 | export async function isolateBrowser(context) {
+  29 |   await context.routeWebSocket('**/*', socket => socket.close());
+  30 |   const origin = new URL(process.env.FF_BASE_URL).origin;
+  31 |   await context.route('**/*', route => {
+  32 |     const url = new URL(route.request().url());
+  33 |     return url.origin === origin ? route.continue() : route.abort();
+  34 |   });
+  35 | }
+  36 | 
+  37 | export function requiredAlert(page, message) {
+  38 |   return page.getByRole('alert').filter({ hasText: message }).filter({ visible: true }).first();
+  39 | }
+  40 | 
+  41 | export async function assertDisclosedControls(page, checkpoint) {
+  42 |   const deferred = [
+  43 |     [2, 'Create task'], [3, 'Archive project'], [3, 'Restore project'],
+  44 |     [4, 'Rename project'], [5, 'Rename task']
+  45 |   ];
+  46 |   for (const [introduced, name] of deferred) {
+  47 |     if (checkpoint < introduced) {
+  48 |       await expect(page.getByRole('button', {name, exact:true}).filter({visible:true})).toHaveCount(0);
+  49 |     }
+  50 |   }
+  51 | }
+  52 | 
+  53 | export async function expectPersistedCompletion(page, project, title, completed) {
+  54 |   const observer = await page.context().newPage();
+  55 |   try {
+  56 |     await expect.poll(async () => {
+  57 |       await observer.goto('/');
+  58 |       await openProject(observer, project);
+  59 |       await observer.getByRole('combobox', {name:'Task filter', exact:true}).selectOption({label:'All'});
+  60 |       await expect(taskRow(observer, title)).toBeVisible();
+  61 |       return observer.getByRole('checkbox', {name:'Complete '+title, exact:true}).isChecked();
+  62 |     }, {timeout:5000, message:'Completion state must be durable before the next navigation'}).toBe(completed);
+  63 |   } finally { await observer.close(); }
+  64 | }
+  65 | 
+  66 | export async function expectPersistedPriority(page, project, title, priority) {
+  67 |   const observer = await page.context().newPage();
+  68 |   try {
+  69 |     await expect.poll(async () => {
+  70 |       await observer.goto('/');
+  71 |       await openProject(observer, project);
+  72 |       await observer.getByRole('combobox', {name:'Task filter', exact:true}).selectOption({label:'All'});
+  73 |       return taskRow(observer, title).getByRole('combobox', {name:'Task priority', exact:true}).locator('option:checked').textContent();
+  74 |     }, {timeout:5000, message:'Task priority must be durable before the next navigation'}).toBe(priority);
+  75 |   } finally { await observer.close(); }
+  76 | }
+  77 | 
+```
